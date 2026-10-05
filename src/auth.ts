@@ -6,6 +6,7 @@ export interface User {
   email: string
   fullName: string
   role: 'admin' | 'cashier'
+  store: { id: number; name: string } // every user belongs to exactly one store
   avatarUrl: string | null
 }
 

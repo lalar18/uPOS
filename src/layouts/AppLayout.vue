@@ -260,7 +260,7 @@ async function handleLogout() {
                 <UserAvatar :user="currentUser" :size="40" class="me-2" />
                 <div>
                   <h6 class="fw-medium">{{ currentUser?.fullName }}</h6>
-                  <p class="text-capitalize mb-0">{{ currentUser?.role }}</p>
+                  <p class="mb-0"><span class="text-capitalize">{{ currentUser?.role }}</span> · {{ currentUser?.store.name }}</p>
                 </div>
               </div>
               <RouterLink :to="{ name: 'profile' }" class="dropdown-item">

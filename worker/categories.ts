@@ -1,4 +1,5 @@
 // Category endpoints. Any logged-in user can list; only admins can change.
+// Every query is limited to the user's own store.
 //
 //   GET    /api/categories?search=&status=&page=&pageSize=   -> { items, total }
 //   POST   /api/categories        { name, slug?, status? }   -> category
@@ -64,10 +65,19 @@ async function readCategoryInput(request: Request): Promise<{ name: string; slug
 }
 
 /** Reports a name clash before a slug clash (the slug is usually derived from the name). */
-async function findConflict(db: D1Database, name: string, slug: string, excludeId = 0): Promise<Response | null> {
+async function findConflict(
+  db: D1Database,
+  storeId: number,
+  name: string,
+  slug: string,
+  excludeId = 0,
+): Promise<Response | null> {
   const clash = await db
-    .prepare('SELECT name = ? COLLATE NOCASE AS same_name FROM categories WHERE (name = ? OR slug = ?) AND id != ? ORDER BY same_name DESC')
-    .bind(name, name, slug, excludeId)
+    .prepare(
+      `SELECT name = ? COLLATE NOCASE AS same_name FROM categories
+       WHERE store_id = ? AND (name = ? OR slug = ?) AND id != ? ORDER BY same_name DESC`,
+    )
+    .bind(name, storeId, name, slug, excludeId)
     .first<{ same_name: number }>()
   if (!clash) return null
   return clash.same_name
@@ -87,14 +97,14 @@ function uniqueConflict(e: unknown): Response {
   throw e
 }
 
-async function listCategories(db: D1Database, url: URL): Promise<Response> {
+async function listCategories(db: D1Database, storeId: number, url: URL): Promise<Response> {
   const search = url.searchParams.get('search')?.trim() ?? ''
   const status = url.searchParams.get('status')
   const pageSize = Math.min(Math.max(Number(url.searchParams.get('pageSize')) || 10, 1), MAX_PAGE_SIZE)
   const page = Math.max(Number(url.searchParams.get('page')) || 1, 1)
 
-  const where: string[] = []
-  const params: unknown[] = []
+  const where: string[] = ['store_id = ?']
+  const params: unknown[] = [storeId]
   if (search) {
     // Escape LIKE wildcards so "%" and "_" are matched literally
     const pattern = `%${search.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
@@ -105,7 +115,7 @@ async function listCategories(db: D1Database, url: URL): Promise<Response> {
     where.push('status = ?')
     params.push(status)
   }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const whereSql = `WHERE ${where.join(' AND ')}`
 
   const [items, count] = await db.batch<CategoryRow | { total: number }>([
     db
@@ -120,16 +130,16 @@ async function listCategories(db: D1Database, url: URL): Promise<Response> {
   })
 }
 
-async function createCategory(db: D1Database, request: Request): Promise<Response> {
+async function createCategory(db: D1Database, storeId: number, request: Request): Promise<Response> {
   const input = await readCategoryInput(request)
   if (input instanceof Response) return input
-  const conflict = await findConflict(db, input.name, input.slug)
+  const conflict = await findConflict(db, storeId, input.name, input.slug)
   if (conflict) return conflict
 
   try {
     const row = await db
-      .prepare('INSERT INTO categories (name, slug, status) VALUES (?, ?, ?) RETURNING *')
-      .bind(input.name, input.slug, input.status)
+      .prepare('INSERT INTO categories (store_id, name, slug, status) VALUES (?, ?, ?, ?) RETURNING *')
+      .bind(storeId, input.name, input.slug, input.status)
       .first<CategoryRow>()
     return Response.json(publicCategory(row!), { status: 201 })
   } catch (e) {
@@ -137,19 +147,19 @@ async function createCategory(db: D1Database, request: Request): Promise<Respons
   }
 }
 
-async function updateCategory(db: D1Database, request: Request, id: number): Promise<Response> {
+async function updateCategory(db: D1Database, storeId: number, request: Request, id: number): Promise<Response> {
   const input = await readCategoryInput(request)
   if (input instanceof Response) return input
-  const conflict = await findConflict(db, input.name, input.slug, id)
+  const conflict = await findConflict(db, storeId, input.name, input.slug, id)
   if (conflict) return conflict
 
   try {
     const row = await db
       .prepare(
         `UPDATE categories SET name = ?, slug = ?, status = ?, updated_at = datetime('now')
-         WHERE id = ? RETURNING *`,
+         WHERE id = ? AND store_id = ? RETURNING *`,
       )
-      .bind(input.name, input.slug, input.status, id)
+      .bind(input.name, input.slug, input.status, id, storeId)
       .first<CategoryRow>()
     return row ? Response.json(publicCategory(row)) : error('Category not found', 404)
   } catch (e) {
@@ -157,8 +167,8 @@ async function updateCategory(db: D1Database, request: Request, id: number): Pro
   }
 }
 
-async function deleteCategory(db: D1Database, id: number): Promise<Response> {
-  const result = await db.prepare('DELETE FROM categories WHERE id = ?').bind(id).run()
+async function deleteCategory(db: D1Database, storeId: number, id: number): Promise<Response> {
+  const result = await db.prepare('DELETE FROM categories WHERE id = ? AND store_id = ?').bind(id, storeId).run()
   return result.meta.changes ? Response.json({ ok: true }) : error('Category not found', 404)
 }
 
@@ -176,10 +186,11 @@ export async function handleCategories(
   const isWrite = request.method !== 'GET'
   if (isWrite && user.role !== 'admin') return error('Only admins can change categories', 403)
 
-  if (isCollection && request.method === 'GET') return listCategories(db, url)
-  if (isCollection && request.method === 'POST') return createCategory(db, request)
-  if (itemMatch && request.method === 'PUT') return updateCategory(db, request, Number(itemMatch[1]))
-  if (itemMatch && request.method === 'DELETE') return deleteCategory(db, Number(itemMatch[1]))
+  const storeId = user.store_id
+  if (isCollection && request.method === 'GET') return listCategories(db, storeId, url)
+  if (isCollection && request.method === 'POST') return createCategory(db, storeId, request)
+  if (itemMatch && request.method === 'PUT') return updateCategory(db, storeId, request, Number(itemMatch[1]))
+  if (itemMatch && request.method === 'DELETE') return deleteCategory(db, storeId, Number(itemMatch[1]))
 
   return error('Method not allowed', 405)
 }

@@ -1,5 +1,6 @@
 import { handleCategories } from './categories'
 import { verifyPassword } from './password'
+import { handleStore } from './store'
 import { changePassword, deleteAvatar, serveAvatar, uploadAvatar } from './profile'
 import { createSession, destroySession, getSessionUser, type SessionUser } from './session'
 
@@ -19,6 +20,7 @@ function publicUser(user: SessionUser) {
     email: user.email,
     fullName: user.full_name,
     role: user.role,
+    store: { id: user.store_id, name: user.store_name },
     // The version param changes on every upload, so browsers never show a stale picture
     avatarUrl: user.avatar_updated_at
       ? `/api/users/${user.id}/avatar?v=${encodeURIComponent(user.avatar_updated_at)}`
@@ -47,9 +49,11 @@ export default {
       }
 
       const user = await env.DB.prepare(
-        `SELECT u.*, a.updated_at AS avatar_updated_at
-         FROM users u LEFT JOIN user_avatars a ON a.user_id = u.id
-         WHERE u.email = ? AND u.is_active = 1`,
+        `SELECT u.*, st.name AS store_name, a.updated_at AS avatar_updated_at
+         FROM users u
+         JOIN stores st ON st.id = u.store_id
+         LEFT JOIN user_avatars a ON a.user_id = u.id
+         WHERE u.email = ? AND u.is_active = 1 AND st.is_active = 1`,
       )
         .bind(body.email.trim())
         .first<UserRow>()
@@ -97,10 +101,15 @@ export default {
       if (response) return response
     }
 
+    if (url.pathname === '/api/store') {
+      if (!user) return notLoggedIn()
+      return handleStore(env.DB, request, user)
+    }
+
     const avatarMatch = url.pathname.match(/^\/api\/users\/(\d+)\/avatar$/)
     if (avatarMatch && request.method === 'GET') {
       if (!user) return notLoggedIn()
-      return serveAvatar(env.DB, Number(avatarMatch[1]))
+      return serveAvatar(env.DB, Number(avatarMatch[1]), user)
     }
 
     return Response.json({ error: 'Not found' }, { status: 404 })

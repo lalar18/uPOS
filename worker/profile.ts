@@ -56,10 +56,14 @@ export async function deleteAvatar(db: D1Database, user: SessionUser): Promise<R
   return Response.json({ ok: true })
 }
 
-export async function serveAvatar(db: D1Database, userId: number): Promise<Response> {
+/** Serves a user's avatar. Only users of the same store can see it. */
+export async function serveAvatar(db: D1Database, userId: number, viewer: SessionUser): Promise<Response> {
   const row = await db
-    .prepare('SELECT content_type, data FROM user_avatars WHERE user_id = ?')
-    .bind(userId)
+    .prepare(
+      `SELECT a.content_type, a.data FROM user_avatars a JOIN users u ON u.id = a.user_id
+       WHERE a.user_id = ? AND u.store_id = ?`,
+    )
+    .bind(userId, viewer.store_id)
     .first<{ content_type: string; data: ArrayBuffer | number[] }>()
   if (!row) return Response.json({ error: 'Not found' }, { status: 404 })
 

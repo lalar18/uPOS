@@ -71,7 +71,7 @@ export const menu: MenuSection[] = [
     title: 'Settings',
     items: [
       { label: 'Users', to: '/users', icon: 'users', adminOnly: true },
-      { label: 'Stores', to: '/stores', icon: 'building-store', adminOnly: true },
+      { label: 'Store Information', to: '/store', icon: 'building-store' },
       { label: 'General Settings', to: '/settings', icon: 'settings', adminOnly: true },
     ],
   },

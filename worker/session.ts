@@ -9,6 +9,8 @@ export interface SessionUser {
   email: string
   full_name: string
   role: 'admin' | 'cashier'
+  store_id: number
+  store_name: string
   avatar_updated_at: string | null
 }
 
@@ -52,11 +54,13 @@ export async function getSessionUser(db: D1Database, request: Request): Promise<
 
   return db
     .prepare(
-      `SELECT u.id, u.email, u.full_name, u.role, a.updated_at AS avatar_updated_at
+      `SELECT u.id, u.email, u.full_name, u.role, u.store_id, st.name AS store_name,
+              a.updated_at AS avatar_updated_at
        FROM sessions s
        JOIN users u ON u.id = s.user_id
+       JOIN stores st ON st.id = u.store_id
        LEFT JOIN user_avatars a ON a.user_id = u.id
-       WHERE s.id = ? AND s.expires_at > datetime('now') AND u.is_active = 1`,
+       WHERE s.id = ? AND s.expires_at > datetime('now') AND u.is_active = 1 AND st.is_active = 1`,
     )
     .bind(await sha256Hex(token))
     .first<SessionUser>()
