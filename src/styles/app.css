@@ -1,0 +1,10 @@
+/* App-wide tweaks on top of the template's style.css */
+
+/* Space between modal footer buttons (the template sets their margins to 0) */
+.modal-footer {
+  gap: 10px;
+}
+
+.modal-footer > * {
+  margin: 0;
+}

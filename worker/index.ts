@@ -1,4 +1,6 @@
+import { handleCategories } from './categories'
 import { verifyPassword } from './password'
+import { changePassword, deleteAvatar, serveAvatar, uploadAvatar } from './profile'
 import { createSession, destroySession, getSessionUser, type SessionUser } from './session'
 
 interface Env {
@@ -12,8 +14,19 @@ interface UserRow extends SessionUser {
 
 /** Shape of the user object sent to the browser (never includes password_hash). */
 function publicUser(user: SessionUser) {
-  return { id: user.id, email: user.email, fullName: user.full_name, role: user.role }
+  return {
+    id: user.id,
+    email: user.email,
+    fullName: user.full_name,
+    role: user.role,
+    // The version param changes on every upload, so browsers never show a stale picture
+    avatarUrl: user.avatar_updated_at
+      ? `/api/users/${user.id}/avatar?v=${encodeURIComponent(user.avatar_updated_at)}`
+      : null,
+  }
 }
+
+const notLoggedIn = () => Response.json({ error: 'Not logged in' }, { status: 401 })
 
 export default {
   async fetch(request, env) {
@@ -33,7 +46,11 @@ export default {
         return Response.json({ error: 'Email and password are required' }, { status: 400 })
       }
 
-      const user = await env.DB.prepare('SELECT * FROM users WHERE email = ? AND is_active = 1')
+      const user = await env.DB.prepare(
+        `SELECT u.*, a.updated_at AS avatar_updated_at
+         FROM users u LEFT JOIN user_avatars a ON a.user_id = u.id
+         WHERE u.email = ? AND u.is_active = 1`,
+      )
         .bind(body.email.trim())
         .first<UserRow>()
 
@@ -50,11 +67,40 @@ export default {
       return Response.json({ ok: true }, { headers: { 'Set-Cookie': cookie } })
     }
 
+    // Everything below requires a logged-in user
+    const user = await getSessionUser(env.DB, request)
+
     // Returns the currently logged-in user (used by the frontend to check the session)
     if (url.pathname === '/api/me') {
-      const user = await getSessionUser(env.DB, request)
-      if (!user) return Response.json({ error: 'Not logged in' }, { status: 401 })
+      if (!user) return notLoggedIn()
       return Response.json(publicUser(user))
+    }
+
+    // Upload (PUT, raw image body) or remove (DELETE) your own avatar; responds with the updated user
+    if (url.pathname === '/api/profile/avatar' && (request.method === 'PUT' || request.method === 'DELETE')) {
+      if (!user) return notLoggedIn()
+      const result =
+        request.method === 'PUT' ? await uploadAvatar(env.DB, request, user) : await deleteAvatar(env.DB, user)
+      if (!result.ok) return result
+      const updated = await getSessionUser(env.DB, request)
+      return updated ? Response.json(publicUser(updated)) : notLoggedIn()
+    }
+
+    if (url.pathname === '/api/profile/password' && request.method === 'POST') {
+      if (!user) return notLoggedIn()
+      return changePassword(env.DB, request, user)
+    }
+
+    if (url.pathname.startsWith('/api/categories')) {
+      if (!user) return notLoggedIn()
+      const response = await handleCategories(env.DB, request, url, user)
+      if (response) return response
+    }
+
+    const avatarMatch = url.pathname.match(/^\/api\/users\/(\d+)\/avatar$/)
+    if (avatarMatch && request.method === 'GET') {
+      if (!user) return notLoggedIn()
+      return serveAvatar(env.DB, Number(avatarMatch[1]))
     }
 
     return Response.json({ error: 'Not found' }, { status: 404 })

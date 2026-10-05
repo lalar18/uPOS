@@ -1,10 +1,12 @@
 import { ref } from 'vue'
+import { readJson } from './api/http'
 
 export interface User {
   id: number
   email: string
   fullName: string
   role: 'admin' | 'cashier'
+  avatarUrl: string | null
 }
 
 /** The logged-in user, or null when signed out. Shared across the app. */
@@ -38,4 +40,29 @@ export async function login(email: string, password: string, rememberMe: boolean
 export async function logout(): Promise<void> {
   await fetch('/api/logout', { method: 'POST' })
   currentUser.value = null
+}
+
+/** Uploads an already-cropped image as the current user's avatar. */
+export async function uploadAvatar(image: Blob): Promise<void> {
+  const res = await fetch('/api/profile/avatar', {
+    method: 'PUT',
+    headers: { 'Content-Type': image.type },
+    body: image,
+  })
+  currentUser.value = await readJson<User>(res)
+}
+
+export async function removeAvatar(): Promise<void> {
+  const res = await fetch('/api/profile/avatar', { method: 'DELETE' })
+  currentUser.value = await readJson<User>(res)
+}
+
+/** Changes the password; other devices signed in to this account are logged out. */
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const res = await fetch('/api/profile/password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  })
+  await readJson(res)
 }

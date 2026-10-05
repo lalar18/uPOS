@@ -9,6 +9,7 @@ export interface SessionUser {
   email: string
   full_name: string
   role: 'admin' | 'cashier'
+  avatar_updated_at: string | null
 }
 
 async function sha256Hex(value: string): Promise<string> {
@@ -51,12 +52,23 @@ export async function getSessionUser(db: D1Database, request: Request): Promise<
 
   return db
     .prepare(
-      `SELECT u.id, u.email, u.full_name, u.role
-       FROM sessions s JOIN users u ON u.id = s.user_id
+      `SELECT u.id, u.email, u.full_name, u.role, a.updated_at AS avatar_updated_at
+       FROM sessions s
+       JOIN users u ON u.id = s.user_id
+       LEFT JOIN user_avatars a ON a.user_id = u.id
        WHERE s.id = ? AND s.expires_at > datetime('now') AND u.is_active = 1`,
     )
     .bind(await sha256Hex(token))
     .first<SessionUser>()
+}
+
+/** Signs the user out everywhere except this request's session (e.g. after a password change). */
+export async function destroyOtherSessions(db: D1Database, request: Request, userId: number): Promise<void> {
+  const token = readSessionToken(request)
+  await db
+    .prepare('DELETE FROM sessions WHERE user_id = ? AND id != ?')
+    .bind(userId, token ? await sha256Hex(token) : '')
+    .run()
 }
 
 /** Deletes this request's session and returns a Set-Cookie header that clears the cookie. */
