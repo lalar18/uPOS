@@ -1,7 +1,33 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { login } from '@/auth'
 
+const router = useRouter()
+const route = useRoute()
+
+const email = ref('')
+const password = ref('')
+const rememberMe = ref(false)
 const showPassword = ref(false)
+const error = ref('')
+const submitting = ref(false)
+
+async function handleSubmit() {
+  error.value = ''
+  submitting.value = true
+  try {
+    await login(email.value, password.value, rememberMe.value)
+    const redirect = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/')
+      ? route.query.redirect
+      : '/'
+    router.replace(redirect)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Login failed'
+  } finally {
+    submitting.value = false
+  }
+}
 </script>
 
 <template>
@@ -9,7 +35,7 @@ const showPassword = ref(false)
     <div class="account-content">
       <div class="login-wrapper login-centered">
         <div class="login-content login-card">
-          <form @submit.prevent>
+          <form @submit.prevent="handleSubmit">
             <div class="login-userset">
               <div class="login-logo logo-normal">
                 <img src="/assets/img/logo.svg" alt="uPOS" />
@@ -23,10 +49,12 @@ const showPassword = ref(false)
                 <h4 class="fs-16">Access the uPOS panel using your email and password.</h4>
               </div>
 
+              <div v-if="error" class="alert alert-danger py-2" role="alert">{{ error }}</div>
+
               <div class="mb-3">
                 <label class="form-label">Email <span class="text-danger">*</span></label>
                 <div class="input-group">
-                  <input type="email" class="form-control border-end-0" autocomplete="email" />
+                  <input v-model="email" type="email" class="form-control border-end-0" autocomplete="email" required />
                   <span class="input-group-text border-start-0">
                     <i class="ti ti-mail"></i>
                   </span>
@@ -37,9 +65,11 @@ const showPassword = ref(false)
                 <label class="form-label">Password <span class="text-danger">*</span></label>
                 <div class="pass-group">
                   <input
+                    v-model="password"
                     :type="showPassword ? 'text' : 'password'"
                     class="pass-input form-control"
                     autocomplete="current-password"
+                    required
                   />
                   <span
                     class="ti toggle-password text-gray-9"
@@ -54,7 +84,7 @@ const showPassword = ref(false)
                   <div class="col-12 d-flex align-items-center justify-content-between">
                     <div class="custom-control custom-checkbox">
                       <label class="checkboxs ps-4 mb-0 pb-0 line-height-1 fs-16 text-gray-6">
-                        <input type="checkbox" class="form-control" />
+                        <input v-model="rememberMe" type="checkbox" class="form-control" />
                         <span class="checkmarks"></span>Remember me
                       </label>
                     </div>
@@ -66,7 +96,9 @@ const showPassword = ref(false)
               </div>
 
               <div class="form-login">
-                <button type="submit" class="btn btn-primary w-100">Sign In</button>
+                <button type="submit" class="btn btn-primary w-100" :disabled="submitting">
+                  {{ submitting ? 'Signing in…' : 'Sign In' }}
+                </button>
               </div>
 
               <div class="my-4 d-flex justify-content-center align-items-center copyright-text">

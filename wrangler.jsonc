@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tindaph",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      // Replace with values from `npx wrangler d1 list` or the Cloudflare dashboard
+      "database_name": "usystems_pos_db",
+      "database_id": "96978b79-41df-473d-a591-44dea0f036a4",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
