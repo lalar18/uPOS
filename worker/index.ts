@@ -1,3 +1,4 @@
+import { handleBrands } from './brands'
 import { handleCategories } from './categories'
 import { verifyPassword } from './password'
 import { handleStore } from './store'
@@ -98,6 +99,12 @@ export default {
     if (url.pathname.startsWith('/api/categories')) {
       if (!user) return notLoggedIn()
       const response = await handleCategories(env.DB, request, url, user)
+      if (response) return response
+    }
+
+    if (url.pathname.startsWith('/api/brands')) {
+      if (!user) return notLoggedIn()
+      const response = await handleBrands(env.DB, request, url, user)
       if (response) return response
     }
 

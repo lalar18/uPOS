@@ -8,3 +8,13 @@
 .modal-footer > * {
   margin: 0;
 }
+
+/*
+ * Scrollbar thumb colour for the sidebar menu. Registering it as a <color> lets it be
+ * transitioned, which is how the scrollbar fades in and out (see AppLayout.vue).
+ */
+@property --sidebar-thumb {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}

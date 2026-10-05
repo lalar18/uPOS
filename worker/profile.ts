@@ -9,10 +9,10 @@ const MAX_AVATAR_BYTES = 1_000_000
 const MIN_PASSWORD_LENGTH = 8
 const MAX_PASSWORD_LENGTH = 128
 
-type AvatarType = 'image/jpeg' | 'image/png' | 'image/webp'
+export type ImageType = 'image/jpeg' | 'image/png' | 'image/webp'
 
 /** Detects the image type from its first bytes, so we never trust the Content-Type header alone. */
-function sniffImageType(bytes: Uint8Array): AvatarType | null {
+export function sniffImageType(bytes: Uint8Array): ImageType | null {
   const startsWith = (sig: number[], offset = 0) => sig.every((b, i) => bytes[offset + i] === b)
   if (startsWith([0xff, 0xd8, 0xff])) return 'image/jpeg'
   if (startsWith([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return 'image/png'

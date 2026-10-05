@@ -38,15 +38,15 @@ async function handleSubmit() {
           <form @submit.prevent="handleSubmit">
             <div class="login-userset">
               <div class="login-logo logo-normal">
-                <img src="/assets/img/logo.svg" alt="uPOS" />
+                <img src="/assets/img/logo.svg" alt="USystems POS" />
               </div>
               <a href="#" class="login-logo logo-white">
-                <img src="/assets/img/logo-white.svg" alt="uPOS" />
+                <img src="/assets/img/logo-white.svg" alt="USystems POS" />
               </a>
 
               <div class="login-userheading">
                 <h3>Sign In</h3>
-                <h4 class="fs-16">Access the uPOS panel using your email and password.</h4>
+                <h4 class="fs-16">Access the USystems POS panel using your email and password.</h4>
               </div>
 
               <div v-if="error" class="alert alert-danger py-2" role="alert">{{ error }}</div>
@@ -102,7 +102,7 @@ async function handleSubmit() {
               </div>
 
               <div class="my-4 d-flex justify-content-center align-items-center copyright-text">
-                <p>Copyright &copy; {{ new Date().getFullYear() }} uPOS</p>
+                <p>Copyright &copy; {{ new Date().getFullYear() }} USystems POS</p>
               </div>
             </div>
           </form>

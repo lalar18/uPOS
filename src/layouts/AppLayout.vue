@@ -49,6 +49,16 @@ watchEffect(() => {
   document.documentElement.classList.toggle('menu-opened', sidebarOpen.value)
 })
 
+// Shows the menu's scrollbar while it scrolls (touch screens have no hover)
+const menuScrolling = ref(false)
+let menuScrollTimer: ReturnType<typeof setTimeout> | undefined
+
+function onMenuScroll() {
+  menuScrolling.value = true
+  clearTimeout(menuScrollTimer)
+  menuScrollTimer = setTimeout(() => (menuScrolling.value = false), 800)
+}
+
 // --- Header dropdowns ---
 
 type DropdownName = 'add' | 'profile' | 'mobile'
@@ -120,6 +130,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  clearTimeout(menuScrollTimer)
   document.removeEventListener('click', closeDropdownOnOutsideClick)
   document.removeEventListener('keydown', focusSearchOnShortcut)
   document.removeEventListener('fullscreenchange', syncFullscreen)
@@ -141,10 +152,10 @@ async function handleLogout() {
         <!-- Logo (mobile only; on desktop the logo sits in the sidebar) -->
         <div class="header-left active">
           <RouterLink to="/" class="logo logo-normal">
-            <img src="/assets/img/logo.svg" alt="uPOS" />
+            <img src="/assets/img/logo.svg" alt="USystems POS" />
           </RouterLink>
           <RouterLink to="/" class="logo-small">
-            <img src="/assets/img/logo-small.png" alt="uPOS" />
+            <img src="/assets/img/logo-small.png" alt="USystems POS" />
           </RouterLink>
         </div>
 
@@ -296,10 +307,10 @@ async function handleLogout() {
     <div id="sidebar" class="sidebar" @mouseenter="hovering = true" @mouseleave="hovering = false">
       <div class="sidebar-logo">
         <RouterLink to="/" class="logo logo-normal">
-          <img src="/assets/img/logo.svg" alt="uPOS" />
+          <img src="/assets/img/logo.svg" alt="USystems POS" />
         </RouterLink>
         <RouterLink to="/" class="logo-small">
-          <img src="/assets/img/logo-small.png" alt="uPOS" />
+          <img src="/assets/img/logo-small.png" alt="USystems POS" />
         </RouterLink>
         <a
           id="toggle_btn"
@@ -311,7 +322,7 @@ async function handleLogout() {
         </a>
       </div>
 
-      <div class="sidebar-inner">
+      <div class="sidebar-inner" :class="{ 'is-scrolling': menuScrolling }" @scroll.passive="onMenuScroll">
         <div id="sidebar-menu" class="sidebar-menu">
           <ul>
             <li v-for="section in visibleMenu" :key="section.title" class="submenu-open">
@@ -340,11 +351,32 @@ async function handleLogout() {
 </template>
 
 <style scoped>
-/* The template scrolls the menu with a jQuery plugin; plain overflow does the same job */
+/*
+ * The template scrolls the menu with a jQuery plugin; plain overflow does the same job.
+ * The scrollbar stays hidden until the menu is hovered or scrolled, then fades in.
+ */
 .sidebar-inner {
   height: 100%;
   overflow-y: auto;
   scrollbar-width: thin;
+  scrollbar-color: var(--sidebar-thumb) transparent;
+  transition: --sidebar-thumb 0.4s ease;
+}
+
+.sidebar-inner:hover,
+.sidebar-inner.is-scrolling {
+  --sidebar-thumb: rgba(166, 170, 175, 0.7);
+  transition-duration: 0.15s;
+}
+
+/* Browsers without scrollbar-color (older Safari) use the template's ::-webkit-scrollbar styles */
+.sidebar-inner::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-inner::-webkit-scrollbar-thumb {
+  background: var(--sidebar-thumb);
+  border-radius: 50px;
 }
 
 @media (min-width: 992px) {

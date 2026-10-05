@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { loadSession } from './auth'
 import AppLayout from './layouts/AppLayout.vue'
+import BrandView from './views/brand/BrandView.vue'
 import CategoryView from './views/category/CategoryView.vue'
 import ComingSoonView from './views/common/ComingSoonView.vue'
 import DashboardView from './views/dashboard/DashboardView.vue'
@@ -21,6 +22,7 @@ const router = createRouter({
         { path: '', name: 'dashboard', component: DashboardView },
         { path: 'profile', name: 'profile', component: ProfileView },
         { path: 'categories', name: 'categories', component: CategoryView },
+        { path: 'brands', name: 'brands', component: BrandView },
         { path: 'store', name: 'store', component: StoreView },
         // Sidebar links without a page yet (and unknown URLs) land here
         { path: ':pathMatch(.*)*', name: 'coming-soon', component: ComingSoonView },
