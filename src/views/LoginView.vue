@@ -12,15 +12,15 @@ const showPassword = ref(false)
           <form @submit.prevent>
             <div class="login-userset">
               <div class="login-logo logo-normal">
-                <img src="/assets/img/logo.svg" alt="TindaPH" />
+                <img src="/assets/img/logo.svg" alt="uPOS" />
               </div>
               <a href="#" class="login-logo logo-white">
-                <img src="/assets/img/logo-white.svg" alt="TindaPH" />
+                <img src="/assets/img/logo-white.svg" alt="uPOS" />
               </a>
 
               <div class="login-userheading">
                 <h3>Sign In</h3>
-                <h4 class="fs-16">Access the TindaPH panel using your email and password.</h4>
+                <h4 class="fs-16">Access the uPOS panel using your email and password.</h4>
               </div>
 
               <div class="mb-3">
@@ -70,7 +70,7 @@ const showPassword = ref(false)
               </div>
 
               <div class="my-4 d-flex justify-content-center align-items-center copyright-text">
-                <p>Copyright &copy; {{ new Date().getFullYear() }} TindaPH</p>
+                <p>Copyright &copy; {{ new Date().getFullYear() }} uPOS</p>
               </div>
             </div>
           </form>
