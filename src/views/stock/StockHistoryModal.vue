@@ -107,6 +107,9 @@ load()
       :total="total"
       label="Stock history pages"
     />
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" @click="emit('close')">Close</button>
+    </div>
   </AppModal>
 </template>
 

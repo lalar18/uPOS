@@ -278,7 +278,6 @@ async function handleChangePassword() {
         <div class="modal-content">
           <div class="modal-header">
             <h4 class="modal-title">Crop Photo</h4>
-            <button type="button" class="btn-close" aria-label="Close" @click="closeCrop"></button>
           </div>
           <div class="modal-body">
             <div class="crop-area">

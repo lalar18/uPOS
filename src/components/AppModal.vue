@@ -1,5 +1,7 @@
 <script setup lang="ts">
 // Bootstrap-styled modal driven by Vue (no Bootstrap JS). Render it with v-if.
+// There's no X in the header: every modal needs its own Cancel / Close button in the footer.
+// Escape and clicking the backdrop also close it.
 import { onBeforeUnmount, onMounted } from 'vue'
 
 withDefaults(defineProps<{ title: string; size?: 'sm' | 'md' | 'lg' }>(), { size: 'md' })
@@ -27,7 +29,6 @@ onBeforeUnmount(() => {
         <div class="modal-content">
           <div class="modal-header">
             <h4 class="modal-title">{{ title }}</h4>
-            <button type="button" class="btn-close" aria-label="Close" @click="emit('close')"></button>
           </div>
           <slot />
         </div>
