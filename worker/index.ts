@@ -1,9 +1,11 @@
 import { handleBrands } from './brands'
 import { handleCategories } from './categories'
 import { verifyPassword } from './password'
+import { handleProducts } from './products'
 import { handleStore } from './store'
 import { changePassword, deleteAvatar, serveAvatar, uploadAvatar } from './profile'
 import { createSession, destroySession, getSessionUser, type SessionUser } from './session'
+import { handleUnits } from './units'
 
 interface Env {
   DB: D1Database
@@ -105,6 +107,18 @@ export default {
     if (url.pathname.startsWith('/api/brands')) {
       if (!user) return notLoggedIn()
       const response = await handleBrands(env.DB, request, url, user)
+      if (response) return response
+    }
+
+    if (url.pathname.startsWith('/api/units')) {
+      if (!user) return notLoggedIn()
+      const response = await handleUnits(env.DB, request, url, user)
+      if (response) return response
+    }
+
+    if (url.pathname.startsWith('/api/products')) {
+      if (!user) return notLoggedIn()
+      const response = await handleProducts(env.DB, request, url, user)
       if (response) return response
     }
 

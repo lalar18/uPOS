@@ -6,8 +6,11 @@ import CategoryView from './views/category/CategoryView.vue'
 import ComingSoonView from './views/common/ComingSoonView.vue'
 import DashboardView from './views/dashboard/DashboardView.vue'
 import LoginView from './views/auth/LoginView.vue'
+import ProductFormView from './views/product/ProductFormView.vue'
+import ProductView from './views/product/ProductView.vue'
 import ProfileView from './views/profile/ProfileView.vue'
 import StoreView from './views/store/StoreView.vue'
+import UnitView from './views/unit/UnitView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -23,6 +26,16 @@ const router = createRouter({
         { path: 'profile', name: 'profile', component: ProfileView },
         { path: 'categories', name: 'categories', component: CategoryView },
         { path: 'brands', name: 'brands', component: BrandView },
+        { path: 'units', name: 'units', component: UnitView },
+        { path: 'products', name: 'products', component: ProductView },
+        { path: 'products/create', name: 'product-create', component: ProductFormView },
+        {
+          path: 'products/:id(\\d+)/edit',
+          name: 'product-edit',
+          component: ProductFormView,
+          props: true,
+          meta: { menu: '/products' }, // highlights "Products" in the sidebar
+        },
         { path: 'store', name: 'store', component: StoreView },
         // Sidebar links without a page yet (and unknown URLs) land here
         { path: ':pathMatch(.*)*', name: 'coming-soon', component: ComingSoonView },

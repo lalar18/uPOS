@@ -1,23 +1,23 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { deleteBrand, listBrands, type Brand, type BrandStatus } from '@/api/brands'
 import { parseDbDate } from '@/api/http'
+import { deleteUnit, listUnits, type Unit, type UnitStatus } from '@/api/units'
 import { currentUser } from '@/auth'
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal.vue'
 import ListPager from '@/components/ListPager.vue'
-import BrandFormModal from './BrandFormModal.vue'
+import UnitFormModal from './UnitFormModal.vue'
 
 const isAdmin = computed(() => currentUser.value?.role === 'admin')
 
 // --- List, filters and paging ---
 
-const items = ref<Brand[]>([])
+const items = ref<Unit[]>([])
 const total = ref(0)
 const loading = ref(false)
 const loadError = ref('')
 
 const search = ref('')
-const statusFilter = ref<BrandStatus | ''>('')
+const statusFilter = ref<UnitStatus | ''>('')
 const page = ref(1)
 const pageSize = ref(10)
 
@@ -28,7 +28,7 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const result = await listBrands({
+    const result = await listUnits({
       search: search.value.trim(),
       status: statusFilter.value,
       page: page.value,
@@ -44,7 +44,7 @@ async function load() {
     items.value = result.items
     total.value = result.total
   } catch (e) {
-    if (requestId === latestRequest) loadError.value = e instanceof Error ? e.message : 'Could not load brands'
+    if (requestId === latestRequest) loadError.value = e instanceof Error ? e.message : 'Could not load units'
   } finally {
     if (requestId === latestRequest) loading.value = false
   }
@@ -70,15 +70,15 @@ const formatDate = (value: string) => dateFormat.format(parseDbDate(value))
 // --- Dialogs ---
 
 const formOpen = ref(false)
-const editing = ref<Brand | null>(null) // null while adding
-const deleting = ref<Brand | null>(null)
+const editing = ref<Unit | null>(null) // null while adding
+const deleting = ref<Unit | null>(null)
 
-function openForm(brand: Brand | null) {
-  editing.value = brand
+function openForm(unit: Unit | null) {
+  editing.value = unit
   formOpen.value = true
 }
 
-function onSaved(_brand: Brand, isNew: boolean) {
+function onSaved(_unit: Unit, isNew: boolean) {
   formOpen.value = false
   if (isNew) resetToFirstPage() // new rows appear at the top of page 1
   else load()
@@ -93,15 +93,15 @@ function onDeleted() {
 <template>
   <div class="page-header flex-wrap gap-2">
     <div class="page-title">
-      <h4>Brands</h4>
-      <h6>Manage your brands</h6>
+      <h4>Units</h4>
+      <h6>Manage your units of measure</h6>
     </div>
     <div class="page-actions d-flex align-items-center gap-2">
       <button type="button" class="btn btn-white border" title="Refresh" :disabled="loading" @click="load">
         <i class="ti ti-refresh"></i>
       </button>
       <button v-if="isAdmin" type="button" class="btn btn-primary" @click="openForm(null)">
-        <i class="ti ti-circle-plus me-1"></i>Add Brand
+        <i class="ti ti-circle-plus me-1"></i>Add Unit
       </button>
     </div>
   </div>
@@ -112,7 +112,7 @@ function onDeleted() {
       <div class="search-set">
         <div class="search-input">
           <span class="search-icon"><i class="ti ti-search"></i></span>
-          <input v-model="search" type="search" class="form-control" placeholder="Search" aria-label="Search brands" />
+          <input v-model="search" type="search" class="form-control" placeholder="Search" aria-label="Search units" />
         </div>
       </div>
       <select v-model="statusFilter" class="form-select status-filter" aria-label="Filter by status">
@@ -130,33 +130,31 @@ function onDeleted() {
         <table class="table mb-0" :class="{ 'is-loading': loading }">
           <thead class="thead-light">
             <tr>
-              <th>Brand</th>
+              <th>Unit</th>
+              <th>Short Name</th>
+              <th>Decimals</th>
+              <th>Products</th>
               <th>Created On</th>
               <th>Status</th>
               <th v-if="isAdmin" class="text-end">Actions</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="brand in items" :key="brand.id">
+            <tr v-for="unit in items" :key="unit.id">
+              <td class="fw-medium text-gray-9">{{ unit.name }}</td>
+              <td>{{ unit.shortName }}</td>
+              <td>{{ unit.allowDecimal ? 'Allowed' : 'Whole numbers' }}</td>
+              <td>{{ unit.productCount }}</td>
+              <td>{{ formatDate(unit.createdAt) }}</td>
               <td>
-                <div class="d-flex align-items-center gap-2">
-                  <span class="brand-logo">
-                    <img v-if="brand.logoUrl" :src="brand.logoUrl" :alt="brand.name" loading="lazy" />
-                    <i v-else class="ti ti-triangles"></i>
-                  </span>
-                  <span class="fw-medium text-gray-9">{{ brand.name }}</span>
-                </div>
-              </td>
-              <td>{{ formatDate(brand.createdAt) }}</td>
-              <td>
-                <span class="badge" :class="brand.status === 'active' ? 'bg-success' : 'bg-danger'">
-                  <i class="ti ti-point-filled me-1"></i>{{ brand.status === 'active' ? 'Active' : 'Inactive' }}
+                <span class="badge" :class="unit.status === 'active' ? 'bg-success' : 'bg-danger'">
+                  <i class="ti ti-point-filled me-1"></i>{{ unit.status === 'active' ? 'Active' : 'Inactive' }}
                 </span>
               </td>
               <td v-if="isAdmin" class="text-end">
                 <div class="row-actions">
-                  <button type="button" title="Edit" @click="openForm(brand)"><i class="ti ti-edit"></i></button>
-                  <button type="button" title="Delete" @click="deleting = brand"><i class="ti ti-trash"></i></button>
+                  <button type="button" title="Edit" @click="openForm(unit)"><i class="ti ti-edit"></i></button>
+                  <button type="button" title="Delete" @click="deleting = unit"><i class="ti ti-trash"></i></button>
                 </div>
               </td>
             </tr>
@@ -166,24 +164,26 @@ function onDeleted() {
 
       <!-- Cards (phones) -->
       <div class="d-md-none" :class="{ 'is-loading': loading }">
-        <div v-for="brand in items" :key="brand.id" class="brand-card">
-          <div class="d-flex justify-content-between align-items-center gap-2">
-            <div class="d-flex align-items-center gap-2 min-w-0">
-              <span class="brand-logo">
-                <img v-if="brand.logoUrl" :src="brand.logoUrl" :alt="brand.name" loading="lazy" />
-                <i v-else class="ti ti-triangles"></i>
-              </span>
-              <div class="fw-medium text-gray-9 text-break min-w-0">{{ brand.name }}</div>
+        <div v-for="unit in items" :key="unit.id" class="unit-card">
+          <div class="d-flex justify-content-between align-items-start gap-2">
+            <div class="min-w-0">
+              <div class="fw-medium text-gray-9 text-break">
+                {{ unit.name }} <span class="text-gray-5 fw-normal">({{ unit.shortName }})</span>
+              </div>
+              <div class="fs-12 text-gray-5">
+                {{ unit.productCount }} {{ unit.productCount === 1 ? 'product' : 'products' }}
+                · {{ unit.allowDecimal ? 'Decimals allowed' : 'Whole numbers' }}
+              </div>
             </div>
-            <span class="badge flex-shrink-0" :class="brand.status === 'active' ? 'bg-success' : 'bg-danger'">
-              <i class="ti ti-point-filled me-1"></i>{{ brand.status === 'active' ? 'Active' : 'Inactive' }}
+            <span class="badge flex-shrink-0" :class="unit.status === 'active' ? 'bg-success' : 'bg-danger'">
+              <i class="ti ti-point-filled me-1"></i>{{ unit.status === 'active' ? 'Active' : 'Inactive' }}
             </span>
           </div>
           <div class="d-flex justify-content-between align-items-center mt-2">
-            <span class="fs-12 text-gray-5">Created {{ formatDate(brand.createdAt) }}</span>
+            <span class="fs-12 text-gray-5">Created {{ formatDate(unit.createdAt) }}</span>
             <div v-if="isAdmin" class="row-actions">
-              <button type="button" title="Edit" @click="openForm(brand)"><i class="ti ti-edit"></i></button>
-              <button type="button" title="Delete" @click="deleting = brand"><i class="ti ti-trash"></i></button>
+              <button type="button" title="Edit" @click="openForm(unit)"><i class="ti ti-edit"></i></button>
+              <button type="button" title="Delete" @click="deleting = unit"><i class="ti ti-trash"></i></button>
             </div>
           </div>
         </div>
@@ -191,21 +191,21 @@ function onDeleted() {
 
       <!-- Empty state -->
       <div v-if="!loading && !loadError && items.length === 0" class="text-center text-gray-5 py-5">
-        <i class="ti ti-triangles fs-24 d-block mb-2"></i>
-        <template v-if="search || statusFilter">No brands match your filters.</template>
-        <template v-else>No brands yet.</template>
+        <i class="ti ti-brand-unity fs-24 d-block mb-2"></i>
+        <template v-if="search || statusFilter">No units match your filters.</template>
+        <template v-else>No units yet.</template>
       </div>
     </div>
 
-    <ListPager v-model:page="page" v-model:page-size="pageSize" :total="total" label="Brand pages" />
+    <ListPager v-model:page="page" v-model:page-size="pageSize" :total="total" label="Unit pages" />
   </div>
 
-  <BrandFormModal v-if="formOpen" :brand="editing" @close="formOpen = false" @saved="onSaved" />
+  <UnitFormModal v-if="formOpen" :unit="editing" @close="formOpen = false" @saved="onSaved" />
   <ConfirmDeleteModal
     v-if="deleting"
-    title="Delete Brand"
+    title="Delete Unit"
     :item-name="deleting.name"
-    :action="() => deleteBrand(deleting!.id)"
+    :action="() => deleteUnit(deleting!.id)"
     @close="deleting = null"
     @deleted="onDeleted"
   />
@@ -265,33 +265,12 @@ function onDeleted() {
   background: #e6eaed;
 }
 
-.brand-logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  border: 1px solid #e6eaed;
-  border-radius: 8px;
-  background: #f9fafb;
-  color: #a6aaaf;
-  font-size: 18px;
-  overflow: hidden;
-}
-
-.brand-logo img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-}
-
-.brand-card {
+.unit-card {
   padding: 14px 16px;
   border-bottom: 1px solid #e6eaed;
 }
 
-.brand-card:last-child {
+.unit-card:last-child {
   border-bottom: 0;
 }
 

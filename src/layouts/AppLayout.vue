@@ -16,7 +16,7 @@ const visibleMenu = computed(() =>
 )
 
 function isActive(item: MenuItem) {
-  return route.path === item.to
+  return route.path === item.to || route.meta.menu === item.to
 }
 
 // --- Sidebar state (the template's CSS keys off these classes) ---
@@ -344,7 +344,8 @@ async function handleLogout() {
     <!-- Page content -->
     <div class="page-wrapper">
       <div class="content">
-        <RouterView />
+        <!-- Keyed by path so e.g. /products/create and /products/1/edit never share a component instance -->
+        <RouterView :key="route.path" />
       </div>
     </div>
   </div>

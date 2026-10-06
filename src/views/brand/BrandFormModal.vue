@@ -3,6 +3,7 @@
 import { onBeforeUnmount, ref } from 'vue'
 import { createBrand, removeBrandLogo, updateBrand, uploadBrandLogo, type Brand } from '@/api/brands'
 import AppModal from '@/components/AppModal.vue'
+import { resizeImage } from '@/utils/image'
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024 // 2 MB, checked on the original file
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
@@ -59,20 +60,6 @@ function removeLogo() {
   logoRemoved.value = props.brand?.logoUrl != null
 }
 
-/** Scales the image down to fit LOGO_SIZE, keeping transparency (WebP, or PNG where WebP isn't supported). */
-async function resizeLogo(file: File): Promise<Blob> {
-  const bitmap = await createImageBitmap(file)
-  const scale = Math.min(LOGO_SIZE / bitmap.width, LOGO_SIZE / bitmap.height, 1)
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.max(Math.round(bitmap.width * scale), 1)
-  canvas.height = Math.max(Math.round(bitmap.height * scale), 1)
-  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-  bitmap.close()
-  return new Promise((resolve, reject) =>
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Could not read the image'))), 'image/webp', 0.9),
-  )
-}
-
 async function save() {
   error.value = ''
   const input = { name: name.value.trim(), status: active.value ? ('active' as const) : ('inactive' as const) }
@@ -85,7 +72,7 @@ async function save() {
   try {
     let saved = target ? await updateBrand(target.id, input) : await createBrand(input)
     target = saved
-    if (logoFile.value) saved = await uploadBrandLogo(saved.id, await resizeLogo(logoFile.value))
+    if (logoFile.value) saved = await uploadBrandLogo(saved.id, await resizeImage(logoFile.value, LOGO_SIZE))
     else if (logoRemoved.value) saved = await removeBrandLogo(saved.id)
     emit('saved', saved, props.brand === null)
   } catch (e) {
