@@ -12,7 +12,15 @@ import LowStocksView from './views/product/LowStocksView.vue'
 import ManageStockView from './views/stock/ManageStockView.vue'
 import ProductFormView from './views/product/ProductFormView.vue'
 import ProductView from './views/product/ProductView.vue'
+import PosView from './views/pos/PosView.vue'
 import ProfileView from './views/profile/ProfileView.vue'
+import QuotationDetailView from './views/quotation/QuotationDetailView.vue'
+import QuotationFormView from './views/quotation/QuotationFormView.vue'
+import QuotationsView from './views/quotation/QuotationsView.vue'
+import SaleDetailView from './views/sales/SaleDetailView.vue'
+import SaleFormView from './views/sales/SaleFormView.vue'
+import SaleListView from './views/sales/SaleListView.vue'
+import SalesReturnsView from './views/salesReturn/SalesReturnsView.vue'
 import StockAdjustmentView from './views/stock/StockAdjustmentView.vue'
 import StoreView from './views/store/StoreView.vue'
 import SubCategoryView from './views/subcategory/SubCategoryView.vue'
@@ -53,6 +61,41 @@ const router = createRouter({
         { path: 'print-qrcode', name: 'print-qrcode', component: LabelPrintView, props: { kind: 'qrcode' } },
         { path: 'stock', name: 'stock', component: ManageStockView },
         { path: 'stock/adjustments', name: 'stock-adjustments', component: StockAdjustmentView },
+        { path: 'sales', name: 'sales', component: SaleListView, props: { mode: 'sales' } },
+        { path: 'sales/create', name: 'sale-create', component: SaleFormView, meta: { menu: '/sales' } },
+        {
+          path: 'sales/:id(\\d+)',
+          name: 'sale-detail',
+          component: SaleDetailView,
+          props: true,
+          meta: { menu: '/sales' },
+        },
+        { path: 'sales/returns', name: 'sales-returns', component: SalesReturnsView },
+        { path: 'invoices', name: 'invoices', component: SaleListView, props: { mode: 'invoices' } },
+        {
+          path: 'invoices/:id(\\d+)',
+          name: 'invoice-detail',
+          component: SaleDetailView,
+          props: true,
+          meta: { menu: '/invoices' },
+        },
+        { path: 'quotations', name: 'quotations', component: QuotationsView },
+        { path: 'quotations/create', name: 'quotation-create', component: QuotationFormView, meta: { menu: '/quotations' } },
+        {
+          path: 'quotations/:id(\\d+)',
+          name: 'quotation-detail',
+          component: QuotationDetailView,
+          props: true,
+          meta: { menu: '/quotations' },
+        },
+        {
+          path: 'quotations/:id(\\d+)/edit',
+          name: 'quotation-edit',
+          component: QuotationFormView,
+          props: true,
+          meta: { menu: '/quotations' },
+        },
+        { path: 'pos', name: 'pos', component: PosView },
         { path: 'store', name: 'store', component: StoreView },
         // Sidebar links without a page yet (and unknown URLs) land here
         { path: ':pathMatch(.*)*', name: 'coming-soon', component: ComingSoonView },

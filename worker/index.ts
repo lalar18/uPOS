@@ -1,7 +1,11 @@
 import { handleBrands } from './brands'
 import { handleCategories } from './categories'
+import { handleCustomers } from './customers'
 import { verifyPassword } from './password'
 import { handleProducts } from './products'
+import { handleQuotations } from './quotations'
+import { handleSales } from './sales'
+import { handleSalesReturns } from './salesReturns'
 import { handleStock } from './stock'
 import { handleStore } from './store'
 import { changePassword, deleteAvatar, serveAvatar, uploadAvatar } from './profile'
@@ -147,6 +151,31 @@ export default {
     if (url.pathname.startsWith('/api/stock/')) {
       if (!user) return notLoggedIn()
       const response = await handleStock(env.DB, request, url, user)
+      if (response) return response
+    }
+
+    if (url.pathname.startsWith('/api/customers')) {
+      if (!user) return notLoggedIn()
+      const response = await handleCustomers(env.DB, request, url, user)
+      if (response) return response
+    }
+
+    // Checked before /api/sales, which it also starts with
+    if (url.pathname.startsWith('/api/sales-returns')) {
+      if (!user) return notLoggedIn()
+      const response = await handleSalesReturns(env.DB, request, url, user)
+      if (response) return response
+    }
+
+    if (url.pathname.startsWith('/api/sales')) {
+      if (!user) return notLoggedIn()
+      const response = await handleSales(env.DB, request, url, user)
+      if (response) return response
+    }
+
+    if (url.pathname.startsWith('/api/quotations')) {
+      if (!user) return notLoggedIn()
+      const response = await handleQuotations(env.DB, request, url, user)
       if (response) return response
     }
 

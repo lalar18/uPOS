@@ -18,3 +18,22 @@
   inherits: true;
   initial-value: transparent;
 }
+
+/* Printed documents (see utils/print.ts): only the teleported .print-root prints */
+.print-root {
+  display: none;
+}
+
+@media print {
+  body.has-print-root > *:not(.print-root) {
+    display: none !important;
+  }
+
+  body.has-print-root {
+    background: #ffffff !important;
+  }
+
+  body.has-print-root .print-root {
+    display: block;
+  }
+}

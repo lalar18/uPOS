@@ -10,7 +10,10 @@
 
 import type { SessionUser } from './session'
 
-/** Reasons an admin can pick. "opening" is recorded by the system when a product is created. */
+/**
+ * Reasons an admin can pick. The system records the others: "opening" when a product is
+ * created, "sale" when it's sold and "sale_return" when a sales return puts it back in stock.
+ */
 export const ADJUSTMENT_REASONS = [
   'received',
   'count',
@@ -23,7 +26,7 @@ export const ADJUSTMENT_REASONS = [
   'other',
 ] as const
 type AdjustmentReason = (typeof ADJUSTMENT_REASONS)[number]
-const ALL_REASONS: readonly string[] = ['opening', ...ADJUSTMENT_REASONS]
+const ALL_REASONS: readonly string[] = ['opening', 'sale', 'sale_return', ...ADJUSTMENT_REASONS]
 
 type AdjustmentMode = 'add' | 'remove' | 'set'
 
