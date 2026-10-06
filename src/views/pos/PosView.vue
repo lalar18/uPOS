@@ -13,6 +13,7 @@ import {
   type ProductOption,
 } from '@/api/products'
 import { computeTotals, createSale, lineTotal, type PaymentInput, type Sale } from '@/api/sales'
+import { getSettingsOrDefaults, taxRateText } from '@/api/settings'
 import { getStore, type Store } from '@/api/store'
 import AppModal from '@/components/AppModal.vue'
 import CustomerPicker from '@/components/CustomerPicker.vue'
@@ -178,11 +179,18 @@ function refreshCart(fresh: Product[]) {
   }
 }
 
+// The store's default tax rate (General Settings); every new sale starts with it
+let defaultTaxText = ''
+getSettingsOrDefaults().then((settings) => {
+  defaultTaxText = taxRateText(settings.defaultTaxRateBp)
+  if (taxText.value === '' && cart.value.length === 0) taxText.value = defaultTaxText
+})
+
 function clearCart() {
   cart.value = []
   customer.value = null
   discountText.value = ''
-  taxText.value = ''
+  taxText.value = defaultTaxText
 }
 
 const itemCount = computed(() => cart.value.reduce((sum, line) => sum + (quantityOf(line) ?? 0), 0))

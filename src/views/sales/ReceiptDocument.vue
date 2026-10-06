@@ -6,6 +6,7 @@ import { formatPeso, formatQuantity } from '@/api/products'
 import { paymentMethodLabel, type Sale } from '@/api/sales'
 import { formatDateTime } from '@/api/stock'
 import type { Store } from '@/api/store'
+import { DEFAULT_SETTINGS } from '@/api/settings'
 import { formatPercentBp } from '@/utils/money'
 
 const props = defineProps<{ sale: Sale; store: Store | null }>()
@@ -16,6 +17,9 @@ const storeLines = computed(() => {
   const place = [s.address, s.city, s.province].filter(Boolean).join(', ')
   return [place, s.phone ?? '', s.tin ? `TIN: ${s.tin}` : ''].filter(Boolean)
 })
+
+// Set on General Settings; blank prints no message
+const footer = computed(() => props.store?.receiptFooter ?? DEFAULT_SETTINGS.receiptFooter)
 
 // Refunds show on the sale's page; a receipt lists the money taken
 const payments = computed(() => props.sale.payments.filter((p) => p.amountCents > 0))
@@ -67,7 +71,7 @@ const payments = computed(() => props.sale.payments.filter((p) => p.amountCents 
     </div>
 
     <div class="rule"></div>
-    <div class="center small">Thank you for your purchase!</div>
+    <div v-if="footer" class="center small footer-message">{{ footer }}</div>
     <div class="center small">This serves as your sales receipt.</div>
   </div>
 </template>
@@ -95,6 +99,10 @@ const payments = computed(() => props.sale.payments.filter((p) => p.amountCents 
 .small {
   font-size: 11px;
   word-break: break-word;
+}
+
+.footer-message {
+  white-space: pre-line; /* keeps the line breaks typed in settings */
 }
 
 .rule {

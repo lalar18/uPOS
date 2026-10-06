@@ -1,13 +1,11 @@
 // Profile endpoints: avatar upload/remove/serve and password change.
 
-import { hashPassword, verifyPassword } from './password'
+import { hashPassword, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, verifyPassword } from './password'
 import { destroyOtherSessions, type SessionUser } from './session'
 
 // The browser sends a cropped 400x400 JPEG (~50 KB). This cap is a backstop that
 // also keeps us under D1's 2,000,000-byte limit per value.
 const MAX_AVATAR_BYTES = 1_000_000
-const MIN_PASSWORD_LENGTH = 8
-const MAX_PASSWORD_LENGTH = 128
 
 export type ImageType = 'image/jpeg' | 'image/png' | 'image/webp'
 

@@ -3,6 +3,9 @@
 
 const ITERATIONS = 100_000 // Workers cap PBKDF2 at 100k iterations
 
+export const MIN_PASSWORD_LENGTH = 8
+export const MAX_PASSWORD_LENGTH = 128
+
 function toBase64(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes))
 }

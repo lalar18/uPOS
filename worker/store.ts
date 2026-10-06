@@ -16,6 +16,7 @@ interface StoreRow {
   province: string | null
   postal_code: string | null
   tin: string | null
+  receipt_footer: string // edited on the General Settings page (see settings.ts)
   created_at: string
   updated_at: string
 }
@@ -49,6 +50,7 @@ function publicStore(row: StoreRow) {
     province: row.province,
     postalCode: row.postal_code,
     tin: row.tin,
+    receiptFooter: row.receipt_footer,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }

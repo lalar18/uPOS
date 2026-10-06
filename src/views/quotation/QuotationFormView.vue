@@ -14,6 +14,7 @@ import {
   type EditableQuotationStatus,
 } from '@/api/quotations'
 import { computeTotals } from '@/api/sales'
+import { getSettingsOrDefaults, taxRateText } from '@/api/settings'
 import CustomerPicker from '@/components/CustomerPicker.vue'
 import { addDays, toIsoDate } from '@/utils/date'
 import { centsToText, newUid, parsePercentBp, parsePeso } from '@/utils/money'
@@ -106,7 +107,19 @@ async function load(id: number) {
   }
 }
 
-if (editingId !== null) load(editingId)
+if (editingId !== null) {
+  load(editingId)
+} else {
+  // A new quotation starts from the store's defaults (General Settings), unless the user already typed
+  const initialValidUntil = validUntil.value
+  getSettingsOrDefaults().then((settings) => {
+    if (taxText.value === '') taxText.value = taxRateText(settings.defaultTaxRateBp)
+    if (validUntil.value === initialValidUntil) {
+      const days = settings.quotationValidDays
+      validUntil.value = days > 0 ? addDays(quoteDate.value, days) : ''
+    }
+  })
+}
 
 // --- Saving ---
 

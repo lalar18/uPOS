@@ -10,6 +10,7 @@ export interface Store {
   province: string | null
   postalCode: string | null
   tin: string | null
+  receiptFooter: string // printed at the bottom of receipts; set on General Settings
   createdAt: string
   updatedAt: string
 }

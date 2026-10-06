@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import type { User } from '@/auth'
 
-const props = withDefaults(defineProps<{ user: User | null; size?: number; radius?: string }>(), {
+const props = withDefaults(defineProps<{ user: Pick<User, 'fullName' | 'avatarUrl'> | null; size?: number; radius?: string }>(), {
   size: 32,
   radius: '8px',
 })

@@ -16,6 +16,7 @@ import {
   type PaymentInput,
   type PaymentMethod,
 } from '@/api/sales'
+import { getSettingsOrDefaults, taxRateText } from '@/api/settings'
 import { currentUser } from '@/auth'
 import CustomerPicker from '@/components/CustomerPicker.vue'
 import { toIsoDate } from '@/utils/date'
@@ -144,7 +145,14 @@ async function loadQuotation(id: number) {
 }
 
 const queryQuotation = Number(route.query.quotation)
-if (Number.isSafeInteger(queryQuotation) && queryQuotation > 0) loadQuotation(queryQuotation)
+if (Number.isSafeInteger(queryQuotation) && queryQuotation > 0) {
+  loadQuotation(queryQuotation) // uses the quotation's tax rate
+} else {
+  // Start from the store's default tax rate (General Settings), unless the user already typed one
+  getSettingsOrDefaults().then((settings) => {
+    if (taxText.value === '') taxText.value = taxRateText(settings.defaultTaxRateBp)
+  })
+}
 
 // --- Saving ---
 

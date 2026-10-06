@@ -12,8 +12,10 @@ import { handleStore } from './store'
 import { changePassword, deleteAvatar, serveAvatar, uploadAvatar } from './profile'
 import { createSession, destroySession, getSessionUser, type SessionUser } from './session'
 import { handleSubcategories } from './subcategories'
+import { handleSettings } from './settings'
 import { handleSuppliers } from './suppliers'
 import { handleUnits } from './units'
+import { handleUsers } from './users'
 import { handleVariantAttributes } from './variantAttributes'
 import { handleWarranties } from './warranties'
 
@@ -209,6 +211,17 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (url.pathname.startsWith('/api/quotations')) {
     if (!user) return notLoggedIn()
     const response = await handleQuotations(env.DB, request, url, user)
+    if (response) return response
+  }
+
+  if (url.pathname === '/api/settings') {
+    if (!user) return notLoggedIn()
+    return handleSettings(env.DB, request, user)
+  }
+
+  if (url.pathname.startsWith('/api/users')) {
+    if (!user) return notLoggedIn()
+    const response = await handleUsers(env.DB, request, url, user)
     if (response) return response
   }
 

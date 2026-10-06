@@ -6,6 +6,7 @@ import CategoryView from './views/category/CategoryView.vue'
 import ComingSoonView from './views/common/ComingSoonView.vue'
 import CustomerView from './views/customer/CustomerView.vue'
 import DashboardView from './views/dashboard/DashboardView.vue'
+import GeneralSettingsView from './views/settings/GeneralSettingsView.vue'
 import ExpiredProductsView from './views/product/ExpiredProductsView.vue'
 import LabelPrintView from './views/label/LabelPrintView.vue'
 import LoginView from './views/auth/LoginView.vue'
@@ -27,6 +28,7 @@ import StoreView from './views/store/StoreView.vue'
 import SubCategoryView from './views/subcategory/SubCategoryView.vue'
 import SupplierView from './views/supplier/SupplierView.vue'
 import UnitView from './views/unit/UnitView.vue'
+import UserView from './views/user/UserView.vue'
 import VariantAttributeView from './views/variant/VariantAttributeView.vue'
 import WarrantyView from './views/warranty/WarrantyView.vue'
 
@@ -101,6 +103,8 @@ const router = createRouter({
         { path: 'customers', name: 'customers', component: CustomerView },
         { path: 'suppliers', name: 'suppliers', component: SupplierView },
         { path: 'store', name: 'store', component: StoreView },
+        { path: 'users', name: 'users', component: UserView, meta: { adminOnly: true } },
+        { path: 'settings', name: 'settings', component: GeneralSettingsView, meta: { adminOnly: true } },
         // Sidebar links without a page yet (and unknown URLs) land here
         { path: ':pathMatch(.*)*', name: 'coming-soon', component: ComingSoonView },
       ],
@@ -115,6 +119,10 @@ router.beforeEach(async (to) => {
     return { name: 'login', query: to.fullPath !== '/' ? { redirect: to.fullPath } : {} }
   }
   if (to.meta.guestOnly && user) {
+    return { name: 'dashboard' }
+  }
+  // Admin-only pages (the API refuses cashiers too; this just avoids showing them an error)
+  if (to.meta.adminOnly && user?.role !== 'admin') {
     return { name: 'dashboard' }
   }
 })
