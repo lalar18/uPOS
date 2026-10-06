@@ -4,6 +4,7 @@ import AppLayout from './layouts/AppLayout.vue'
 import BrandView from './views/brand/BrandView.vue'
 import CategoryView from './views/category/CategoryView.vue'
 import ComingSoonView from './views/common/ComingSoonView.vue'
+import CustomerView from './views/customer/CustomerView.vue'
 import DashboardView from './views/dashboard/DashboardView.vue'
 import ExpiredProductsView from './views/product/ExpiredProductsView.vue'
 import LabelPrintView from './views/label/LabelPrintView.vue'
@@ -24,6 +25,7 @@ import SalesReturnsView from './views/salesReturn/SalesReturnsView.vue'
 import StockAdjustmentView from './views/stock/StockAdjustmentView.vue'
 import StoreView from './views/store/StoreView.vue'
 import SubCategoryView from './views/subcategory/SubCategoryView.vue'
+import SupplierView from './views/supplier/SupplierView.vue'
 import UnitView from './views/unit/UnitView.vue'
 import VariantAttributeView from './views/variant/VariantAttributeView.vue'
 import WarrantyView from './views/warranty/WarrantyView.vue'
@@ -96,6 +98,8 @@ const router = createRouter({
           meta: { menu: '/quotations' },
         },
         { path: 'pos', name: 'pos', component: PosView },
+        { path: 'customers', name: 'customers', component: CustomerView },
+        { path: 'suppliers', name: 'suppliers', component: SupplierView },
         { path: 'store', name: 'store', component: StoreView },
         // Sidebar links without a page yet (and unknown URLs) land here
         { path: ':pathMatch(.*)*', name: 'coming-soon', component: ComingSoonView },

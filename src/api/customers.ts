@@ -1,12 +1,17 @@
 import { readJson, sendJson } from './http'
 
+export type CustomerStatus = 'active' | 'inactive'
+
 export interface Customer {
   id: number
   name: string
   phone: string | null
   email: string | null
   address: string | null
-  status: 'active' | 'inactive'
+  status: CustomerStatus
+  saleCount: number
+  quotationCount: number
+  balanceCents: number // unpaid balance across their sales
   createdAt: string
 }
 
@@ -22,11 +27,12 @@ export interface CustomerInput {
   phone: string
   email: string
   address: string
+  status?: CustomerStatus // defaults to active
 }
 
 export async function listCustomers(query: {
   search: string
-  status?: 'active' | 'inactive'
+  status?: CustomerStatus | ''
   page: number
   pageSize: number
 }): Promise<{ items: Customer[]; total: number }> {
@@ -37,3 +43,8 @@ export async function listCustomers(query: {
 }
 
 export const createCustomer = (input: CustomerInput) => sendJson<Customer>('POST', '/api/customers', input)
+
+export const updateCustomer = (id: number, input: CustomerInput) =>
+  sendJson<Customer>('PUT', `/api/customers/${id}`, input)
+
+export const deleteCustomer = (id: number) => sendJson<{ ok: true }>('DELETE', `/api/customers/${id}`)

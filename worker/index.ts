@@ -12,6 +12,7 @@ import { handleStore } from './store'
 import { changePassword, deleteAvatar, serveAvatar, uploadAvatar } from './profile'
 import { createSession, destroySession, getSessionUser, type SessionUser } from './session'
 import { handleSubcategories } from './subcategories'
+import { handleSuppliers } from './suppliers'
 import { handleUnits } from './units'
 import { handleVariantAttributes } from './variantAttributes'
 import { handleWarranties } from './warranties'
@@ -183,6 +184,12 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (url.pathname.startsWith('/api/customers')) {
     if (!user) return notLoggedIn()
     const response = await handleCustomers(env.DB, request, url, user)
+    if (response) return response
+  }
+
+  if (url.pathname.startsWith('/api/suppliers')) {
+    if (!user) return notLoggedIn()
+    const response = await handleSuppliers(env.DB, request, url, user)
     if (response) return response
   }
 
