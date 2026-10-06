@@ -18,7 +18,7 @@ import {
 import { currentUser } from '@/auth'
 import { resizeImage } from '@/utils/image'
 
-const MAX_FILE_BYTES = 5 * 1024 * 1024 // 5 MB, checked on the original file (phone photos are big)
+const MAX_FILE_BYTES = 2 * 1024 * 1024 // 2 MB, checked on the original file
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const IMAGE_SIZE = 600 // images are scaled down to fit a 600x600 px box
 
@@ -32,7 +32,7 @@ const isNew = computed(() => props.id === undefined)
 
 const loading = ref(true)
 const loadError = ref('')
-const options = ref<ProductOptions>({ categories: [], brands: [], units: [] })
+const options = ref<ProductOptions>({ categories: [], subcategories: [], brands: [], units: [] })
 let original: Product | null = null
 
 // Form fields. Money and quantities are kept as typed text and parsed on save.
@@ -40,6 +40,7 @@ const name = ref('')
 const sku = ref('')
 const barcode = ref('')
 const categoryId = ref<number | null>(null)
+const subcategoryId = ref<number | null>(null)
 const brandId = ref<number | null>(null)
 const unitId = ref<number | null>(null)
 const price = ref('')
@@ -67,6 +68,7 @@ async function load() {
       sku.value = product.sku
       barcode.value = product.barcode ?? ''
       categoryId.value = product.category?.id ?? null
+      subcategoryId.value = product.subcategory?.id ?? null
       brandId.value = product.brand?.id ?? null
       unitId.value = product.unit.id
       price.value = centsToText(product.priceCents)
@@ -94,10 +96,21 @@ function choices<T extends ProductOption>(list: T[], selectedId: number | null):
 }
 
 const categoryChoices = computed(() => choices(options.value.categories, categoryId.value))
+// Only the chosen category's sub categories
+const subcategoryChoices = computed(() =>
+  choices(
+    options.value.subcategories.filter((s) => s.categoryId === categoryId.value),
+    subcategoryId.value,
+  ),
+)
 const brandChoices = computed(() => choices(options.value.brands, brandId.value))
 const unitChoices = computed(() => choices(options.value.units, unitId.value))
 const selectedUnit = computed(() => options.value.units.find((u) => u.id === unitId.value) ?? null)
 const quantityStep = computed(() => (selectedUnit.value?.allowDecimal ? '0.001' : '1'))
+
+function onCategoryChange() {
+  subcategoryId.value = null // the old pick belongs to the previous category
+}
 
 // --- Image ---
 
@@ -123,7 +136,7 @@ function onFileChosen(event: Event) {
     return
   }
   if (file.size > MAX_FILE_BYTES) {
-    error.value = `That image is ${(file.size / 1024 / 1024).toFixed(1)} MB. The limit is 5 MB.`
+    error.value = `That image is ${(file.size / 1024 / 1024).toFixed(1)} MB. The limit is 2 MB.`
     return
   }
 
@@ -185,6 +198,7 @@ function buildInput(): ProductInput | string {
     sku: sku.value.trim(),
     barcode: barcode.value.trim() || null,
     categoryId: categoryId.value,
+    subcategoryId: subcategoryId.value,
     brandId: brandId.value,
     unitId: unitId.value,
     priceCents,
@@ -309,16 +323,30 @@ load()
                   placeholder="Scan or type"
                 />
               </div>
-              <div class="col-sm-6 col-md-4">
+              <div class="col-sm-6">
                 <label class="form-label" for="product-category">Category</label>
-                <select id="product-category" v-model="categoryId" class="form-select">
+                <select id="product-category" v-model="categoryId" class="form-select" @change="onCategoryChange">
                   <option :value="null">None</option>
                   <option v-for="c in categoryChoices" :key="c.id" :value="c.id">
                     {{ c.name }}{{ c.status === 'inactive' ? ' (inactive)' : '' }}
                   </option>
                 </select>
               </div>
-              <div class="col-sm-6 col-md-4">
+              <div class="col-sm-6">
+                <label class="form-label" for="product-subcategory">Sub Category</label>
+                <select
+                  id="product-subcategory"
+                  v-model="subcategoryId"
+                  class="form-select"
+                  :disabled="categoryId === null || subcategoryChoices.length === 0"
+                >
+                  <option :value="null">{{ categoryId === null ? 'Choose a category first' : 'None' }}</option>
+                  <option v-for="s in subcategoryChoices" :key="s.id" :value="s.id">
+                    {{ s.name }}{{ s.status === 'inactive' ? ' (inactive)' : '' }}
+                  </option>
+                </select>
+              </div>
+              <div class="col-sm-6">
                 <label class="form-label" for="product-brand">Brand</label>
                 <select id="product-brand" v-model="brandId" class="form-select">
                   <option :value="null">None</option>
@@ -327,7 +355,7 @@ load()
                   </option>
                 </select>
               </div>
-              <div class="col-sm-6 col-md-4">
+              <div class="col-sm-6">
                 <label class="form-label" for="product-unit">Unit <span class="text-danger">*</span></label>
                 <select id="product-unit" v-model="unitId" class="form-select" required>
                   <option v-if="unitId === null" :value="null" disabled>Choose a unit</option>
@@ -448,7 +476,7 @@ load()
                     Remove
                   </button>
                 </div>
-                <div class="form-text">JPG, PNG or WebP, up to 5 MB.</div>
+                <div class="form-text">JPG, PNG or WebP, up to 2 MB.</div>
               </div>
             </div>
             <input ref="fileInput" type="file" accept="image/jpeg,image/png,image/webp" hidden @change="onFileChosen" />

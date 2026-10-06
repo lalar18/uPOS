@@ -2,8 +2,8 @@
 // Cashiers never see cost prices. Every query is limited to the user's own store.
 // Prices are whole centavos (₱12.50 -> 1250).
 //
-//   GET    /api/products?search=&status=&categoryId=&brandId=&page=&pageSize=  -> { items, total }
-//   GET    /api/products/options                -> { categories, brands, units } for the product form
+//   GET    /api/products?search=&status=&categoryId=&subcategoryId=&brandId=&page=&pageSize=  -> { items, total }
+//   GET    /api/products/options                -> { categories, subcategories, brands, units } for the product form
 //   GET    /api/products/:id                    -> product
 //   POST   /api/products          (ProductInput) -> product
 //   PUT    /api/products/:id      (ProductInput) -> product
@@ -24,6 +24,8 @@ interface ProductRow {
   barcode: string | null
   category_id: number | null
   category_name: string | null
+  subcategory_id: number | null
+  subcategory_name: string | null
   brand_id: number | null
   brand_name: string | null
   unit_id: number
@@ -46,6 +48,7 @@ interface ProductInput {
   sku: string
   barcode: string | null
   categoryId: number | null
+  subcategoryId: number | null
   brandId: number | null
   unitId: number
   priceCents: number
@@ -68,12 +71,14 @@ const MAX_IMAGE_BYTES = 1_000_000
 const CODE_PATTERN = /^[A-Za-z0-9._/-]+$/
 
 const PRODUCT_COLUMNS = `p.id, p.name, p.sku, p.barcode, p.category_id, c.name AS category_name,
-  p.brand_id, b.name AS brand_name, p.unit_id, u.name AS unit_name, u.short_name AS unit_short_name,
+  p.subcategory_id, sc.name AS subcategory_name, p.brand_id, b.name AS brand_name,
+  p.unit_id, u.name AS unit_name, u.short_name AS unit_short_name,
   u.allow_decimal AS unit_allow_decimal, p.price_cents, p.cost_cents, p.quantity, p.alert_quantity,
   p.description, p.status, p.created_at, p.updated_at, i.updated_at AS image_updated_at`
 const PRODUCT_FROM = `FROM products p
   JOIN units u ON u.id = p.unit_id
   LEFT JOIN categories c ON c.id = p.category_id
+  LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
   LEFT JOIN brands b ON b.id = p.brand_id
   LEFT JOIN product_images i ON i.product_id = p.id`
 
@@ -84,6 +89,7 @@ function publicProduct(row: ProductRow, showCost: boolean) {
     sku: row.sku,
     barcode: row.barcode,
     category: row.category_id === null ? null : { id: row.category_id, name: row.category_name! },
+    subcategory: row.subcategory_id === null ? null : { id: row.subcategory_id, name: row.subcategory_name! },
     brand: row.brand_id === null ? null : { id: row.brand_id, name: row.brand_name! },
     unit: {
       id: row.unit_id,
@@ -154,6 +160,9 @@ async function readProductInput(db: D1Database, storeId: number, request: Reques
 
   const categoryId = optionalId(body.categoryId)
   if (categoryId === undefined) return error('Invalid category', 400)
+  const subcategoryId = optionalId(body.subcategoryId)
+  if (subcategoryId === undefined) return error('Invalid sub category', 400)
+  if (subcategoryId !== null && categoryId === null) return error('Choose a category for the sub category', 400)
   const brandId = optionalId(body.brandId)
   if (brandId === undefined) return error('Invalid brand', 400)
   const unitId = optionalId(body.unitId)
@@ -176,17 +185,24 @@ async function readProductInput(db: D1Database, storeId: number, request: Reques
   const status = body.status ?? 'active'
   if (status !== 'active' && status !== 'inactive') return error('Status must be active or inactive', 400)
 
-  // The category, brand and unit must belong to this store
+  // The category, brand and unit must belong to this store, and the sub category to the category
   const refs = await db
     .prepare(
       `SELECT
          (SELECT 1 FROM categories WHERE id = ? AND store_id = ?) AS category_ok,
+         (SELECT 1 FROM subcategories WHERE id = ? AND category_id = ? AND store_id = ?) AS subcategory_ok,
          (SELECT 1 FROM brands WHERE id = ? AND store_id = ?) AS brand_ok,
          (SELECT allow_decimal FROM units WHERE id = ? AND store_id = ?) AS unit_allow_decimal`,
     )
-    .bind(categoryId ?? 0, storeId, brandId ?? 0, storeId, unitId, storeId)
-    .first<{ category_ok: number | null; brand_ok: number | null; unit_allow_decimal: number | null }>()
+    .bind(categoryId ?? 0, storeId, subcategoryId ?? 0, categoryId ?? 0, storeId, brandId ?? 0, storeId, unitId, storeId)
+    .first<{
+      category_ok: number | null
+      subcategory_ok: number | null
+      brand_ok: number | null
+      unit_allow_decimal: number | null
+    }>()
   if (categoryId !== null && !refs?.category_ok) return error('Category not found', 400)
+  if (subcategoryId !== null && !refs?.subcategory_ok) return error('Sub category not found in this category', 400)
   if (brandId !== null && !refs?.brand_ok) return error('Brand not found', 400)
   if (refs?.unit_allow_decimal == null) return error('Unit not found', 400)
 
@@ -201,6 +217,7 @@ async function readProductInput(db: D1Database, storeId: number, request: Reques
     sku,
     barcode,
     categoryId,
+    subcategoryId,
     brandId,
     unitId,
     priceCents: body.priceCents,
@@ -240,6 +257,7 @@ async function listProducts(db: D1Database, storeId: number, url: URL, showCost:
   const search = url.searchParams.get('search')?.trim() ?? ''
   const status = url.searchParams.get('status')
   const categoryId = Number(url.searchParams.get('categoryId'))
+  const subcategoryId = Number(url.searchParams.get('subcategoryId'))
   const brandId = Number(url.searchParams.get('brandId'))
   const pageSize = Math.min(Math.max(Number(url.searchParams.get('pageSize')) || 10, 1), MAX_PAGE_SIZE)
   const page = Math.max(Number(url.searchParams.get('page')) || 1, 1)
@@ -259,6 +277,10 @@ async function listProducts(db: D1Database, storeId: number, url: URL, showCost:
   if (Number.isSafeInteger(categoryId) && categoryId > 0) {
     where.push('p.category_id = ?')
     params.push(categoryId)
+  }
+  if (Number.isSafeInteger(subcategoryId) && subcategoryId > 0) {
+    where.push('p.subcategory_id = ?')
+    params.push(subcategoryId)
   }
   if (Number.isSafeInteger(brandId) && brandId > 0) {
     where.push('p.brand_id = ?')
@@ -283,8 +305,13 @@ async function listProducts(db: D1Database, storeId: number, url: URL, showCost:
 
 /** Everything the product form's dropdowns need, inactive ones included so a product's current pick still shows. */
 async function listOptions(db: D1Database, storeId: number): Promise<Response> {
-  const [categories, brands, units] = await db.batch([
+  const [categories, subcategories, brands, units] = await db.batch([
     db.prepare('SELECT id, name, status FROM categories WHERE store_id = ? ORDER BY name').bind(storeId),
+    db
+      .prepare(
+        'SELECT id, category_id AS categoryId, name, status FROM subcategories WHERE store_id = ? ORDER BY name',
+      )
+      .bind(storeId),
     db.prepare('SELECT id, name, status FROM brands WHERE store_id = ? ORDER BY name').bind(storeId),
     db
       .prepare('SELECT id, name, short_name, allow_decimal, status FROM units WHERE store_id = ? ORDER BY name')
@@ -294,6 +321,7 @@ async function listOptions(db: D1Database, storeId: number): Promise<Response> {
 
   return Response.json({
     categories: categories!.results,
+    subcategories: subcategories!.results,
     brands: brands!.results,
     units: (units!.results as UnitOption[]).map((u) => ({
       id: u.id,
@@ -315,9 +343,9 @@ async function createProduct(db: D1Database, storeId: number, request: Request):
   try {
     const row = await db
       .prepare(
-        `INSERT INTO products (store_id, name, sku, barcode, category_id, brand_id, unit_id,
+        `INSERT INTO products (store_id, name, sku, barcode, category_id, subcategory_id, brand_id, unit_id,
            price_cents, cost_cents, quantity, alert_quantity, description, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING id`,
       )
       .bind(
@@ -326,6 +354,7 @@ async function createProduct(db: D1Database, storeId: number, request: Request):
         input.sku,
         input.barcode,
         input.categoryId,
+        input.subcategoryId,
         input.brandId,
         input.unitId,
         input.priceCents,
@@ -353,9 +382,9 @@ async function updateProduct(db: D1Database, storeId: number, request: Request, 
   try {
     const result = await db
       .prepare(
-        `UPDATE products SET name = ?, sku = ?, barcode = ?, category_id = ?, brand_id = ?, unit_id = ?,
-           price_cents = ?, cost_cents = ?, quantity = ?, alert_quantity = ?, description = ?, status = ?,
-           updated_at = datetime('now')
+        `UPDATE products SET name = ?, sku = ?, barcode = ?, category_id = ?, subcategory_id = ?,
+           brand_id = ?, unit_id = ?, price_cents = ?, cost_cents = ?, quantity = ?, alert_quantity = ?,
+           description = ?, status = ?, updated_at = datetime('now')
          WHERE id = ? AND store_id = ?`,
       )
       .bind(
@@ -363,6 +392,7 @@ async function updateProduct(db: D1Database, storeId: number, request: Request, 
         input.sku,
         input.barcode,
         input.categoryId,
+        input.subcategoryId,
         input.brandId,
         input.unitId,
         input.priceCents,

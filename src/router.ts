@@ -10,6 +10,7 @@ import ProductFormView from './views/product/ProductFormView.vue'
 import ProductView from './views/product/ProductView.vue'
 import ProfileView from './views/profile/ProfileView.vue'
 import StoreView from './views/store/StoreView.vue'
+import SubCategoryView from './views/subcategory/SubCategoryView.vue'
 import UnitView from './views/unit/UnitView.vue'
 
 const router = createRouter({
@@ -25,6 +26,7 @@ const router = createRouter({
         { path: '', name: 'dashboard', component: DashboardView },
         { path: 'profile', name: 'profile', component: ProfileView },
         { path: 'categories', name: 'categories', component: CategoryView },
+        { path: 'sub-categories', name: 'sub-categories', component: SubCategoryView },
         { path: 'brands', name: 'brands', component: BrandView },
         { path: 'units', name: 'units', component: UnitView },
         { path: 'products', name: 'products', component: ProductView },

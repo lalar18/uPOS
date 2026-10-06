@@ -35,7 +35,7 @@ const hasFilters = computed(
 )
 
 // Category and brand choices for the filters. The list still works if these fail to load.
-const options = ref<ProductOptions>({ categories: [], brands: [], units: [] })
+const options = ref<ProductOptions>({ categories: [], subcategories: [], brands: [], units: [] })
 getProductOptions()
   .then((result) => (options.value = result))
   .catch(() => {})
@@ -51,6 +51,7 @@ async function load() {
       search: search.value.trim(),
       status: statusFilter.value,
       categoryId: categoryFilter.value,
+      subcategoryId: null,
       brandId: brandFilter.value,
       page: page.value,
       pageSize: pageSize.value,
@@ -184,7 +185,10 @@ function onDeleted() {
                   </div>
                 </div>
               </td>
-              <td>{{ product.category?.name ?? '—' }}</td>
+              <td>
+                <div>{{ product.category?.name ?? '—' }}</div>
+                <div v-if="product.subcategory" class="fs-12 text-gray-5">{{ product.subcategory.name }}</div>
+              </td>
               <td>{{ product.brand?.name ?? '—' }}</td>
               <td class="text-end fw-medium text-gray-9">{{ formatPeso(product.priceCents) }}</td>
               <td class="text-end">
@@ -227,6 +231,7 @@ function onDeleted() {
               <div class="fs-12 text-gray-5 text-break">
                 {{ product.sku }}
                 <template v-if="product.category"> · {{ product.category.name }}</template>
+                <template v-if="product.subcategory"> › {{ product.subcategory.name }}</template>
                 <template v-if="product.brand"> · {{ product.brand.name }}</template>
               </div>
               <div class="d-flex flex-wrap align-items-center gap-2 mt-1 fs-13">

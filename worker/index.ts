@@ -5,6 +5,7 @@ import { handleProducts } from './products'
 import { handleStore } from './store'
 import { changePassword, deleteAvatar, serveAvatar, uploadAvatar } from './profile'
 import { createSession, destroySession, getSessionUser, type SessionUser } from './session'
+import { handleSubcategories } from './subcategories'
 import { handleUnits } from './units'
 
 interface Env {
@@ -101,6 +102,12 @@ export default {
     if (url.pathname.startsWith('/api/categories')) {
       if (!user) return notLoggedIn()
       const response = await handleCategories(env.DB, request, url, user)
+      if (response) return response
+    }
+
+    if (url.pathname.startsWith('/api/subcategories')) {
+      if (!user) return notLoggedIn()
+      const response = await handleSubcategories(env.DB, request, url, user)
       if (response) return response
     }
 

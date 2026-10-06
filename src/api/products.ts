@@ -15,6 +15,7 @@ export interface Product {
   sku: string
   barcode: string | null
   category: { id: number; name: string } | null
+  subcategory: { id: number; name: string } | null
   brand: { id: number; name: string } | null
   unit: ProductUnit
   priceCents: number
@@ -33,6 +34,7 @@ export interface ProductInput {
   sku: string
   barcode: string | null
   categoryId: number | null
+  subcategoryId: number | null
   brandId: number | null
   unitId: number
   priceCents: number
@@ -47,6 +49,7 @@ export interface ProductQuery {
   search: string
   status: ProductStatus | ''
   categoryId: number | null
+  subcategoryId: number | null
   brandId: number | null
   page: number
   pageSize: number
@@ -60,6 +63,7 @@ export interface ProductOption {
 
 export interface ProductOptions {
   categories: ProductOption[]
+  subcategories: (ProductOption & { categoryId: number })[]
   brands: ProductOption[]
   units: (ProductUnit & { status: ProductStatus })[]
 }
@@ -69,6 +73,7 @@ export async function listProducts(query: ProductQuery): Promise<{ items: Produc
   if (query.search) params.set('search', query.search)
   if (query.status) params.set('status', query.status)
   if (query.categoryId) params.set('categoryId', String(query.categoryId))
+  if (query.subcategoryId) params.set('subcategoryId', String(query.subcategoryId))
   if (query.brandId) params.set('brandId', String(query.brandId))
   return readJson(await fetch(`/api/products?${params}`))
 }
