@@ -441,8 +441,15 @@ load()
                     min="0"
                     :step="quantityStep"
                     :inputmode="selectedUnit?.allowDecimal ? 'decimal' : 'numeric'"
+                    :readonly="!isNew"
+                    :class="{ 'bg-light': !isNew }"
                   />
                   <span v-if="selectedUnit" class="input-group-text">{{ selectedUnit.shortName }}</span>
+                </div>
+                <div v-if="isNew" class="form-text">Logged as the opening stock.</div>
+                <div v-else class="form-text">
+                  Changed through
+                  <RouterLink :to="{ name: 'stock-adjustments', query: { product: props.id } }">Stock Adjustment</RouterLink>.
                 </div>
               </div>
               <div class="col-6">

@@ -9,9 +9,11 @@ import ExpiredProductsView from './views/product/ExpiredProductsView.vue'
 import LabelPrintView from './views/label/LabelPrintView.vue'
 import LoginView from './views/auth/LoginView.vue'
 import LowStocksView from './views/product/LowStocksView.vue'
+import ManageStockView from './views/stock/ManageStockView.vue'
 import ProductFormView from './views/product/ProductFormView.vue'
 import ProductView from './views/product/ProductView.vue'
 import ProfileView from './views/profile/ProfileView.vue'
+import StockAdjustmentView from './views/stock/StockAdjustmentView.vue'
 import StoreView from './views/store/StoreView.vue'
 import SubCategoryView from './views/subcategory/SubCategoryView.vue'
 import UnitView from './views/unit/UnitView.vue'
@@ -49,6 +51,8 @@ const router = createRouter({
         { path: 'warranties', name: 'warranties', component: WarrantyView },
         { path: 'print-barcode', name: 'print-barcode', component: LabelPrintView, props: { kind: 'barcode' } },
         { path: 'print-qrcode', name: 'print-qrcode', component: LabelPrintView, props: { kind: 'qrcode' } },
+        { path: 'stock', name: 'stock', component: ManageStockView },
+        { path: 'stock/adjustments', name: 'stock-adjustments', component: StockAdjustmentView },
         { path: 'store', name: 'store', component: StoreView },
         // Sidebar links without a page yet (and unknown URLs) land here
         { path: ':pathMatch(.*)*', name: 'coming-soon', component: ComingSoonView },

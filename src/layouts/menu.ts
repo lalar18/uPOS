@@ -40,7 +40,6 @@ export const menu: MenuSection[] = [
     items: [
       { label: 'Manage Stock', to: '/stock', icon: 'stack-3' },
       { label: 'Stock Adjustment', to: '/stock/adjustments', icon: 'stairs-up' },
-      { label: 'Stock Transfer', to: '/stock/transfers', icon: 'stack-pop' },
     ],
   },
   {

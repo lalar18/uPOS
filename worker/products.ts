@@ -8,7 +8,7 @@
 //   GET    /api/products/options                -> { categories, subcategories, brands, units, warranties } for the product form
 //   GET    /api/products/:id                    -> product
 //   POST   /api/products          (ProductInput) -> product
-//   PUT    /api/products/:id      (ProductInput) -> product
+//   PUT    /api/products/:id      (ProductInput) -> product   (quantity is ignored; use stock adjustments)
 //   DELETE /api/products/:id                    -> { ok }
 //   GET    /api/products/:id/image              -> image
 //   PUT    /api/products/:id/image (raw image)  -> product
@@ -420,7 +420,8 @@ async function listOptions(db: D1Database, storeId: number): Promise<Response> {
   })
 }
 
-async function createProduct(db: D1Database, storeId: number, request: Request): Promise<Response> {
+async function createProduct(db: D1Database, user: SessionUser, request: Request): Promise<Response> {
+  const storeId = user.store_id
   const input = await readProductInput(db, storeId, request)
   if (input instanceof Response) return input
   const clash = await findClash(db, storeId, input)
@@ -428,35 +429,47 @@ async function createProduct(db: D1Database, storeId: number, request: Request):
 
   let id: number
   try {
-    const row = await db
-      .prepare(
-        `INSERT INTO products (store_id, name, sku, barcode, category_id, subcategory_id, brand_id, unit_id,
-           price_cents, cost_cents, quantity, alert_quantity, description, manufactured_date, expiry_date,
-           warranty_id, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         RETURNING id`,
-      )
-      .bind(
-        storeId,
-        input.name,
-        input.sku,
-        input.barcode,
-        input.categoryId,
-        input.subcategoryId,
-        input.brandId,
-        input.unitId,
-        input.priceCents,
-        input.costCents,
-        input.quantity,
-        input.alertQuantity,
-        input.description,
-        input.manufacturedDate,
-        input.expiryDate,
-        input.warrantyId,
-        input.status,
-      )
-      .first<{ id: number }>()
-    id = row!.id
+    // The starting stock is logged as the first stock adjustment. Both run in one batch (a
+    // transaction); the new product is found by its SKU, which is unique within the store.
+    const [inserted] = await db.batch([
+      db
+        .prepare(
+          `INSERT INTO products (store_id, name, sku, barcode, category_id, subcategory_id, brand_id, unit_id,
+             price_cents, cost_cents, quantity, alert_quantity, description, manufactured_date, expiry_date,
+             warranty_id, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           RETURNING id`,
+        )
+        .bind(
+          storeId,
+          input.name,
+          input.sku,
+          input.barcode,
+          input.categoryId,
+          input.subcategoryId,
+          input.brandId,
+          input.unitId,
+          input.priceCents,
+          input.costCents,
+          input.quantity,
+          input.alertQuantity,
+          input.description,
+          input.manufacturedDate,
+          input.expiryDate,
+          input.warrantyId,
+          input.status,
+        ),
+      db
+        .prepare(
+          `INSERT INTO stock_adjustments (store_id, product_id, product_name, product_sku, unit_short_name, reason,
+             quantity_before, quantity_change, quantity_after, user_id, user_name)
+           SELECT p.store_id, p.id, p.name, p.sku, u.short_name, 'opening', 0, p.quantity, p.quantity, ?, ?
+           FROM products p JOIN units u ON u.id = p.unit_id
+           WHERE p.store_id = ? AND p.sku = ? AND p.quantity > 0`,
+        )
+        .bind(user.id, user.full_name, storeId, input.sku),
+    ])
+    id = (inserted!.results[0] as { id: number }).id
   } catch (e) {
     return uniqueConflict(e)
   }
@@ -464,17 +477,34 @@ async function createProduct(db: D1Database, storeId: number, request: Request):
   return row ? Response.json(publicProduct(row, true), { status: 201 }) : error('Product not found', 404)
 }
 
+/**
+ * Saves everything except the stock quantity, which only changes through stock adjustments
+ * (so the adjustment log always adds up, and a form left open can't overwrite newer stock).
+ */
 async function updateProduct(db: D1Database, storeId: number, request: Request, id: number): Promise<Response> {
   const input = await readProductInput(db, storeId, request)
   if (input instanceof Response) return input
   const clash = await findClash(db, storeId, input, id)
   if (clash) return clash
 
+  // Switching to a whole-number unit needs whole-number stock
+  const current = await db
+    .prepare(
+      `SELECT p.quantity, u.allow_decimal FROM products p JOIN units u ON u.id = ?
+       WHERE p.id = ? AND p.store_id = ?`,
+    )
+    .bind(input.unitId, id, storeId)
+    .first<{ quantity: number; allow_decimal: number }>()
+  if (!current) return error('Product not found', 404)
+  if (!current.allow_decimal && !Number.isInteger(current.quantity)) {
+    return error('The stock is not a whole number. Adjust it before switching to this unit.', 400)
+  }
+
   try {
     const result = await db
       .prepare(
         `UPDATE products SET name = ?, sku = ?, barcode = ?, category_id = ?, subcategory_id = ?,
-           brand_id = ?, unit_id = ?, price_cents = ?, cost_cents = ?, quantity = ?, alert_quantity = ?,
+           brand_id = ?, unit_id = ?, price_cents = ?, cost_cents = ?, alert_quantity = ?,
            description = ?, manufactured_date = ?, expiry_date = ?, warranty_id = ?, status = ?,
            updated_at = datetime('now')
          WHERE id = ? AND store_id = ?`,
@@ -489,7 +519,6 @@ async function updateProduct(db: D1Database, storeId: number, request: Request, 
         input.unitId,
         input.priceCents,
         input.costCents,
-        input.quantity,
         input.alertQuantity,
         input.description,
         input.manufacturedDate,
@@ -588,7 +617,7 @@ export async function handleProducts(
 
   const storeId = user.store_id
   if (isCollection && request.method === 'GET') return listProducts(db, storeId, url, isAdmin)
-  if (isCollection && request.method === 'POST') return createProduct(db, storeId, request)
+  if (isCollection && request.method === 'POST') return createProduct(db, user, request)
   if (isOptions && request.method === 'GET') return listOptions(db, storeId)
   if (itemMatch && request.method === 'GET') {
     const row = await getProduct(db, storeId, Number(itemMatch[1]))

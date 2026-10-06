@@ -2,6 +2,7 @@ import { handleBrands } from './brands'
 import { handleCategories } from './categories'
 import { verifyPassword } from './password'
 import { handleProducts } from './products'
+import { handleStock } from './stock'
 import { handleStore } from './store'
 import { changePassword, deleteAvatar, serveAvatar, uploadAvatar } from './profile'
 import { createSession, destroySession, getSessionUser, type SessionUser } from './session'
@@ -140,6 +141,12 @@ export default {
     if (url.pathname.startsWith('/api/products')) {
       if (!user) return notLoggedIn()
       const response = await handleProducts(env.DB, request, url, user)
+      if (response) return response
+    }
+
+    if (url.pathname.startsWith('/api/stock/')) {
+      if (!user) return notLoggedIn()
+      const response = await handleStock(env.DB, request, url, user)
       if (response) return response
     }
 
