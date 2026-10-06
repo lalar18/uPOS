@@ -7,6 +7,8 @@ import { changePassword, deleteAvatar, serveAvatar, uploadAvatar } from './profi
 import { createSession, destroySession, getSessionUser, type SessionUser } from './session'
 import { handleSubcategories } from './subcategories'
 import { handleUnits } from './units'
+import { handleVariantAttributes } from './variantAttributes'
+import { handleWarranties } from './warranties'
 
 interface Env {
   DB: D1Database
@@ -120,6 +122,18 @@ export default {
     if (url.pathname.startsWith('/api/units')) {
       if (!user) return notLoggedIn()
       const response = await handleUnits(env.DB, request, url, user)
+      if (response) return response
+    }
+
+    if (url.pathname.startsWith('/api/variant-attributes')) {
+      if (!user) return notLoggedIn()
+      const response = await handleVariantAttributes(env.DB, request, url, user)
+      if (response) return response
+    }
+
+    if (url.pathname.startsWith('/api/warranties')) {
+      if (!user) return notLoggedIn()
+      const response = await handleWarranties(env.DB, request, url, user)
       if (response) return response
     }
 

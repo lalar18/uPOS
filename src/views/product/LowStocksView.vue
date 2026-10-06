@@ -1,44 +1,48 @@
 <script setup lang="ts">
+// Products at or below their low stock alert, and products that have run out.
 import { computed, ref, watch } from 'vue'
-import {
-  deleteProduct,
-  formatPeso,
-  formatQuantity,
-  getProductOptions,
-  listProducts,
-  type Product,
-  type ProductOptions,
-  type ProductStatus,
-} from '@/api/products'
+import { formatQuantity, getProductOptions, listProducts, type Product, type ProductOptions } from '@/api/products'
 import { currentUser } from '@/auth'
-import ConfirmDeleteModal from '@/components/ConfirmDeleteModal.vue'
 import ListPager from '@/components/ListPager.vue'
+
+type Tab = 'low' | 'out'
 
 const isAdmin = computed(() => currentUser.value?.role === 'admin')
 
 // --- List, filters and paging ---
 
+const tab = ref<Tab>('low')
 const items = ref<Product[]>([])
 const total = ref(0)
+const counts = ref<Record<Tab, number | null>>({ low: null, out: null })
 const loading = ref(false)
 const loadError = ref('')
 
 const search = ref('')
-const statusFilter = ref<ProductStatus | ''>('')
 const categoryFilter = ref<number | null>(null)
 const brandFilter = ref<number | null>(null)
 const page = ref(1)
 const pageSize = ref(10)
 
-const hasFilters = computed(
-  () => search.value !== '' || statusFilter.value !== '' || categoryFilter.value !== null || brandFilter.value !== null,
-)
+const hasFilters = computed(() => search.value !== '' || categoryFilter.value !== null || brandFilter.value !== null)
 
-// Category and brand choices for the filters. The list still works if these fail to load.
 const options = ref<ProductOptions>({ categories: [], subcategories: [], brands: [], units: [], warranties: [] })
 getProductOptions()
   .then((result) => (options.value = result))
   .catch(() => {})
+
+function query(stock: Tab, pageNumber: number, size: number) {
+  return {
+    search: search.value.trim(),
+    status: 'active' as const, // inactive products aren't sold, so their stock doesn't need watching
+    categoryId: categoryFilter.value,
+    subcategoryId: null,
+    brandId: brandFilter.value,
+    stock,
+    page: pageNumber,
+    pageSize: size,
+  }
+}
 
 let latestRequest = 0
 
@@ -46,25 +50,21 @@ async function load() {
   const requestId = ++latestRequest
   loading.value = true
   loadError.value = ''
+  const other: Tab = tab.value === 'low' ? 'out' : 'low'
   try {
-    const result = await listProducts({
-      search: search.value.trim(),
-      status: statusFilter.value,
-      categoryId: categoryFilter.value,
-      subcategoryId: null,
-      brandId: brandFilter.value,
-      page: page.value,
-      pageSize: pageSize.value,
-    })
+    const [result, otherResult] = await Promise.all([
+      listProducts(query(tab.value, page.value, pageSize.value)),
+      listProducts(query(other, 1, 1)), // only its total, for the tab badge
+    ])
     if (requestId !== latestRequest) return // a newer search already went out
 
-    // Deleting the last row on a page leaves it empty; step back a page
     if (result.items.length === 0 && page.value > 1 && result.total > 0) {
       page.value = Math.ceil(result.total / pageSize.value)
       return
     }
     items.value = result.items
     total.value = result.total
+    counts.value = { [tab.value]: result.total, [other]: otherResult.total } as Record<Tab, number>
   } catch (e) {
     if (requestId === latestRequest) loadError.value = e instanceof Error ? e.message : 'Could not load products'
   } finally {
@@ -82,44 +82,40 @@ watch(search, () => {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(resetToFirstPage, 300)
 })
-watch([statusFilter, categoryFilter, brandFilter, pageSize], resetToFirstPage)
+watch([tab, categoryFilter, brandFilter, pageSize], resetToFirstPage)
 watch(page, load)
 load()
 
-type StockLevel = 'out' | 'low' | 'ok'
-
-function stockLevel(product: Product): StockLevel {
-  if (product.quantity <= 0) return 'out'
-  if (product.quantity <= product.alertQuantity) return 'low'
-  return 'ok'
-}
-
-const STOCK_LABELS: Record<StockLevel, string> = { out: 'Out of stock', low: 'Low stock', ok: '' }
-
-// --- Dialogs ---
-
-const deleting = ref<Product | null>(null)
-
-function onDeleted() {
-  deleting.value = null
-  load()
+/** How full the stock is relative to its alert level, for the little bar (0–100) */
+function stockPercent(product: Product): number {
+  if (product.alertQuantity <= 0) return 0
+  return Math.min(Math.round((product.quantity / product.alertQuantity) * 100), 100)
 }
 </script>
 
 <template>
   <div class="page-header flex-wrap gap-2">
     <div class="page-title">
-      <h4>Products</h4>
-      <h6>Manage your products</h6>
+      <h4>Low Stocks</h4>
+      <h6>Active products that need restocking</h6>
     </div>
     <div class="page-actions d-flex align-items-center gap-2">
       <button type="button" class="btn btn-white border" title="Refresh" :disabled="loading" @click="load">
         <i class="ti ti-refresh"></i>
       </button>
-      <RouterLink v-if="isAdmin" :to="{ name: 'product-create' }" class="btn btn-primary">
-        <i class="ti ti-circle-plus me-1"></i>Add Product
-      </RouterLink>
     </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tab-bar mb-3" role="tablist">
+    <button type="button" role="tab" :aria-selected="tab === 'low'" :class="{ active: tab === 'low' }" @click="tab = 'low'">
+      <i class="ti ti-trending-down"></i>Low Stock
+      <span v-if="counts.low !== null" class="count bg-warning">{{ counts.low }}</span>
+    </button>
+    <button type="button" role="tab" :aria-selected="tab === 'out'" :class="{ active: tab === 'out' }" @click="tab = 'out'">
+      <i class="ti ti-package-off"></i>Out of Stock
+      <span v-if="counts.out !== null" class="count bg-danger">{{ counts.out }}</span>
+    </button>
   </div>
 
   <div class="card">
@@ -146,11 +142,6 @@ function onDeleted() {
           <option :value="null">All brands</option>
           <option v-for="b in options.brands" :key="b.id" :value="b.id">{{ b.name }}</option>
         </select>
-        <select v-model="statusFilter" class="form-select" aria-label="Filter by status">
-          <option value="">All statuses</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-        </select>
       </div>
     </div>
 
@@ -165,9 +156,8 @@ function onDeleted() {
               <th>Product</th>
               <th>Category</th>
               <th>Brand</th>
-              <th class="text-end">Price</th>
-              <th class="text-end">Stock</th>
-              <th>Status</th>
+              <th class="text-end">In Stock</th>
+              <th class="text-end">Alert At</th>
               <th v-if="isAdmin" class="text-end">Actions</th>
             </tr>
           </thead>
@@ -185,29 +175,22 @@ function onDeleted() {
                   </div>
                 </div>
               </td>
-              <td>
-                <div>{{ product.category?.name ?? '—' }}</div>
-                <div v-if="product.subcategory" class="fs-12 text-gray-5">{{ product.subcategory.name }}</div>
-              </td>
+              <td>{{ product.category?.name ?? '—' }}</td>
               <td>{{ product.brand?.name ?? '—' }}</td>
-              <td class="text-end fw-medium text-gray-9">{{ formatPeso(product.priceCents) }}</td>
               <td class="text-end">
-                <div>{{ formatQuantity(product.quantity) }} {{ product.unit.shortName }}</div>
-                <div v-if="stockLevel(product) !== 'ok'" class="fs-12" :class="`stock-${stockLevel(product)}`">
-                  {{ STOCK_LABELS[stockLevel(product)] }}
+                <div class="fw-medium" :class="tab === 'out' ? 'text-danger' : 'stock-low'">
+                  {{ formatQuantity(product.quantity) }} {{ product.unit.shortName }}
+                </div>
+                <div v-if="tab === 'low'" class="stock-bar ms-auto">
+                  <span :style="{ width: `${stockPercent(product)}%` }"></span>
                 </div>
               </td>
-              <td>
-                <span class="badge" :class="product.status === 'active' ? 'bg-success' : 'bg-danger'">
-                  <i class="ti ti-point-filled me-1"></i>{{ product.status === 'active' ? 'Active' : 'Inactive' }}
-                </span>
-              </td>
+              <td class="text-end">{{ formatQuantity(product.alertQuantity) }} {{ product.unit.shortName }}</td>
               <td v-if="isAdmin" class="text-end">
                 <div class="row-actions">
                   <RouterLink :to="{ name: 'product-edit', params: { id: product.id } }" title="Edit">
                     <i class="ti ti-edit"></i>
                   </RouterLink>
-                  <button type="button" title="Delete" @click="deleting = product"><i class="ti ti-trash"></i></button>
                 </div>
               </td>
             </tr>
@@ -224,33 +207,31 @@ function onDeleted() {
               <i v-else class="ti ti-box"></i>
             </span>
             <div class="flex-grow-1 min-w-0">
-              <div class="d-flex justify-content-between align-items-start gap-2">
-                <div class="fw-medium text-gray-9 text-break min-w-0">{{ product.name }}</div>
-                <div class="fw-semibold text-gray-9 text-nowrap">{{ formatPeso(product.priceCents) }}</div>
-              </div>
+              <div class="fw-medium text-gray-9 text-break">{{ product.name }}</div>
               <div class="fs-12 text-gray-5 text-break">
                 {{ product.sku }}
                 <template v-if="product.category"> · {{ product.category.name }}</template>
-                <template v-if="product.subcategory"> › {{ product.subcategory.name }}</template>
                 <template v-if="product.brand"> · {{ product.brand.name }}</template>
               </div>
               <div class="d-flex flex-wrap align-items-center gap-2 mt-1 fs-13">
-                <span>{{ formatQuantity(product.quantity) }} {{ product.unit.shortName }}</span>
-                <span v-if="stockLevel(product) !== 'ok'" class="fs-12" :class="`stock-${stockLevel(product)}`">
-                  {{ STOCK_LABELS[stockLevel(product)] }}
+                <span class="fw-medium" :class="tab === 'out' ? 'text-danger' : 'stock-low'">
+                  {{ formatQuantity(product.quantity) }} {{ product.unit.shortName }}
+                </span>
+                <span class="text-gray-5 fs-12">
+                  alert at {{ formatQuantity(product.alertQuantity) }} {{ product.unit.shortName }}
                 </span>
               </div>
             </div>
           </div>
-          <div class="d-flex justify-content-between align-items-center mt-2">
-            <span class="badge" :class="product.status === 'active' ? 'bg-success' : 'bg-danger'">
-              <i class="ti ti-point-filled me-1"></i>{{ product.status === 'active' ? 'Active' : 'Inactive' }}
-            </span>
+          <div class="d-flex justify-content-between align-items-center gap-3 mt-2">
+            <div v-if="tab === 'low'" class="stock-bar flex-grow-1">
+              <span :style="{ width: `${stockPercent(product)}%` }"></span>
+            </div>
+            <span v-else class="fs-12 text-danger">Out of stock</span>
             <div v-if="isAdmin" class="row-actions">
               <RouterLink :to="{ name: 'product-edit', params: { id: product.id } }" title="Edit">
                 <i class="ti ti-edit"></i>
               </RouterLink>
-              <button type="button" title="Delete" @click="deleting = product"><i class="ti ti-trash"></i></button>
             </div>
           </div>
         </div>
@@ -258,29 +239,58 @@ function onDeleted() {
 
       <!-- Empty state -->
       <div v-if="!loading && !loadError && items.length === 0" class="text-center text-gray-5 py-5">
-        <i class="ti ti-box fs-24 d-block mb-2"></i>
+        <i class="ti ti-circle-check fs-24 d-block mb-2"></i>
         <template v-if="hasFilters">No products match your filters.</template>
-        <template v-else>
-          No products yet.
-          <RouterLink v-if="isAdmin" :to="{ name: 'product-create' }" class="d-block mt-2">Add your first product</RouterLink>
-        </template>
+        <template v-else-if="tab === 'low'">No products are running low.</template>
+        <template v-else>No products are out of stock.</template>
       </div>
     </div>
 
-    <ListPager v-model:page="page" v-model:page-size="pageSize" :total="total" label="Product pages" />
+    <ListPager v-model:page="page" v-model:page-size="pageSize" :total="total" label="Low stock pages" />
   </div>
-
-  <ConfirmDeleteModal
-    v-if="deleting"
-    title="Delete Product"
-    :item-name="deleting.name"
-    :action="() => deleteProduct(deleting!.id)"
-    @close="deleting = null"
-    @deleted="onDeleted"
-  />
 </template>
 
 <style scoped>
+.tab-bar {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.tab-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border: 1px solid #e6eaed;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #646b72;
+  font-weight: 500;
+}
+
+.tab-bar button.active {
+  border-color: #fe9f43;
+  background: #fe9f43;
+  color: #ffffff;
+}
+
+.tab-bar .count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  color: #ffffff;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.tab-bar button.active .count {
+  background: #ffffff !important;
+  color: #fe9f43;
+}
+
 .search-input .search-icon {
   position: absolute;
   top: 50%;
@@ -308,24 +318,28 @@ function onDeleted() {
 }
 
 .product-name {
-  max-width: 280px;
+  max-width: 300px;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  font-weight: 500;
-  font-size: 11px;
 }
 
 .stock-low {
   color: #e69500;
 }
 
-.stock-out {
-  color: #ff0000;
+.stock-bar {
+  width: 80px;
+  height: 4px;
+  margin-top: 4px;
+  border-radius: 2px;
+  background: #f2f4f7;
+  overflow: hidden;
+}
+
+.stock-bar span {
+  display: block;
+  height: 100%;
+  background: #e69500;
 }
 
 .row-actions {
@@ -410,7 +424,6 @@ function onDeleted() {
   transition: opacity 0.15s;
 }
 
-/* Phones: search on its own row, filters share the next one */
 @media (max-width: 767.98px) {
   .search-set,
   .search-input,
@@ -428,16 +441,9 @@ function onDeleted() {
 }
 
 @media (max-width: 575.98px) {
-  .filters .form-select:last-child {
-    flex-basis: 100%;
-  }
-
-  .page-actions {
-    width: 100%;
-  }
-
-  .page-actions .btn-primary {
+  .tab-bar button {
     flex: 1;
+    justify-content: center;
   }
 }
 </style>

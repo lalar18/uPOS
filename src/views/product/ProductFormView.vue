@@ -16,6 +16,7 @@ import {
   type ProductOptions,
 } from '@/api/products'
 import { currentUser } from '@/auth'
+import { formatDuration } from '@/api/warranties'
 import { resizeImage } from '@/utils/image'
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024 // 2 MB, checked on the original file
@@ -32,7 +33,7 @@ const isNew = computed(() => props.id === undefined)
 
 const loading = ref(true)
 const loadError = ref('')
-const options = ref<ProductOptions>({ categories: [], subcategories: [], brands: [], units: [] })
+const options = ref<ProductOptions>({ categories: [], subcategories: [], brands: [], units: [], warranties: [] })
 let original: Product | null = null
 
 // Form fields. Money and quantities are kept as typed text and parsed on save.
@@ -48,6 +49,9 @@ const cost = ref('')
 const quantity = ref('0')
 const alertQuantity = ref('0')
 const description = ref('')
+const manufacturedDate = ref('') // YYYY-MM-DD, from <input type="date">
+const expiryDate = ref('')
+const warrantyId = ref<number | null>(null)
 const active = ref(true)
 
 const centsToText = (cents: number | null) => (cents === null ? '' : (cents / 100).toFixed(2))
@@ -76,6 +80,9 @@ async function load() {
       quantity.value = String(product.quantity)
       alertQuantity.value = String(product.alertQuantity)
       description.value = product.description ?? ''
+      manufacturedDate.value = product.manufacturedDate ?? ''
+      expiryDate.value = product.expiryDate ?? ''
+      warrantyId.value = product.warranty?.id ?? null
       active.value = product.status === 'active'
       imagePreview.value = product.imageUrl
     } else {
@@ -105,6 +112,7 @@ const subcategoryChoices = computed(() =>
 )
 const brandChoices = computed(() => choices(options.value.brands, brandId.value))
 const unitChoices = computed(() => choices(options.value.units, unitId.value))
+const warrantyChoices = computed(() => choices(options.value.warranties, warrantyId.value))
 const selectedUnit = computed(() => options.value.units.find((u) => u.id === unitId.value) ?? null)
 const quantityStep = computed(() => (selectedUnit.value?.allowDecimal ? '0.001' : '1'))
 
@@ -193,6 +201,11 @@ function buildInput(): ProductInput | string {
   const alert = parseQuantity(alertQuantity.value, 'Low stock alert')
   if (typeof alert === 'string') return alert
 
+  // YYYY-MM-DD strings compare in date order
+  if (manufacturedDate.value && expiryDate.value && expiryDate.value < manufacturedDate.value) {
+    return 'Expiry date cannot be before the manufactured date.'
+  }
+
   return {
     name: name.value.trim(),
     sku: sku.value.trim(),
@@ -206,6 +219,9 @@ function buildInput(): ProductInput | string {
     quantity: qty,
     alertQuantity: alert,
     description: description.value.trim() || null,
+    manufacturedDate: manufacturedDate.value || null,
+    expiryDate: expiryDate.value || null,
+    warrantyId: warrantyId.value,
     status: active.value ? 'active' : 'inactive',
   }
 }
@@ -379,7 +395,7 @@ load()
         </div>
 
         <!-- Pricing and stock -->
-        <div class="card mb-0">
+        <div class="card mb-3">
           <div class="card-header">
             <h5 class="card-title mb-0"><i class="ti ti-currency-peso me-1 text-primary"></i>Pricing &amp; Stock</h5>
           </div>
@@ -444,6 +460,49 @@ load()
                   <span v-if="selectedUnit" class="input-group-text">{{ selectedUnit.shortName }}</span>
                 </div>
                 <div class="form-text">Flag as low stock at or below this.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Expiry and warranty -->
+        <div class="card mb-0">
+          <div class="card-header">
+            <h5 class="card-title mb-0">
+              <i class="ti ti-calendar-time me-1 text-primary"></i>Expiry &amp; Warranty
+            </h5>
+          </div>
+          <div class="card-body">
+            <div class="row g-3">
+              <div class="col-6 col-md-4">
+                <label class="form-label" for="product-manufactured">Manufactured</label>
+                <input id="product-manufactured" v-model="manufacturedDate" type="date" class="form-control" />
+              </div>
+              <div class="col-6 col-md-4">
+                <label class="form-label" for="product-expiry">Expiry Date</label>
+                <input
+                  id="product-expiry"
+                  v-model="expiryDate"
+                  type="date"
+                  class="form-control"
+                  :min="manufacturedDate || undefined"
+                />
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label" for="product-warranty">Warranty</label>
+                <select id="product-warranty" v-model="warrantyId" class="form-select">
+                  <option :value="null">None</option>
+                  <option v-for="w in warrantyChoices" :key="w.id" :value="w.id">
+                    {{ w.name }} ({{ formatDuration(w.duration, w.durationUnit) }}){{
+                      w.status === 'inactive' ? ' (inactive)' : ''
+                    }}
+                  </option>
+                </select>
+              </div>
+              <div class="col-12">
+                <div class="form-text mt-0">
+                  Products with an expiry date show up in Expired Products once it passes.
+                </div>
               </div>
             </div>
           </div>

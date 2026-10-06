@@ -3,7 +3,9 @@
 // Prices are whole centavos (₱12.50 -> 1250).
 //
 //   GET    /api/products?search=&status=&categoryId=&subcategoryId=&brandId=&page=&pageSize=  -> { items, total }
-//   GET    /api/products/options                -> { categories, subcategories, brands, units } for the product form
+//            &stock=low|out                     low: 0 < quantity <= alert quantity; out: quantity <= 0
+//            &expiresFrom=&expiresBefore=       YYYY-MM-DD; from is inclusive, before is exclusive
+//   GET    /api/products/options                -> { categories, subcategories, brands, units, warranties } for the product form
 //   GET    /api/products/:id                    -> product
 //   POST   /api/products          (ProductInput) -> product
 //   PUT    /api/products/:id      (ProductInput) -> product
@@ -37,6 +39,10 @@ interface ProductRow {
   quantity: number
   alert_quantity: number
   description: string | null
+  manufactured_date: string | null
+  expiry_date: string | null
+  warranty_id: number | null
+  warranty_name: string | null
   status: Status
   created_at: string
   updated_at: string
@@ -56,6 +62,9 @@ interface ProductInput {
   quantity: number
   alertQuantity: number
   description: string | null
+  manufacturedDate: string | null
+  expiryDate: string | null
+  warrantyId: number | null
   status: Status
 }
 
@@ -74,12 +83,14 @@ const PRODUCT_COLUMNS = `p.id, p.name, p.sku, p.barcode, p.category_id, c.name A
   p.subcategory_id, sc.name AS subcategory_name, p.brand_id, b.name AS brand_name,
   p.unit_id, u.name AS unit_name, u.short_name AS unit_short_name,
   u.allow_decimal AS unit_allow_decimal, p.price_cents, p.cost_cents, p.quantity, p.alert_quantity,
-  p.description, p.status, p.created_at, p.updated_at, i.updated_at AS image_updated_at`
+  p.description, p.manufactured_date, p.expiry_date, p.warranty_id, w.name AS warranty_name,
+  p.status, p.created_at, p.updated_at, i.updated_at AS image_updated_at`
 const PRODUCT_FROM = `FROM products p
   JOIN units u ON u.id = p.unit_id
   LEFT JOIN categories c ON c.id = p.category_id
   LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
   LEFT JOIN brands b ON b.id = p.brand_id
+  LEFT JOIN warranties w ON w.id = p.warranty_id
   LEFT JOIN product_images i ON i.product_id = p.id`
 
 function publicProduct(row: ProductRow, showCost: boolean) {
@@ -102,6 +113,9 @@ function publicProduct(row: ProductRow, showCost: boolean) {
     quantity: row.quantity,
     alertQuantity: row.alert_quantity,
     description: row.description,
+    manufacturedDate: row.manufactured_date,
+    expiryDate: row.expiry_date,
+    warranty: row.warranty_id === null ? null : { id: row.warranty_id, name: row.warranty_name! },
     status: row.status,
     // The version param changes on every upload, so browsers never show a stale image
     imageUrl: row.image_updated_at
@@ -137,6 +151,19 @@ const isQuantity = (value: unknown): value is number =>
 
 /** Stock is kept to 3 decimals (grams of a kilo), which also hides float noise like 0.30000000000000004 */
 const roundQuantity = (value: number) => Math.round(value * 1000) / 1000
+
+/** True for a real calendar date written as YYYY-MM-DD (so 2026-02-30 is rejected) */
+function isDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const date = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value)
+}
+
+/** null/undefined/'' -> null, a valid date -> itself, anything else -> undefined (invalid). */
+function optionalDate(value: unknown): string | null | undefined {
+  if (value === null || value === undefined || value === '') return null
+  return isDate(value) ? value : undefined
+}
 
 /** Validates a create/update body against the store's categories, brands and units. */
 async function readProductInput(db: D1Database, storeId: number, request: Request): Promise<ProductInput | Response> {
@@ -182,28 +209,55 @@ async function readProductInput(db: D1Database, storeId: number, request: Reques
     return error(`Description must be ${MAX_DESCRIPTION_LENGTH} characters or less`, 400)
   }
 
+  const manufacturedDate = optionalDate(body.manufacturedDate)
+  if (manufacturedDate === undefined) return error('Manufactured date must be a valid date', 400)
+  const expiryDate = optionalDate(body.expiryDate)
+  if (expiryDate === undefined) return error('Expiry date must be a valid date', 400)
+  // YYYY-MM-DD strings compare in date order
+  if (manufacturedDate && expiryDate && expiryDate < manufacturedDate) {
+    return error('Expiry date cannot be before the manufactured date', 400)
+  }
+
+  const warrantyId = optionalId(body.warrantyId)
+  if (warrantyId === undefined) return error('Invalid warranty', 400)
+
   const status = body.status ?? 'active'
   if (status !== 'active' && status !== 'inactive') return error('Status must be active or inactive', 400)
 
-  // The category, brand and unit must belong to this store, and the sub category to the category
+  // The category, brand, warranty and unit must belong to this store, and the sub category to the category
   const refs = await db
     .prepare(
       `SELECT
          (SELECT 1 FROM categories WHERE id = ? AND store_id = ?) AS category_ok,
          (SELECT 1 FROM subcategories WHERE id = ? AND category_id = ? AND store_id = ?) AS subcategory_ok,
          (SELECT 1 FROM brands WHERE id = ? AND store_id = ?) AS brand_ok,
+         (SELECT 1 FROM warranties WHERE id = ? AND store_id = ?) AS warranty_ok,
          (SELECT allow_decimal FROM units WHERE id = ? AND store_id = ?) AS unit_allow_decimal`,
     )
-    .bind(categoryId ?? 0, storeId, subcategoryId ?? 0, categoryId ?? 0, storeId, brandId ?? 0, storeId, unitId, storeId)
+    .bind(
+      categoryId ?? 0,
+      storeId,
+      subcategoryId ?? 0,
+      categoryId ?? 0,
+      storeId,
+      brandId ?? 0,
+      storeId,
+      warrantyId ?? 0,
+      storeId,
+      unitId,
+      storeId,
+    )
     .first<{
       category_ok: number | null
       subcategory_ok: number | null
       brand_ok: number | null
+      warranty_ok: number | null
       unit_allow_decimal: number | null
     }>()
   if (categoryId !== null && !refs?.category_ok) return error('Category not found', 400)
   if (subcategoryId !== null && !refs?.subcategory_ok) return error('Sub category not found in this category', 400)
   if (brandId !== null && !refs?.brand_ok) return error('Brand not found', 400)
+  if (warrantyId !== null && !refs?.warranty_ok) return error('Warranty not found', 400)
   if (refs?.unit_allow_decimal == null) return error('Unit not found', 400)
 
   const cleanQuantity = roundQuantity(quantity)
@@ -225,6 +279,9 @@ async function readProductInput(db: D1Database, storeId: number, request: Reques
     quantity: cleanQuantity,
     alertQuantity: cleanAlert,
     description,
+    manufacturedDate,
+    expiryDate,
+    warrantyId,
     status,
   }
 }
@@ -286,13 +343,36 @@ async function listProducts(db: D1Database, storeId: number, url: URL, showCost:
     where.push('p.brand_id = ?')
     params.push(brandId)
   }
+
+  let orderSql = 'p.created_at DESC, p.id DESC'
+  const stock = url.searchParams.get('stock')
+  if (stock === 'low') {
+    where.push('p.quantity > 0 AND p.quantity <= p.alert_quantity')
+    orderSql = 'p.quantity - p.alert_quantity, p.name' // furthest below the alert level first
+  } else if (stock === 'out') {
+    where.push('p.quantity <= 0')
+    orderSql = 'p.name'
+  }
+
+  const expiresFrom = url.searchParams.get('expiresFrom')
+  const expiresBefore = url.searchParams.get('expiresBefore')
+  if (isDate(expiresFrom) || isDate(expiresBefore)) {
+    where.push('p.expiry_date IS NOT NULL')
+    orderSql = 'p.expiry_date, p.name' // soonest first
+  }
+  if (isDate(expiresFrom)) {
+    where.push('p.expiry_date >= ?')
+    params.push(expiresFrom)
+  }
+  if (isDate(expiresBefore)) {
+    where.push('p.expiry_date < ?')
+    params.push(expiresBefore)
+  }
   const whereSql = `WHERE ${where.join(' AND ')}`
 
   const [items, count] = await db.batch<ProductRow | { total: number }>([
     db
-      .prepare(
-        `SELECT ${PRODUCT_COLUMNS} ${PRODUCT_FROM} ${whereSql} ORDER BY p.created_at DESC, p.id DESC LIMIT ? OFFSET ?`,
-      )
+      .prepare(`SELECT ${PRODUCT_COLUMNS} ${PRODUCT_FROM} ${whereSql} ORDER BY ${orderSql} LIMIT ? OFFSET ?`)
       .bind(...params, pageSize, (page - 1) * pageSize),
     db.prepare(`SELECT COUNT(*) AS total FROM products p ${whereSql}`).bind(...params),
   ])
@@ -305,7 +385,7 @@ async function listProducts(db: D1Database, storeId: number, url: URL, showCost:
 
 /** Everything the product form's dropdowns need, inactive ones included so a product's current pick still shows. */
 async function listOptions(db: D1Database, storeId: number): Promise<Response> {
-  const [categories, subcategories, brands, units] = await db.batch([
+  const [categories, subcategories, brands, units, warranties] = await db.batch([
     db.prepare('SELECT id, name, status FROM categories WHERE store_id = ? ORDER BY name').bind(storeId),
     db
       .prepare(
@@ -315,6 +395,12 @@ async function listOptions(db: D1Database, storeId: number): Promise<Response> {
     db.prepare('SELECT id, name, status FROM brands WHERE store_id = ? ORDER BY name').bind(storeId),
     db
       .prepare('SELECT id, name, short_name, allow_decimal, status FROM units WHERE store_id = ? ORDER BY name')
+      .bind(storeId),
+    db
+      .prepare(
+        `SELECT id, name, duration, duration_unit AS durationUnit, status FROM warranties
+         WHERE store_id = ? ORDER BY name`,
+      )
       .bind(storeId),
   ])
   type UnitOption = { id: number; name: string; short_name: string; allow_decimal: number; status: Status }
@@ -330,6 +416,7 @@ async function listOptions(db: D1Database, storeId: number): Promise<Response> {
       allowDecimal: u.allow_decimal === 1,
       status: u.status,
     })),
+    warranties: warranties!.results,
   })
 }
 
@@ -344,8 +431,9 @@ async function createProduct(db: D1Database, storeId: number, request: Request):
     const row = await db
       .prepare(
         `INSERT INTO products (store_id, name, sku, barcode, category_id, subcategory_id, brand_id, unit_id,
-           price_cents, cost_cents, quantity, alert_quantity, description, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           price_cents, cost_cents, quantity, alert_quantity, description, manufactured_date, expiry_date,
+           warranty_id, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING id`,
       )
       .bind(
@@ -362,6 +450,9 @@ async function createProduct(db: D1Database, storeId: number, request: Request):
         input.quantity,
         input.alertQuantity,
         input.description,
+        input.manufacturedDate,
+        input.expiryDate,
+        input.warrantyId,
         input.status,
       )
       .first<{ id: number }>()
@@ -384,7 +475,8 @@ async function updateProduct(db: D1Database, storeId: number, request: Request, 
       .prepare(
         `UPDATE products SET name = ?, sku = ?, barcode = ?, category_id = ?, subcategory_id = ?,
            brand_id = ?, unit_id = ?, price_cents = ?, cost_cents = ?, quantity = ?, alert_quantity = ?,
-           description = ?, status = ?, updated_at = datetime('now')
+           description = ?, manufactured_date = ?, expiry_date = ?, warranty_id = ?, status = ?,
+           updated_at = datetime('now')
          WHERE id = ? AND store_id = ?`,
       )
       .bind(
@@ -400,6 +492,9 @@ async function updateProduct(db: D1Database, storeId: number, request: Request, 
         input.quantity,
         input.alertQuantity,
         input.description,
+        input.manufacturedDate,
+        input.expiryDate,
+        input.warrantyId,
         input.status,
         id,
         storeId,

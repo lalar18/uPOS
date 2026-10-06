@@ -5,13 +5,18 @@ import BrandView from './views/brand/BrandView.vue'
 import CategoryView from './views/category/CategoryView.vue'
 import ComingSoonView from './views/common/ComingSoonView.vue'
 import DashboardView from './views/dashboard/DashboardView.vue'
+import ExpiredProductsView from './views/product/ExpiredProductsView.vue'
+import LabelPrintView from './views/label/LabelPrintView.vue'
 import LoginView from './views/auth/LoginView.vue'
+import LowStocksView from './views/product/LowStocksView.vue'
 import ProductFormView from './views/product/ProductFormView.vue'
 import ProductView from './views/product/ProductView.vue'
 import ProfileView from './views/profile/ProfileView.vue'
 import StoreView from './views/store/StoreView.vue'
 import SubCategoryView from './views/subcategory/SubCategoryView.vue'
 import UnitView from './views/unit/UnitView.vue'
+import VariantAttributeView from './views/variant/VariantAttributeView.vue'
+import WarrantyView from './views/warranty/WarrantyView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -31,6 +36,8 @@ const router = createRouter({
         { path: 'units', name: 'units', component: UnitView },
         { path: 'products', name: 'products', component: ProductView },
         { path: 'products/create', name: 'product-create', component: ProductFormView },
+        { path: 'products/expired', name: 'products-expired', component: ExpiredProductsView },
+        { path: 'products/low-stocks', name: 'products-low-stocks', component: LowStocksView },
         {
           path: 'products/:id(\\d+)/edit',
           name: 'product-edit',
@@ -38,6 +45,10 @@ const router = createRouter({
           props: true,
           meta: { menu: '/products' }, // highlights "Products" in the sidebar
         },
+        { path: 'variant-attributes', name: 'variant-attributes', component: VariantAttributeView },
+        { path: 'warranties', name: 'warranties', component: WarrantyView },
+        { path: 'print-barcode', name: 'print-barcode', component: LabelPrintView, props: { kind: 'barcode' } },
+        { path: 'print-qrcode', name: 'print-qrcode', component: LabelPrintView, props: { kind: 'qrcode' } },
         { path: 'store', name: 'store', component: StoreView },
         // Sidebar links without a page yet (and unknown URLs) land here
         { path: ':pathMatch(.*)*', name: 'coming-soon', component: ComingSoonView },

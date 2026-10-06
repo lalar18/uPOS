@@ -1,70 +1,81 @@
 <script setup lang="ts">
+// Products past their expiry date, or expiring within the next few days.
 import { computed, ref, watch } from 'vue'
-import {
-  deleteProduct,
-  formatPeso,
-  formatQuantity,
-  getProductOptions,
-  listProducts,
-  type Product,
-  type ProductOptions,
-  type ProductStatus,
-} from '@/api/products'
+import { formatQuantity, getProductOptions, listProducts, type Product, type ProductOptions } from '@/api/products'
 import { currentUser } from '@/auth'
-import ConfirmDeleteModal from '@/components/ConfirmDeleteModal.vue'
 import ListPager from '@/components/ListPager.vue'
+import { addDays, daysBetween, formatIsoDate, toIsoDate } from '@/utils/date'
+
+type Tab = 'expired' | 'soon'
+
+const SOON_CHOICES = [7, 30, 60, 90]
 
 const isAdmin = computed(() => currentUser.value?.role === 'admin')
 
 // --- List, filters and paging ---
 
+const tab = ref<Tab>('expired')
+const soonDays = ref(30)
 const items = ref<Product[]>([])
 const total = ref(0)
+const counts = ref<Record<Tab, number | null>>({ expired: null, soon: null })
 const loading = ref(false)
 const loadError = ref('')
 
 const search = ref('')
-const statusFilter = ref<ProductStatus | ''>('')
 const categoryFilter = ref<number | null>(null)
-const brandFilter = ref<number | null>(null)
 const page = ref(1)
 const pageSize = ref(10)
 
-const hasFilters = computed(
-  () => search.value !== '' || statusFilter.value !== '' || categoryFilter.value !== null || brandFilter.value !== null,
-)
+const today = ref(toIsoDate())
 
-// Category and brand choices for the filters. The list still works if these fail to load.
 const options = ref<ProductOptions>({ categories: [], subcategories: [], brands: [], units: [], warranties: [] })
 getProductOptions()
   .then((result) => (options.value = result))
   .catch(() => {})
 
+/** Expired: before today. Expiring soon: today up to (and including) today + soonDays. */
+function expiryRange(which: Tab) {
+  return which === 'expired'
+    ? { expiresBefore: today.value }
+    : { expiresFrom: today.value, expiresBefore: addDays(today.value, soonDays.value + 1) }
+}
+
+function query(which: Tab, pageNumber: number, size: number) {
+  return {
+    search: search.value.trim(),
+    status: '' as const,
+    categoryId: categoryFilter.value,
+    subcategoryId: null,
+    brandId: null,
+    ...expiryRange(which),
+    page: pageNumber,
+    pageSize: size,
+  }
+}
+
 let latestRequest = 0
 
 async function load() {
   const requestId = ++latestRequest
+  today.value = toIsoDate() // the page may have been open past midnight
   loading.value = true
   loadError.value = ''
+  const other: Tab = tab.value === 'expired' ? 'soon' : 'expired'
   try {
-    const result = await listProducts({
-      search: search.value.trim(),
-      status: statusFilter.value,
-      categoryId: categoryFilter.value,
-      subcategoryId: null,
-      brandId: brandFilter.value,
-      page: page.value,
-      pageSize: pageSize.value,
-    })
+    const [result, otherResult] = await Promise.all([
+      listProducts(query(tab.value, page.value, pageSize.value)),
+      listProducts(query(other, 1, 1)), // only its total, for the tab badge
+    ])
     if (requestId !== latestRequest) return // a newer search already went out
 
-    // Deleting the last row on a page leaves it empty; step back a page
     if (result.items.length === 0 && page.value > 1 && result.total > 0) {
       page.value = Math.ceil(result.total / pageSize.value)
       return
     }
     items.value = result.items
     total.value = result.total
+    counts.value = { [tab.value]: result.total, [other]: otherResult.total } as Record<Tab, number>
   } catch (e) {
     if (requestId === latestRequest) loadError.value = e instanceof Error ? e.message : 'Could not load products'
   } finally {
@@ -82,44 +93,56 @@ watch(search, () => {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(resetToFirstPage, 300)
 })
-watch([statusFilter, categoryFilter, brandFilter, pageSize], resetToFirstPage)
+watch([tab, soonDays, categoryFilter, pageSize], resetToFirstPage)
 watch(page, load)
 load()
 
-type StockLevel = 'out' | 'low' | 'ok'
-
-function stockLevel(product: Product): StockLevel {
-  if (product.quantity <= 0) return 'out'
-  if (product.quantity <= product.alertQuantity) return 'low'
-  return 'ok'
+/** "Expired 3 days ago", "Expires today", "In 12 days" */
+function expiryLabel(product: Product): string {
+  const days = daysBetween(today.value, product.expiryDate!)
+  if (days < 0) return `Expired ${-days} ${days === -1 ? 'day' : 'days'} ago`
+  if (days === 0) return 'Expires today'
+  return `In ${days} ${days === 1 ? 'day' : 'days'}`
 }
 
-const STOCK_LABELS: Record<StockLevel, string> = { out: 'Out of stock', low: 'Low stock', ok: '' }
-
-// --- Dialogs ---
-
-const deleting = ref<Product | null>(null)
-
-function onDeleted() {
-  deleting.value = null
-  load()
-}
+const expiryClass = (product: Product) => (daysBetween(today.value, product.expiryDate!) < 0 ? 'text-danger' : 'text-warning')
 </script>
 
 <template>
   <div class="page-header flex-wrap gap-2">
     <div class="page-title">
-      <h4>Products</h4>
-      <h6>Manage your products</h6>
+      <h4>Expired Products</h4>
+      <h6>Products past or near their expiry date</h6>
     </div>
     <div class="page-actions d-flex align-items-center gap-2">
       <button type="button" class="btn btn-white border" title="Refresh" :disabled="loading" @click="load">
         <i class="ti ti-refresh"></i>
       </button>
-      <RouterLink v-if="isAdmin" :to="{ name: 'product-create' }" class="btn btn-primary">
-        <i class="ti ti-circle-plus me-1"></i>Add Product
-      </RouterLink>
     </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tab-bar mb-3" role="tablist">
+    <button
+      type="button"
+      role="tab"
+      :aria-selected="tab === 'expired'"
+      :class="{ active: tab === 'expired' }"
+      @click="tab = 'expired'"
+    >
+      <i class="ti ti-alert-octagon"></i>Expired
+      <span v-if="counts.expired !== null" class="count bg-danger">{{ counts.expired }}</span>
+    </button>
+    <button
+      type="button"
+      role="tab"
+      :aria-selected="tab === 'soon'"
+      :class="{ active: tab === 'soon' }"
+      @click="tab = 'soon'"
+    >
+      <i class="ti ti-clock-exclamation"></i>Expiring Soon
+      <span v-if="counts.soon !== null" class="count bg-warning">{{ counts.soon }}</span>
+    </button>
   </div>
 
   <div class="card">
@@ -142,14 +165,8 @@ function onDeleted() {
           <option :value="null">All categories</option>
           <option v-for="c in options.categories" :key="c.id" :value="c.id">{{ c.name }}</option>
         </select>
-        <select v-model="brandFilter" class="form-select" aria-label="Filter by brand">
-          <option :value="null">All brands</option>
-          <option v-for="b in options.brands" :key="b.id" :value="b.id">{{ b.name }}</option>
-        </select>
-        <select v-model="statusFilter" class="form-select" aria-label="Filter by status">
-          <option value="">All statuses</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
+        <select v-if="tab === 'soon'" v-model.number="soonDays" class="form-select" aria-label="Expiring within">
+          <option v-for="days in SOON_CHOICES" :key="days" :value="days">Within {{ days }} days</option>
         </select>
       </div>
     </div>
@@ -164,10 +181,9 @@ function onDeleted() {
             <tr>
               <th>Product</th>
               <th>Category</th>
-              <th>Brand</th>
-              <th class="text-end">Price</th>
+              <th>Manufactured</th>
+              <th>Expiry Date</th>
               <th class="text-end">Stock</th>
-              <th>Status</th>
               <th v-if="isAdmin" class="text-end">Actions</th>
             </tr>
           </thead>
@@ -180,34 +196,26 @@ function onDeleted() {
                     <i v-else class="ti ti-box"></i>
                   </span>
                   <div class="min-w-0">
-                    <div class="fw-medium text-gray-9 product-name">{{ product.name }}</div>
+                    <div class="fw-medium text-gray-9 product-name">
+                      {{ product.name }}
+                      <span v-if="product.status === 'inactive'" class="badge bg-secondary ms-1">Inactive</span>
+                    </div>
                     <div class="fs-12 text-gray-5">{{ product.sku }}</div>
                   </div>
                 </div>
               </td>
+              <td>{{ product.category?.name ?? '—' }}</td>
+              <td>{{ product.manufacturedDate ? formatIsoDate(product.manufacturedDate) : '—' }}</td>
               <td>
-                <div>{{ product.category?.name ?? '—' }}</div>
-                <div v-if="product.subcategory" class="fs-12 text-gray-5">{{ product.subcategory.name }}</div>
+                <div>{{ formatIsoDate(product.expiryDate!) }}</div>
+                <div class="fs-12" :class="expiryClass(product)">{{ expiryLabel(product) }}</div>
               </td>
-              <td>{{ product.brand?.name ?? '—' }}</td>
-              <td class="text-end fw-medium text-gray-9">{{ formatPeso(product.priceCents) }}</td>
-              <td class="text-end">
-                <div>{{ formatQuantity(product.quantity) }} {{ product.unit.shortName }}</div>
-                <div v-if="stockLevel(product) !== 'ok'" class="fs-12" :class="`stock-${stockLevel(product)}`">
-                  {{ STOCK_LABELS[stockLevel(product)] }}
-                </div>
-              </td>
-              <td>
-                <span class="badge" :class="product.status === 'active' ? 'bg-success' : 'bg-danger'">
-                  <i class="ti ti-point-filled me-1"></i>{{ product.status === 'active' ? 'Active' : 'Inactive' }}
-                </span>
-              </td>
+              <td class="text-end">{{ formatQuantity(product.quantity) }} {{ product.unit.shortName }}</td>
               <td v-if="isAdmin" class="text-end">
                 <div class="row-actions">
                   <RouterLink :to="{ name: 'product-edit', params: { id: product.id } }" title="Edit">
                     <i class="ti ti-edit"></i>
                   </RouterLink>
-                  <button type="button" title="Delete" @click="deleting = product"><i class="ti ti-trash"></i></button>
                 </div>
               </td>
             </tr>
@@ -224,33 +232,25 @@ function onDeleted() {
               <i v-else class="ti ti-box"></i>
             </span>
             <div class="flex-grow-1 min-w-0">
-              <div class="d-flex justify-content-between align-items-start gap-2">
-                <div class="fw-medium text-gray-9 text-break min-w-0">{{ product.name }}</div>
-                <div class="fw-semibold text-gray-9 text-nowrap">{{ formatPeso(product.priceCents) }}</div>
+              <div class="fw-medium text-gray-9 text-break">
+                {{ product.name }}
+                <span v-if="product.status === 'inactive'" class="badge bg-secondary ms-1">Inactive</span>
               </div>
               <div class="fs-12 text-gray-5 text-break">
-                {{ product.sku }}
-                <template v-if="product.category"> · {{ product.category.name }}</template>
-                <template v-if="product.subcategory"> › {{ product.subcategory.name }}</template>
-                <template v-if="product.brand"> · {{ product.brand.name }}</template>
+                {{ product.sku }}<template v-if="product.category"> · {{ product.category.name }}</template>
               </div>
-              <div class="d-flex flex-wrap align-items-center gap-2 mt-1 fs-13">
-                <span>{{ formatQuantity(product.quantity) }} {{ product.unit.shortName }}</span>
-                <span v-if="stockLevel(product) !== 'ok'" class="fs-12" :class="`stock-${stockLevel(product)}`">
-                  {{ STOCK_LABELS[stockLevel(product)] }}
-                </span>
+              <div class="fs-13 mt-1">
+                Expiry {{ formatIsoDate(product.expiryDate!) }}
+                <span class="fs-12 ms-1" :class="expiryClass(product)">{{ expiryLabel(product) }}</span>
               </div>
             </div>
           </div>
           <div class="d-flex justify-content-between align-items-center mt-2">
-            <span class="badge" :class="product.status === 'active' ? 'bg-success' : 'bg-danger'">
-              <i class="ti ti-point-filled me-1"></i>{{ product.status === 'active' ? 'Active' : 'Inactive' }}
-            </span>
+            <span class="fs-13">Stock: {{ formatQuantity(product.quantity) }} {{ product.unit.shortName }}</span>
             <div v-if="isAdmin" class="row-actions">
               <RouterLink :to="{ name: 'product-edit', params: { id: product.id } }" title="Edit">
                 <i class="ti ti-edit"></i>
               </RouterLink>
-              <button type="button" title="Delete" @click="deleting = product"><i class="ti ti-trash"></i></button>
             </div>
           </div>
         </div>
@@ -258,29 +258,59 @@ function onDeleted() {
 
       <!-- Empty state -->
       <div v-if="!loading && !loadError && items.length === 0" class="text-center text-gray-5 py-5">
-        <i class="ti ti-box fs-24 d-block mb-2"></i>
-        <template v-if="hasFilters">No products match your filters.</template>
-        <template v-else>
-          No products yet.
-          <RouterLink v-if="isAdmin" :to="{ name: 'product-create' }" class="d-block mt-2">Add your first product</RouterLink>
-        </template>
+        <i class="ti ti-circle-check fs-24 d-block mb-2"></i>
+        <template v-if="search || categoryFilter">No products match your filters.</template>
+        <template v-else-if="tab === 'expired'">No expired products.</template>
+        <template v-else>Nothing expires in the next {{ soonDays }} days.</template>
+        <div class="fs-12 mt-1">Products without an expiry date are not listed here.</div>
       </div>
     </div>
 
-    <ListPager v-model:page="page" v-model:page-size="pageSize" :total="total" label="Product pages" />
+    <ListPager v-model:page="page" v-model:page-size="pageSize" :total="total" label="Expired product pages" />
   </div>
-
-  <ConfirmDeleteModal
-    v-if="deleting"
-    title="Delete Product"
-    :item-name="deleting.name"
-    :action="() => deleteProduct(deleting!.id)"
-    @close="deleting = null"
-    @deleted="onDeleted"
-  />
 </template>
 
 <style scoped>
+.tab-bar {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.tab-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border: 1px solid #e6eaed;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #646b72;
+  font-weight: 500;
+}
+
+.tab-bar button.active {
+  border-color: #fe9f43;
+  background: #fe9f43;
+  color: #ffffff;
+}
+
+.tab-bar .count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  color: #ffffff;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.tab-bar button.active .count {
+  background: #ffffff !important;
+  color: #fe9f43;
+}
+
 .search-input .search-icon {
   position: absolute;
   top: 50%;
@@ -308,24 +338,14 @@ function onDeleted() {
 }
 
 .product-name {
-  max-width: 280px;
+  max-width: 300px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .badge {
-  display: inline-flex;
-  align-items: center;
   font-weight: 500;
-  font-size: 11px;
-}
-
-.stock-low {
-  color: #e69500;
-}
-
-.stock-out {
-  color: #ff0000;
+  font-size: 10px;
 }
 
 .row-actions {
@@ -410,7 +430,6 @@ function onDeleted() {
   transition: opacity 0.15s;
 }
 
-/* Phones: search on its own row, filters share the next one */
 @media (max-width: 767.98px) {
   .search-set,
   .search-input,
@@ -428,16 +447,9 @@ function onDeleted() {
 }
 
 @media (max-width: 575.98px) {
-  .filters .form-select:last-child {
-    flex-basis: 100%;
-  }
-
-  .page-actions {
-    width: 100%;
-  }
-
-  .page-actions .btn-primary {
+  .tab-bar button {
     flex: 1;
+    justify-content: center;
   }
 }
 </style>

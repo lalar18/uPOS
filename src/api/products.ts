@@ -23,6 +23,9 @@ export interface Product {
   quantity: number
   alertQuantity: number
   description: string | null
+  manufacturedDate: string | null // YYYY-MM-DD
+  expiryDate: string | null // YYYY-MM-DD
+  warranty: { id: number; name: string } | null
   status: ProductStatus
   imageUrl: string | null
   createdAt: string
@@ -42,6 +45,9 @@ export interface ProductInput {
   quantity: number
   alertQuantity: number
   description: string | null
+  manufacturedDate: string | null
+  expiryDate: string | null
+  warrantyId: number | null
   status: ProductStatus
 }
 
@@ -51,6 +57,9 @@ export interface ProductQuery {
   categoryId: number | null
   subcategoryId: number | null
   brandId: number | null
+  stock?: 'low' | 'out' // low: 0 < quantity <= alert quantity; out: quantity <= 0
+  expiresFrom?: string // YYYY-MM-DD, inclusive
+  expiresBefore?: string // YYYY-MM-DD, exclusive
   page: number
   pageSize: number
 }
@@ -66,6 +75,7 @@ export interface ProductOptions {
   subcategories: (ProductOption & { categoryId: number })[]
   brands: ProductOption[]
   units: (ProductUnit & { status: ProductStatus })[]
+  warranties: (ProductOption & { duration: number; durationUnit: 'day' | 'month' | 'year' })[]
 }
 
 export async function listProducts(query: ProductQuery): Promise<{ items: Product[]; total: number }> {
@@ -75,6 +85,9 @@ export async function listProducts(query: ProductQuery): Promise<{ items: Produc
   if (query.categoryId) params.set('categoryId', String(query.categoryId))
   if (query.subcategoryId) params.set('subcategoryId', String(query.subcategoryId))
   if (query.brandId) params.set('brandId', String(query.brandId))
+  if (query.stock) params.set('stock', query.stock)
+  if (query.expiresFrom) params.set('expiresFrom', query.expiresFrom)
+  if (query.expiresBefore) params.set('expiresBefore', query.expiresBefore)
   return readJson(await fetch(`/api/products?${params}`))
 }
 
