@@ -6,6 +6,7 @@ export interface Plan {
   maxUsers: number
   maxAdmins: number | null // null: any of the users may be admins
   maxProducts: number
+  monthlyPrice: number // whole pesos
 }
 
 export interface Renewal {
@@ -28,6 +29,12 @@ export interface Subscription {
   pendingRenewal: Renewal | null // waiting for payment
   renewals: Renewal[] // paid ones, newest first
 }
+
+/** Every plan and its price; works without logging in (the landing page uses it). */
+export const getPlans = async (): Promise<Plan[]> => readJson(await fetch('/api/plans'))
+
+/** 1499 as "₱1,499" */
+export const formatPrice = (pesos: number) => `₱${pesos.toLocaleString('en-US')}`
 
 export const getSubscription = async (): Promise<Subscription> => readJson(await fetch('/api/subscription'))
 

@@ -23,7 +23,7 @@ import {
 } from './session'
 import { handleSubcategories } from './subcategories'
 import { handleSettings } from './settings'
-import { handleSubscription, subscriptionExpired } from './subscription'
+import { handleSubscription, listPlans, subscriptionExpired } from './subscription'
 import { handleSuppliers } from './suppliers'
 import { handleUnits } from './units'
 import { handleUsers } from './users'
@@ -85,6 +85,11 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (url.pathname === '/api/health') {
     const row = await env.DB.prepare('SELECT 1 AS ok').first<{ ok: number }>()
     return Response.json({ db: row?.ok === 1 })
+  }
+
+  // Plans and prices, for the landing page
+  if (url.pathname === '/api/plans' && request.method === 'GET') {
+    return listPlans(env.DB)
   }
 
   if (url.pathname === '/api/login' && request.method === 'POST') {

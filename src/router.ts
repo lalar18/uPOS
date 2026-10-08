@@ -10,6 +10,7 @@ import DashboardView from './views/dashboard/DashboardView.vue'
 import GeneralSettingsView from './views/settings/GeneralSettingsView.vue'
 import ExpiredProductsView from './views/product/ExpiredProductsView.vue'
 import LabelPrintView from './views/label/LabelPrintView.vue'
+import LandingView from './views/landing/LandingView.vue'
 import LoginView from './views/auth/LoginView.vue'
 import LowStocksView from './views/product/LowStocksView.vue'
 import ManageStockView from './views/stock/ManageStockView.vue'
@@ -38,6 +39,8 @@ import WarrantyView from './views/warranty/WarrantyView.vue'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    // Public site (with pricing); signed-out visitors to "/" land here. Its Portal button opens the login.
+    { path: '/welcome', name: 'landing', component: LandingView },
     { path: '/login', name: 'login', component: LoginView, meta: { guestOnly: true } },
     {
       // Pages inside the header + sidebar layout. Add new pages as children here.
@@ -141,6 +144,7 @@ router.beforeEach(async (to) => {
   const user = await loadSession()
 
   if (to.matched.some((r) => r.meta.requiresAuth) && !user) {
+    if (to.fullPath === '/') return { name: 'landing' }
     return { name: 'login', query: to.fullPath !== '/' ? { redirect: to.fullPath } : {} }
   }
   if (to.meta.guestOnly && user) {

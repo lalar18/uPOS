@@ -7,6 +7,7 @@
 // the platform owner marks it paid in the database, which extends the store by a month
 // (see migrations/0017_add_subscription_expiry.sql).
 //
+//   GET    /api/plans                       -> plans, cheapest first (public: the landing page's pricing)
 //   GET    /api/subscription                -> { plan, expiresAt, expired, usage, plans, pendingRenewal, renewals }
 //   POST   /api/subscription/renewals       { planId } -> renewal   (admins; one pending at a time)
 //   DELETE /api/subscription/renewals/:id   -> { ok }                (admins; cancels a pending renewal)
@@ -23,6 +24,7 @@ interface PlanRow {
   max_users: number
   max_admins: number | null
   max_products: number
+  monthly_price: number // whole pesos
 }
 
 export interface PlanUsage {
@@ -32,7 +34,7 @@ export interface PlanUsage {
   products: number
 }
 
-const PLAN_COLUMNS = 'p.id, p.name, p.max_users, p.max_admins, p.max_products'
+const PLAN_COLUMNS = 'p.id, p.name, p.max_users, p.max_admins, p.max_products, p.monthly_price'
 
 /** SQL that's true while store `?` can add a user (binds: storeId, storeId) */
 export const USER_SEAT_FREE = `(SELECT COUNT(*) FROM users WHERE store_id = ?) <
@@ -54,7 +56,17 @@ function publicPlan(row: PlanRow) {
     maxUsers: row.max_users,
     maxAdmins: row.max_admins,
     maxProducts: row.max_products,
+    monthlyPrice: row.monthly_price,
   }
+}
+
+const listPlanRows = (db: D1Database) =>
+  db.prepare(`SELECT ${PLAN_COLUMNS} FROM plans p ORDER BY p.sort_order`).all<PlanRow>()
+
+/** GET /api/plans: every plan and its price, for visitors who aren't logged in. */
+export async function listPlans(db: D1Database): Promise<Response> {
+  const plans = await listPlanRows(db)
+  return Response.json(plans.results.map(publicPlan))
 }
 
 export async function getPlanUsage(db: D1Database, storeId: number): Promise<PlanUsage | null> {
@@ -140,7 +152,7 @@ const MAX_RENEWALS_SHOWN = 12
 async function getSubscription(db: D1Database, user: SessionUser): Promise<Response> {
   const [usage, plans, renewals] = await Promise.all([
     getPlanUsage(db, user.store_id),
-    db.prepare(`SELECT ${PLAN_COLUMNS} FROM plans p ORDER BY p.sort_order`).all<PlanRow>(),
+    listPlanRows(db),
     db
       .prepare(
         `SELECT ${RENEWAL_COLUMNS} FROM subscription_renewals sr ${RENEWAL_JOINS}
