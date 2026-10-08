@@ -4,8 +4,8 @@
 // stores.plan_expires_at; after that the store is read-only (see index.ts) until renewed.
 //
 // Admins request a renewal (optionally on another plan) here. Until online payment exists,
-// the platform owner marks it paid in the database, which extends the store by a month
-// (see migrations/0017_add_subscription_expiry.sql).
+// a super admin marks it paid in the US Panel (see usPanel/billing.ts), which extends the
+// store by the months paid for.
 //
 //   GET    /api/plans                       -> plans, cheapest first (public: the landing page's pricing)
 //   GET    /api/subscription                -> { plan, expiresAt, expired, usage, plans, pendingRenewal, renewals }
@@ -18,7 +18,7 @@
 import { error } from './documents'
 import type { SessionUser } from './session'
 
-interface PlanRow {
+export interface PlanRow {
   id: string
   name: string
   max_users: number
@@ -34,7 +34,7 @@ export interface PlanUsage {
   products: number
 }
 
-const PLAN_COLUMNS = 'p.id, p.name, p.max_users, p.max_admins, p.max_products, p.monthly_price'
+export const PLAN_COLUMNS = 'p.id, p.name, p.max_users, p.max_admins, p.max_products, p.monthly_price'
 
 /** SQL that's true while store `?` can add a user (binds: storeId, storeId) */
 export const USER_SEAT_FREE = `(SELECT COUNT(*) FROM users WHERE store_id = ?) <
@@ -49,7 +49,7 @@ export const ADMIN_SEAT_FREE = `(SELECT p.max_admins IS NULL OR p.max_admins > (
 export const PRODUCT_SLOT_FREE = `(SELECT COUNT(*) FROM products WHERE store_id = ?) <
   (SELECT p.max_products FROM stores st JOIN plans p ON p.id = st.plan_id WHERE st.id = ?)`
 
-function publicPlan(row: PlanRow) {
+export function publicPlan(row: PlanRow) {
   return {
     id: row.id,
     name: row.name,

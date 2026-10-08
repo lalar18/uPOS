@@ -60,7 +60,7 @@ function publicStore(row: StoreRow) {
 const error = (message: string, status: number) => Response.json({ error: message }, { status })
 
 /** Validates an update body. Blank optional fields become null. Returns the clean values or an error Response. */
-async function readStoreInput(
+export async function readStoreInput(
   request: Request,
 ): Promise<({ name: string } & Record<OptionalField, string | null>) | Response> {
   const body = await request.json<Record<string, unknown>>().catch(() => null)

@@ -26,6 +26,7 @@ import { handleSettings } from './settings'
 import { handleSubscription, listPlans, subscriptionExpired } from './subscription'
 import { handleSuppliers } from './suppliers'
 import { handleUnits } from './units'
+import { handleUsPanel } from './usPanel'
 import { handleUsers } from './users'
 import { handleVariantAttributes } from './variantAttributes'
 import { handleWarranties } from './warranties'
@@ -127,6 +128,11 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (url.pathname === '/api/logout' && request.method === 'POST') {
     const cookie = await destroySession(env.DB, request)
     return Response.json({ ok: true }, { headers: { 'Set-Cookie': cookie } })
+  }
+
+  // The US Panel (super admins) has its own sign-in, separate from store users
+  if (url.pathname === '/api/us-panel' || url.pathname.startsWith('/api/us-panel/')) {
+    return handleUsPanel(env.DB, request, url)
   }
 
   // Everything below requires a logged-in user

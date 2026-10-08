@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { Permission } from './api/roles'
 import { loadSession, subscriptionExpired } from './auth'
+import { loadSuperAdmin } from './usPanelAuth'
 import AppLayout from './layouts/AppLayout.vue'
 import BrandView from './views/brand/BrandView.vue'
 import CategoryView from './views/category/CategoryView.vue'
@@ -42,6 +43,34 @@ const router = createRouter({
     // Public site (with pricing); signed-out visitors to "/" land here. Its Portal button opens the login.
     { path: '/welcome', name: 'landing', component: LandingView },
     { path: '/login', name: 'login', component: LoginView, meta: { guestOnly: true } },
+    // US Panel: the platform owner's back office (super admins only). Loaded on demand, so
+    // store users never download it.
+    {
+      path: '/us-panel/login',
+      name: 'us-login',
+      component: () => import('./views/usPanel/UsLoginView.vue'),
+      meta: { superAdminGuest: true },
+    },
+    {
+      path: '/us-panel',
+      component: () => import('./layouts/UsPanelLayout.vue'),
+      meta: { superAdmin: true },
+      children: [
+        { path: '', name: 'us-dashboard', component: () => import('./views/usPanel/UsDashboardView.vue') },
+        { path: 'stores', name: 'us-stores', component: () => import('./views/usPanel/UsStoresView.vue') },
+        {
+          path: 'stores/:id(\\d+)',
+          name: 'us-store',
+          component: () => import('./views/usPanel/UsStoreDetailView.vue'),
+          props: (route) => ({ id: Number(route.params.id) }),
+          meta: { menu: '/us-panel/stores' },
+        },
+        { path: 'billing', name: 'us-billing', component: () => import('./views/usPanel/UsBillingView.vue') },
+        { path: 'plans', name: 'us-plans', component: () => import('./views/usPanel/UsPlansView.vue') },
+        { path: 'account', name: 'us-account', component: () => import('./views/usPanel/UsAccountView.vue') },
+        { path: ':pathMatch(.*)*', redirect: { name: 'us-dashboard' } },
+      ],
+    },
     {
       // Pages inside the header + sidebar layout. Add new pages as children here.
       path: '/',
@@ -141,6 +170,14 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
+  // The US Panel only needs the super admin's session, not a store user's
+  if (to.matched.some((r) => r.meta.superAdmin) || to.meta.superAdminGuest) {
+    const admin = await loadSuperAdmin()
+    if (to.meta.superAdminGuest) return admin ? { name: 'us-dashboard' } : undefined
+    if (!admin) return { name: 'us-login', query: to.name !== 'us-dashboard' ? { redirect: to.fullPath } : {} }
+    return
+  }
+
   const user = await loadSession()
 
   if (to.matched.some((r) => r.meta.requiresAuth) && !user) {
@@ -171,6 +208,8 @@ declare module 'vue-router' {
     permission?: Permission
     writes?: boolean // only for saving things (POS, create/edit forms); closed while the subscription is expired
     menu?: string // sidebar link to highlight
+    superAdmin?: boolean // US Panel pages (signed-in super admins only)
+    superAdminGuest?: boolean // the US Panel login
   }
 }
 

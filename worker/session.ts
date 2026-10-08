@@ -53,16 +53,20 @@ export function sessionUserFromRow(row: SessionUserRow): SessionUser {
   }
 }
 
-async function sha256Hex(value: string): Promise<string> {
+export async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-function readSessionToken(request: Request): string | null {
+/** A random session token (hex). Only its sha256Hex() is stored. */
+export const newSessionToken = () =>
+  [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, '0')).join('')
+
+export function readSessionToken(request: Request, cookieName = COOKIE_NAME): string | null {
   const cookies = request.headers.get('Cookie') ?? ''
   for (const part of cookies.split(';')) {
     const [name, ...rest] = part.trim().split('=')
-    if (name === COOKIE_NAME) return rest.join('=') || null
+    if (name === cookieName) return rest.join('=') || null
   }
   return null
 }
@@ -74,7 +78,7 @@ function sessionCookie(token: string, maxAgeSeconds: number | null): string {
 
 /** Creates a session and returns the Set-Cookie header value for it. */
 export async function createSession(db: D1Database, userId: number, rememberMe: boolean): Promise<string> {
-  const token = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, '0')).join('')
+  const token = newSessionToken()
   const lifetime = rememberMe ? REMEMBER_ME_SECONDS : SHORT_SESSION_SECONDS
 
   await db

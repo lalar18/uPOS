@@ -53,8 +53,8 @@ interface RoleInfo {
   is_admin: number
 }
 
-const MAX_FULL_NAME_LENGTH = 100
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+export const MAX_FULL_NAME_LENGTH = 100
+export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const USER_COLUMNS = `u.id, u.email, u.full_name, u.role_id, r.name AS role_name, r.is_admin AS role_is_admin,
   u.is_active, a.updated_at AS avatar_updated_at, u.created_at, u.updated_at`
@@ -98,7 +98,7 @@ async function getRole(db: D1Database, storeId: number, id: number): Promise<Rol
   return db.prepare('SELECT id, is_admin FROM roles WHERE id = ? AND store_id = ?').bind(id, storeId).first<RoleInfo>()
 }
 
-function readPassword(value: unknown): string | Response {
+export function readPassword(value: unknown): string | Response {
   if (typeof value !== 'string' || !value) return error('Password is required', 400)
   if (value.length < MIN_PASSWORD_LENGTH || value.length > MAX_PASSWORD_LENGTH) {
     return error(`Password must be ${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} characters`, 400)
@@ -126,7 +126,7 @@ function readUserInput(body: Record<string, unknown>): UserInput | Response {
 }
 
 /** Emails are unique across every store (they're the login), so this checks all users. */
-async function emailTaken(db: D1Database, email: string, excludeId = 0): Promise<boolean> {
+export async function emailTaken(db: D1Database, email: string, excludeId = 0): Promise<boolean> {
   const row = await db.prepare('SELECT 1 FROM users WHERE email = ? AND id != ?').bind(email, excludeId).first()
   return row !== null
 }
