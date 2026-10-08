@@ -33,3 +33,6 @@ export async function getStore(): Promise<Store> {
 }
 
 export const updateStore = (input: StoreInput) => sendJson<Store>('PUT', '/api/store', input)
+
+/** The store's code, e.g. "STR-00001": quote it to the system provider (it's the store's id). */
+export const storeCode = (id: number) => `STR-${String(id).padStart(5, '0')}`

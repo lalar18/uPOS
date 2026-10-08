@@ -2,8 +2,9 @@
 import { onBeforeUnmount, ref } from 'vue'
 import Cropper from 'cropperjs'
 import 'cropperjs/dist/cropper.css'
-import { changePassword, currentUser, removeAvatar, uploadAvatar } from '@/auth'
+import { changePassword, currentUser, isAdmin, removeAvatar, uploadAvatar } from '@/auth'
 import UserAvatar from '@/components/UserAvatar.vue'
+import StoreSubscriptionCard from './StoreSubscriptionCard.vue'
 
 // --- Avatar ---
 
@@ -270,6 +271,8 @@ async function handleChangePassword() {
       </div>
     </div>
   </div>
+
+  <StoreSubscriptionCard v-if="isAdmin()" />
 
   <!-- Crop dialog -->
   <template v-if="cropSrc">
