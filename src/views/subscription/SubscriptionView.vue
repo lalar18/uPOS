@@ -71,6 +71,15 @@ const remaining = computed(() =>
   subscription.value?.expiresAt && !subscription.value.expired ? daysLeft(subscription.value.expiresAt) : 0,
 )
 
+/** Renewing opens in the last week before expiry (or once expired), unless one is already waiting */
+const RENEW_WINDOW_DAYS = 7
+const canRenew = computed(
+  () =>
+    !!subscription.value &&
+    !subscription.value.pendingRenewal &&
+    (subscription.value.expired || remaining.value <= RENEW_WINDOW_DAYS),
+)
+
 const number = new Intl.NumberFormat('en-US')
 
 /** Width of a usage bar, capped at 100% (a store moved to a smaller plan can be over) */
@@ -108,7 +117,9 @@ const barClass = (used: number, max: number) => (used >= max ? 'bg-danger' : use
         <!-- Expiry -->
         <div
           class="expiry d-flex flex-wrap align-items-center justify-content-between gap-3 rounded p-3 mb-4"
-          :class="subscription.expired ? 'bg-danger-transparent' : remaining <= 7 ? 'bg-warning-transparent' : 'bg-light'"
+          :class="
+            subscription.expired ? 'bg-danger-transparent' : remaining <= RENEW_WINDOW_DAYS ? 'bg-warning-transparent' : 'bg-light'
+          "
         >
           <div class="d-flex align-items-center gap-2">
             <i
@@ -129,7 +140,7 @@ const barClass = (used: number, max: number) => (used >= max ? 'bg-danger' : use
             </div>
           </div>
           <button
-            v-if="!subscription.pendingRenewal"
+            v-if="canRenew"
             type="button"
             class="btn btn-primary"
             :disabled="saving"
@@ -218,7 +229,7 @@ const barClass = (used: number, max: number) => (used >= max ? 'bg-danger' : use
               <li><i class="ti ti-box me-2 text-primary"></i>Up to {{ number.format(plan.maxProducts) }} products</li>
             </ul>
             <button
-              v-if="plan.id !== subscription.plan.id && !subscription.pendingRenewal"
+              v-if="plan.id !== subscription.plan.id && canRenew"
               type="button"
               class="btn btn-sm btn-outline-primary mt-auto align-self-start"
               :disabled="saving"
