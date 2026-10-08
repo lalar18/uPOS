@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // Subtotal, discount, tax and total for a sale or quotation form. The parent parses the
 // discount and tax text (see utils/money.ts) and passes the totals worked out from them.
-import { formatPeso } from '@/api/products'
 import type { Totals } from '@/api/sales'
+import { currencySymbol, formatMoney } from '@/utils/money'
 
 defineProps<{ totals: Totals; discountError: string; taxError: string }>()
 const discount = defineModel<string>('discount', { required: true }) // pesos, e.g. "25.00"
@@ -13,13 +13,13 @@ const tax = defineModel<string>('tax', { required: true }) // percent, e.g. "12"
   <div class="totals">
     <div class="totals-row">
       <span>Subtotal</span>
-      <span class="fw-medium text-gray-9">{{ formatPeso(totals.subtotalCents) }}</span>
+      <span class="fw-medium text-gray-9">{{ formatMoney(totals.subtotalCents) }}</span>
     </div>
     <div class="totals-row">
       <label for="totals-discount">Discount</label>
       <div class="totals-input">
         <div class="input-group input-group-sm">
-          <span class="input-group-text">₱</span>
+          <span class="input-group-text">{{ currencySymbol() }}</span>
           <input
             id="totals-discount"
             v-model="discount"
@@ -53,11 +53,11 @@ const tax = defineModel<string>('tax', { required: true }) // percent, e.g. "12"
     <div v-if="taxError" class="text-danger fs-12 text-end mb-1">{{ taxError }}</div>
     <div v-if="totals.taxCents > 0" class="totals-row">
       <span>Tax</span>
-      <span class="text-gray-9">{{ formatPeso(totals.taxCents) }}</span>
+      <span class="text-gray-9">{{ formatMoney(totals.taxCents) }}</span>
     </div>
     <div class="totals-row totals-grand">
       <span>Total</span>
-      <span>{{ formatPeso(totals.totalCents) }}</span>
+      <span>{{ formatMoney(totals.totalCents) }}</span>
     </div>
   </div>
 </template>

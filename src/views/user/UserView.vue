@@ -2,6 +2,7 @@
 // Users of this store (Admin role only; the router keeps everyone else out).
 import { computed, ref, watch } from 'vue'
 import { parseDbDate } from '@/api/http'
+import { getUserDashboard, saveUserDashboard } from '@/api/dashboard'
 import { listRoles, type Role } from '@/api/roles'
 import { describeSeats, getSubscription, type Subscription } from '@/api/subscription'
 import { deleteUser, listUsers, type ManagedUser } from '@/api/users'
@@ -9,6 +10,7 @@ import { currentUser } from '@/auth'
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal.vue'
 import ListPager from '@/components/ListPager.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
+import DashboardLayoutModal from '../dashboard/DashboardLayoutModal.vue'
 import ResetPasswordModal from './ResetPasswordModal.vue'
 import UserFormModal from './UserFormModal.vue'
 
@@ -104,6 +106,7 @@ const formOpen = ref(false)
 const editing = ref<ManagedUser | null>(null) // null while adding
 const resetting = ref<ManagedUser | null>(null)
 const deleting = ref<ManagedUser | null>(null)
+const dashboardFor = ref<ManagedUser | null>(null)
 
 function openForm(user: ManagedUser | null) {
   notice.value = ''
@@ -125,6 +128,11 @@ function onSaved(user: ManagedUser) {
 function onPasswordReset() {
   notice.value = `Password reset for ${resetting.value?.fullName ?? 'the user'}.`
   resetting.value = null
+}
+
+function onDashboardSaved() {
+  notice.value = `Dashboard saved for ${dashboardFor.value?.fullName ?? 'the user'}.`
+  dashboardFor.value = null
 }
 
 function onDeleted() {
@@ -244,6 +252,9 @@ function onDeleted() {
               <td class="text-end">
                 <div class="row-actions">
                   <button type="button" title="Edit" @click="openForm(user)"><i class="ti ti-edit"></i></button>
+                  <button type="button" title="Dashboard widgets" @click="(notice = ''), (dashboardFor = user)">
+                    <i class="ti ti-layout-dashboard"></i>
+                  </button>
                   <button
                     v-if="!isSelf(user)"
                     type="button"
@@ -284,6 +295,9 @@ function onDeleted() {
             </span>
             <div class="row-actions">
               <button type="button" title="Edit" @click="openForm(user)"><i class="ti ti-edit"></i></button>
+              <button type="button" title="Dashboard widgets" @click="(notice = ''), (dashboardFor = user)">
+                <i class="ti ti-layout-dashboard"></i>
+              </button>
               <button
                 v-if="!isSelf(user)"
                 type="button"
@@ -318,6 +332,16 @@ function onDeleted() {
     :subscription="subscription"
     @close="formOpen = false"
     @saved="onSaved"
+  />
+  <DashboardLayoutModal
+    v-if="dashboardFor"
+    :title="`Dashboard · ${dashboardFor.fullName}`"
+    :load="() => getUserDashboard(dashboardFor!.id)"
+    :save="(widgets, locked) => saveUserDashboard(dashboardFor!.id, widgets, locked)"
+    :lockable="!dashboardFor.role.isAdmin"
+    :user-name="dashboardFor.fullName"
+    @close="dashboardFor = null"
+    @saved="onDashboardSaved"
   />
   <ResetPasswordModal v-if="resetting" :user="resetting" @close="resetting = null" @saved="onPasswordReset" />
   <ConfirmDeleteModal

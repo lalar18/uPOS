@@ -2,7 +2,7 @@
 // "New sales return" dialog. Pass `saleId` to return items from that sale, or null to find
 // the sale here. The credit and refund shown are worked out the same way the API does.
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { formatPeso, formatQuantity } from '@/api/products'
+import { formatQuantity } from '@/api/products'
 import {
   getSale,
   lineTotal,
@@ -23,7 +23,7 @@ import {
 } from '@/api/salesReturns'
 import AppModal from '@/components/AppModal.vue'
 import { formatIsoDate, toIsoDate } from '@/utils/date'
-import { newUid } from '@/utils/money'
+import { formatMoney, newUid } from '@/utils/money'
 
 const props = defineProps<{ saleId: number | null }>()
 const emit = defineEmits<{ close: []; saved: [salesReturn: SalesReturn] }>()
@@ -201,8 +201,8 @@ async function save() {
             <div class="min-w-0">
               <div class="fw-medium text-gray-9">{{ sale.reference }} · {{ sale.customer.name }}</div>
               <div class="fs-12 text-gray-5">
-                {{ formatIsoDate(sale.saleDate) }} · Total {{ formatPeso(sale.totalCents) }} · Paid
-                {{ formatPeso(sale.paidCents) }}
+                {{ formatIsoDate(sale.saleDate) }} · Total {{ formatMoney(sale.totalCents) }} · Paid
+                {{ formatMoney(sale.paidCents) }}
               </div>
             </div>
             <button v-if="!saleId" type="button" class="btn btn-sm btn-white border flex-shrink-0" @click="changeSale">
@@ -228,7 +228,7 @@ async function save() {
                   <span class="d-block fw-medium text-gray-9">{{ item.reference }} · {{ item.customer.name }}</span>
                   <span class="d-block fs-12 text-gray-5">{{ formatIsoDate(item.saleDate) }} · {{ item.itemCount }} items</span>
                 </span>
-                <span class="fs-13 fw-medium text-nowrap">{{ formatPeso(item.totalCents) }}</span>
+                <span class="fs-13 fw-medium text-nowrap">{{ formatMoney(item.totalCents) }}</span>
               </button>
               <div v-if="!searching && results.length === 0" class="text-gray-5 fs-13 p-2 text-center">No sales found.</div>
             </div>
@@ -249,7 +249,7 @@ async function save() {
                 <div class="min-w-0 flex-grow-1">
                   <div class="fw-medium text-gray-9 text-break">{{ item.name }}</div>
                   <div class="fs-12 text-gray-5">
-                    Sold {{ formatQuantity(item.quantity) }} {{ item.unitShortName }} × {{ formatPeso(item.priceCents) }}
+                    Sold {{ formatQuantity(item.quantity) }} {{ item.unitShortName }} × {{ formatMoney(item.priceCents) }}
                     <template v-if="item.returnedQuantity > 0">
                       · {{ formatQuantity(item.returnedQuantity) }} already returned
                     </template>
@@ -315,12 +315,12 @@ async function save() {
             <div class="return-preview">
               <div class="d-flex justify-content-between">
                 <span>Credited to the sale</span>
-                <span class="fw-semibold text-gray-9">{{ formatPeso(preview.creditCents) }}</span>
+                <span class="fw-semibold text-gray-9">{{ formatMoney(preview.creditCents) }}</span>
               </div>
               <div class="d-flex justify-content-between align-items-center gap-2 mt-2">
                 <span>Refund to customer</span>
                 <span class="fw-bold" :class="preview.refundCents > 0 ? 'text-danger' : 'text-gray-5'">
-                  {{ formatPeso(preview.refundCents) }}
+                  {{ formatMoney(preview.refundCents) }}
                 </span>
               </div>
               <div v-if="preview.refundCents > 0" class="d-flex justify-content-between align-items-center gap-2 mt-2">

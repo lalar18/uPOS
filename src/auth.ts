@@ -8,7 +8,7 @@ export interface User {
   fullName: string
   role: RoleSummary
   permissions: Permission[] // every permission for admins
-  store: { id: number; name: string; subscription: StoreSubscription } // every user belongs to exactly one store
+  store: { id: number; name: string; currency: string; subscription: StoreSubscription } // every user belongs to exactly one store; currency is ISO 4217
   avatarUrl: string | null
 }
 

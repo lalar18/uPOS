@@ -3,10 +3,10 @@
 // .print-root, see utils/print.ts) on A4 paper. On phones the item table drops the
 // # and price columns and shows "qty × price" under each item instead.
 import { computed } from 'vue'
-import { formatPeso, formatQuantity } from '@/api/products'
+import { formatQuantity } from '@/api/products'
 import type { Badge, DocumentCustomer, Totals } from '@/api/sales'
 import type { Store } from '@/api/store'
-import { formatPercentBp } from '@/utils/money'
+import { formatMoney, formatPercentBp } from '@/utils/money'
 import type { DocumentItem } from './lines'
 
 const props = defineProps<{
@@ -75,15 +75,15 @@ const storeLines = computed(() => {
           <td>
             <div class="text-gray-9 text-break">{{ item.name }}</div>
             <div class="doc-muted">
-              {{ item.sku }}<span class="price-inline"> · {{ formatPeso(item.priceCents) }} each</span>
+              {{ item.sku }}<span class="price-inline"> · {{ formatMoney(item.priceCents) }} each</span>
             </div>
             <div v-if="item.returnedQuantity" class="doc-returned">
               {{ formatQuantity(item.returnedQuantity) }} {{ item.unitShortName }} returned
             </div>
           </td>
           <td class="text-end text-nowrap">{{ formatQuantity(item.quantity) }} {{ item.unitShortName }}</td>
-          <td class="text-end text-nowrap col-price">{{ formatPeso(item.priceCents) }}</td>
-          <td class="text-end text-nowrap">{{ formatPeso(item.totalCents) }}</td>
+          <td class="text-end text-nowrap col-price">{{ formatMoney(item.priceCents) }}</td>
+          <td class="text-end text-nowrap">{{ formatMoney(item.totalCents) }}</td>
         </tr>
       </tbody>
     </table>
@@ -97,20 +97,20 @@ const storeLines = computed(() => {
       </div>
       <dl class="doc-totals">
         <dt>Subtotal</dt>
-        <dd>{{ formatPeso(totals.subtotalCents) }}</dd>
+        <dd>{{ formatMoney(totals.subtotalCents) }}</dd>
         <template v-if="totals.discountCents > 0">
           <dt>Discount</dt>
-          <dd>−{{ formatPeso(totals.discountCents) }}</dd>
+          <dd>−{{ formatMoney(totals.discountCents) }}</dd>
         </template>
         <template v-if="totals.taxRateBp > 0">
           <dt>Tax ({{ formatPercentBp(totals.taxRateBp) }})</dt>
-          <dd>{{ formatPeso(totals.taxCents) }}</dd>
+          <dd>{{ formatMoney(totals.taxCents) }}</dd>
         </template>
         <dt class="grand">Total</dt>
-        <dd class="grand">{{ formatPeso(totals.totalCents) }}</dd>
+        <dd class="grand">{{ formatMoney(totals.totalCents) }}</dd>
         <template v-for="row in summary ?? []" :key="row.label">
           <dt :class="{ strong: row.strong }">{{ row.label }}</dt>
-          <dd :class="{ strong: row.strong }">{{ formatPeso(row.cents) }}</dd>
+          <dd :class="{ strong: row.strong }">{{ formatMoney(row.cents) }}</dd>
         </template>
       </dl>
     </div>

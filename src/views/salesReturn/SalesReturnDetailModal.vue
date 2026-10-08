@@ -1,11 +1,12 @@
 <script setup lang="ts">
 // Details of one sales return.
 import { ref } from 'vue'
-import { formatPeso, formatQuantity } from '@/api/products'
+import { formatQuantity } from '@/api/products'
 import { getSalesReturn, returnReasonLabel, type SalesReturn } from '@/api/salesReturns'
 import { formatDateTime } from '@/api/stock'
 import AppModal from '@/components/AppModal.vue'
 import { formatIsoDate } from '@/utils/date'
+import { formatMoney } from '@/utils/money'
 
 const props = defineProps<{ id: number }>()
 const emit = defineEmits<{ close: [] }>()
@@ -51,22 +52,22 @@ getSalesReturn(props.id)
             <div class="min-w-0">
               <div class="fw-medium text-gray-9 text-break">{{ item.name }}</div>
               <div class="fs-12 text-gray-5">
-                {{ item.sku }} · {{ formatQuantity(item.quantity) }} {{ item.unitShortName }} × {{ formatPeso(item.priceCents) }}
+                {{ item.sku }} · {{ formatQuantity(item.quantity) }} {{ item.unitShortName }} × {{ formatMoney(item.priceCents) }}
                 <template v-if="item.productId === null"> · deleted</template>
               </div>
             </div>
-            <div class="fw-medium text-nowrap">{{ formatPeso(item.totalCents) }}</div>
+            <div class="fw-medium text-nowrap">{{ formatMoney(item.totalCents) }}</div>
           </div>
         </div>
 
         <div class="totals">
           <div class="d-flex justify-content-between">
-            <span>Credited to the sale</span><span class="fw-semibold text-gray-9">{{ formatPeso(salesReturn.totalCents) }}</span>
+            <span>Credited to the sale</span><span class="fw-semibold text-gray-9">{{ formatMoney(salesReturn.totalCents) }}</span>
           </div>
           <div class="d-flex justify-content-between mt-1">
             <span>Refunded</span>
             <span class="fw-semibold" :class="salesReturn.refundCents > 0 ? 'text-danger' : 'text-gray-5'">
-              {{ formatPeso(salesReturn.refundCents) }}
+              {{ formatMoney(salesReturn.refundCents) }}
             </span>
           </div>
           <div class="fs-12 text-gray-5 mt-2">

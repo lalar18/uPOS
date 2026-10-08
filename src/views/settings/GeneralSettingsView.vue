@@ -2,7 +2,8 @@
 // Store-wide defaults used by the sales screens (the router keeps out roles without settings.manage).
 import { computed, ref } from 'vue'
 import { getSettings, taxRateText, updateSettings, type Settings } from '@/api/settings'
-import { parsePercentBp } from '@/utils/money'
+import { currentUser } from '@/auth'
+import { CURRENCIES, currencySymbol, formatMoney, parsePercentBp } from '@/utils/money'
 
 const MAX_QUOTATION_VALID_DAYS = 365
 const MAX_RECEIPT_FOOTER_LENGTH = 200
@@ -11,6 +12,7 @@ interface Form {
   taxText: string
   validDaysText: string
   receiptFooter: string
+  currency: string
 }
 
 const settings = ref<Settings | null>(null)
@@ -26,6 +28,7 @@ function toForm(s: Settings | null): Form {
     taxText: s ? taxRateText(s.defaultTaxRateBp) : '',
     validDaysText: s ? String(s.quotationValidDays) : '',
     receiptFooter: s?.receiptFooter ?? '',
+    currency: s?.currency ?? 'PHP',
   }
 }
 
@@ -71,8 +74,11 @@ async function save() {
       defaultTaxRateBp: taxRateBp.value,
       quotationValidDays: validDays.value,
       receiptFooter: form.value.receiptFooter,
+      currency: form.value.currency,
     })
     form.value = toForm(settings.value)
+    // Amounts across the app switch to the new currency right away
+    if (currentUser.value) currentUser.value.store.currency = settings.value.currency
     saveSuccess.value = 'Settings saved.'
   } catch (e) {
     saveError.value = e instanceof Error ? e.message : 'Could not save the settings'
@@ -92,7 +98,7 @@ function reset() {
   <div class="page-header">
     <div class="page-title">
       <h4>General Settings</h4>
-      <h6>Defaults for sales, quotations and receipts</h6>
+      <h6>Defaults for sales, quotations, receipts and currency</h6>
     </div>
   </div>
 
@@ -140,6 +146,27 @@ function reset() {
             <span class="input-group-text">days</span>
           </div>
           <div class="form-text">Sets "valid until" on new quotations. Enter 0 to leave it blank.</div>
+        </div>
+      </div>
+
+      <h5 class="section-title"><i class="ti ti-coin me-2"></i>Currency</h5>
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label class="form-label" for="settings-currency">Store Currency</label>
+          <select id="settings-currency" v-model="form.currency" class="form-select">
+            <option v-for="c in CURRENCIES" :key="c.code" :value="c.code">
+              {{ c.code }} · {{ c.name }} ({{ currencySymbol(c.code) }})
+            </option>
+          </select>
+          <div class="form-text">
+            Amounts show as {{ formatMoney(123456, form.currency) }} on every page, receipt and invoice.
+          </div>
+        </div>
+        <div v-if="form.currency !== settings?.currency" class="col-md-6 mb-3 d-flex align-items-end">
+          <div class="alert alert-warning py-2 mb-0 fs-13 w-100" role="note">
+            <i class="ti ti-alert-triangle me-1"></i>Changing the currency only changes the symbol. Existing prices
+            and sales keep the same numbers; they are not converted.
+          </div>
         </div>
       </div>
 

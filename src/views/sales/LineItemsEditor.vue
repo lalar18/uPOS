@@ -3,8 +3,9 @@
 // then set each line's quantity and, when allowed, its price. One layout serves every
 // screen size: a table row on wide screens, a stacked card on phones.
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { formatPeso, formatQuantity, listProducts, type Product } from '@/api/products'
+import { formatQuantity, listProducts, type Product } from '@/api/products'
 import { isOverStock, lineCents, lineFromProduct, lineQuantity, type EditorLine } from './lines'
+import { currencySymbol, formatMoney } from '@/utils/money'
 
 const props = defineProps<{
   canEditPrice: boolean
@@ -135,7 +136,7 @@ function remove(index: number) {
               {{ item.sku }} · {{ formatQuantity(item.quantity) }} {{ item.unit.shortName }} in stock
             </span>
           </span>
-          <span class="fs-13 fw-medium text-nowrap">{{ formatPeso(item.priceCents) }}</span>
+          <span class="fs-13 fw-medium text-nowrap">{{ formatMoney(item.priceCents) }}</span>
         </button>
         <div v-if="!searching && !searchError && results.length === 0" class="text-gray-5 fs-13 p-2 text-center">
           No products found.
@@ -177,7 +178,7 @@ function remove(index: number) {
         <div class="line-price">
           <label class="line-label d-md-none" :for="`line-price-${line.productId}`">Unit price</label>
           <div v-if="props.canEditPrice" class="input-group input-group-sm">
-            <span class="input-group-text">₱</span>
+            <span class="input-group-text">{{ currencySymbol() }}</span>
             <input
               :id="`line-price-${line.productId}`"
               v-model="line.priceText"
@@ -187,7 +188,7 @@ function remove(index: number) {
               :aria-label="`Price of ${line.name}`"
             />
           </div>
-          <div v-else class="price-text">{{ line.priceText ? `₱${line.priceText}` : '—' }}</div>
+          <div v-else class="price-text">{{ line.priceText ? `${currencySymbol()}${line.priceText}` : '—' }}</div>
         </div>
 
         <div class="line-quantity">
@@ -210,7 +211,7 @@ function remove(index: number) {
 
         <div class="line-total">
           <span class="line-label d-md-none">Total</span>
-          <span class="fw-semibold text-gray-9">{{ formatPeso(lineCents(line)) }}</span>
+          <span class="fw-semibold text-gray-9">{{ formatMoney(lineCents(line)) }}</span>
         </div>
 
         <div class="line-remove d-none d-md-flex justify-content-end">

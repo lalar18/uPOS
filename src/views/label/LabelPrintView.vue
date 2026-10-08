@@ -4,9 +4,10 @@
 // an A4 sheet or a label printer. The print copy is teleported outside #app so the
 // header and sidebar never print.
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, watchEffect } from 'vue'
-import { formatPeso, listProducts, type Product } from '@/api/products'
+import { listProducts, type Product } from '@/api/products'
 import { currentUser } from '@/auth'
 import { barcodeSvg, qrSvg } from '@/utils/labels'
+import { formatMoney } from '@/utils/money'
 
 const props = defineProps<{ kind: 'barcode' | 'qrcode' }>()
 
@@ -275,7 +276,7 @@ function print() {
               <div class="min-w-0 flex-grow-1">
                 <div class="fw-medium text-gray-9 text-break">{{ item.product.name }}</div>
                 <div class="fs-12 text-gray-5 text-break">
-                  {{ isBarcode ? 'Barcode' : 'QR' }}: {{ codeValue(item.product) }} · {{ formatPeso(item.product.priceCents) }}
+                  {{ isBarcode ? 'Barcode' : 'QR' }}: {{ codeValue(item.product) }} · {{ formatMoney(item.product.priceCents) }}
                 </div>
                 <div v-if="failed[codeValue(item.product)]" class="fs-12 text-danger">
                   {{ failed[codeValue(item.product)] }}
@@ -400,7 +401,7 @@ function print() {
           <div class="label-text">
             <div v-if="settings.showStore && storeName" class="label-store">{{ storeName }}</div>
             <div v-if="settings.showName" class="label-name">{{ label.product.name }}</div>
-            <div v-if="settings.showPrice" class="label-price">{{ formatPeso(label.product.priceCents) }}</div>
+            <div v-if="settings.showPrice" class="label-price">{{ formatMoney(label.product.priceCents) }}</div>
             <div v-if="!isBarcode" class="label-value">{{ label.value }}</div>
           </div>
           <div v-if="isBarcode" class="label-code" v-html="svgs[label.value] ?? ''"></div>
@@ -423,7 +424,7 @@ function print() {
         <div class="label-text">
           <div v-if="settings.showStore && storeName" class="label-store">{{ storeName }}</div>
           <div v-if="settings.showName" class="label-name">{{ label.product.name }}</div>
-          <div v-if="settings.showPrice" class="label-price">{{ formatPeso(label.product.priceCents) }}</div>
+          <div v-if="settings.showPrice" class="label-price">{{ formatMoney(label.product.priceCents) }}</div>
           <div v-if="!isBarcode" class="label-value">{{ label.value }}</div>
         </div>
         <div v-if="isBarcode" class="label-code" v-html="svgs[label.value] ?? ''"></div>

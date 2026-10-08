@@ -35,7 +35,11 @@ export const PERMISSION_GROUPS = [
     title: 'Settings',
     permissions: [
       { key: 'store.manage', label: 'Edit store information', hint: 'Name, address and TIN on receipts' },
-      { key: 'settings.manage', label: 'Change general settings', hint: 'Default tax rate, quotation validity, receipt footer' },
+      {
+        key: 'settings.manage',
+        label: 'Change general settings',
+        hint: 'Default tax rate, quotation validity, receipt footer, currency',
+      },
     ],
   },
 ] as const

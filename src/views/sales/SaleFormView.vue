@@ -5,7 +5,6 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { PickedCustomer } from '@/api/customers'
-import { formatPeso } from '@/api/products'
 import { getQuotation } from '@/api/quotations'
 import {
   computeTotals,
@@ -20,7 +19,7 @@ import { getSettingsOrDefaults, taxRateText } from '@/api/settings'
 import { can } from '@/auth'
 import CustomerPicker from '@/components/CustomerPicker.vue'
 import { toIsoDate } from '@/utils/date'
-import { centsToText, newUid, parsePercentBp, parsePeso } from '@/utils/money'
+import { centsToText, currencySymbol, formatMoney, newUid, parsePercentBp, parsePeso } from '@/utils/money'
 import DocumentTotals from './DocumentTotals.vue'
 import LineItemsEditor from './LineItemsEditor.vue'
 import { lineCents, toItems, validateLines, type EditorLine } from './lines'
@@ -321,7 +320,7 @@ async function save() {
               <div v-if="paymentMode === 'partial'" class="col-12">
                 <label class="form-label" for="sale-amount">Amount paid now</label>
                 <div class="input-group">
-                  <span class="input-group-text">₱</span>
+                  <span class="input-group-text">{{ currencySymbol() }}</span>
                   <input id="sale-amount" v-model="amountText" type="text" class="form-control" inputmode="decimal" />
                 </div>
               </div>
@@ -334,7 +333,7 @@ async function save() {
               <div v-if="method === 'cash'" class="col-sm-6 col-lg-12 col-xxl-6">
                 <label class="form-label" for="sale-received">Cash received</label>
                 <div class="input-group">
-                  <span class="input-group-text">₱</span>
+                  <span class="input-group-text">{{ currencySymbol() }}</span>
                   <input
                     id="sale-received"
                     v-model="receivedText"
@@ -350,7 +349,7 @@ async function save() {
                 <input id="sale-reference" v-model="reference" type="text" class="form-control" maxlength="50" />
               </div>
               <div v-if="changeCents !== null && changeCents >= 0" class="col-12 fs-14">
-                Change: <strong class="text-gray-9">{{ formatPeso(changeCents) }}</strong>
+                Change: <strong class="text-gray-9">{{ formatMoney(changeCents) }}</strong>
               </div>
             </div>
 
@@ -364,7 +363,7 @@ async function save() {
             <div v-if="error" class="alert alert-danger py-2 mt-3 mb-0" role="alert">{{ error }}</div>
 
             <button type="submit" class="btn btn-primary w-100 mt-3" :disabled="saving || loadingQuotation || !!quotationError">
-              {{ saving ? 'Saving…' : `Save Sale · ${formatPeso(totals.totalCents)}` }}
+              {{ saving ? 'Saving…' : `Save Sale · ${formatMoney(totals.totalCents)}` }}
             </button>
           </div>
         </div>

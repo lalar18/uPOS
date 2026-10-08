@@ -5,7 +5,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { PickedCustomer } from '@/api/customers'
 import {
-  formatPeso,
   formatQuantity,
   getProductOptions,
   listProducts,
@@ -18,7 +17,7 @@ import { getStore, type Store } from '@/api/store'
 import AppModal from '@/components/AppModal.vue'
 import CustomerPicker from '@/components/CustomerPicker.vue'
 import { toIsoDate } from '@/utils/date'
-import { newUid, parsePercentBp, parsePeso } from '@/utils/money'
+import { currencySymbol, formatMoney, newUid, parsePercentBp, parsePeso } from '@/utils/money'
 import { usePrintRoot } from '@/utils/print'
 import ReceiptDocument from '../sales/ReceiptDocument.vue'
 import PosPaymentModal from './PosPaymentModal.vue'
@@ -382,7 +381,7 @@ onBeforeUnmount(() => {
           </span>
           <span class="tile-name">{{ product.name }}</span>
           <span class="tile-meta">
-            <span class="tile-price">{{ formatPeso(product.priceCents) }}</span>
+            <span class="tile-price">{{ formatMoney(product.priceCents) }}</span>
             <span class="tile-stock" :class="{ 'text-danger': product.quantity <= product.alertQuantity }">
               {{ product.quantity <= 0 ? 'Out' : `${formatQuantity(product.quantity)} ${product.unit.shortName}` }}
             </span>
@@ -426,7 +425,7 @@ onBeforeUnmount(() => {
           <div class="d-flex justify-content-between gap-2">
             <div class="min-w-0">
               <div class="fw-medium text-gray-9 text-break">{{ line.product.name }}</div>
-              <div class="fs-12 text-gray-5">{{ formatPeso(line.product.priceCents) }} / {{ line.product.unit.shortName }}</div>
+              <div class="fs-12 text-gray-5">{{ formatMoney(line.product.priceCents) }} / {{ line.product.unit.shortName }}</div>
             </div>
             <button type="button" class="btn-icon text-danger" :aria-label="`Remove ${line.product.name}`" @click="remove(line)">
               <i class="ti ti-trash"></i>
@@ -450,19 +449,19 @@ onBeforeUnmount(() => {
                 <i class="ti ti-plus"></i>
               </button>
             </div>
-            <div class="fw-semibold text-gray-9">{{ formatPeso(lineCents(line)) }}</div>
+            <div class="fw-semibold text-gray-9">{{ formatMoney(lineCents(line)) }}</div>
           </div>
         </div>
       </div>
 
       <div class="cart-foot">
         <div class="foot-row">
-          <span>Subtotal</span><span>{{ formatPeso(totals.subtotalCents) }}</span>
+          <span>Subtotal</span><span>{{ formatMoney(totals.subtotalCents) }}</span>
         </div>
         <div class="foot-row">
           <label for="pos-discount">Discount</label>
           <div class="input-group input-group-sm foot-input">
-            <span class="input-group-text">₱</span>
+            <span class="input-group-text">{{ currencySymbol() }}</span>
             <input
               id="pos-discount"
               v-model="discountText"
@@ -490,14 +489,14 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div v-if="totals.taxCents > 0" class="foot-row text-gray-5">
-          <span>Tax amount</span><span>{{ formatPeso(totals.taxCents) }}</span>
+          <span>Tax amount</span><span>{{ formatMoney(totals.taxCents) }}</span>
         </div>
         <div class="foot-row foot-total">
-          <span>Total</span><span>{{ formatPeso(totals.totalCents) }}</span>
+          <span>Total</span><span>{{ formatMoney(totals.totalCents) }}</span>
         </div>
         <div v-if="cartError" class="text-danger fs-13 mb-2">{{ cartError }}</div>
         <button type="button" class="btn btn-success btn-lg w-100" :disabled="cart.length === 0" @click="openPayment">
-          <i class="ti ti-cash me-1"></i>Pay {{ formatPeso(totals.totalCents) }}
+          <i class="ti ti-cash me-1"></i>Pay {{ formatMoney(totals.totalCents) }}
         </button>
       </div>
     </aside>
@@ -506,7 +505,7 @@ onBeforeUnmount(() => {
     <div class="cart-bar d-lg-none">
       <div class="min-w-0">
         <div class="fs-12 text-gray-5">{{ formatQuantity(itemCount) }} {{ itemCount === 1 ? 'item' : 'items' }}</div>
-        <div class="fw-bold text-gray-9 fs-18">{{ formatPeso(totals.totalCents) }}</div>
+        <div class="fw-bold text-gray-9 fs-18">{{ formatMoney(totals.totalCents) }}</div>
       </div>
       <button type="button" class="btn btn-primary" @click="cartOpen = true">
         <i class="ti ti-shopping-cart me-1"></i>View Cart
@@ -528,7 +527,7 @@ onBeforeUnmount(() => {
   <AppModal v-if="lastSale" :title="`Sale complete · ${lastSale.reference}`" size="sm" @close="newSale">
     <div class="modal-body receipt-preview">
       <div v-if="lastSale.payments[0]?.changeCents" class="change-banner mb-3">
-        Change: {{ formatPeso(lastSale.payments[0].changeCents) }}
+        Change: {{ formatMoney(lastSale.payments[0].changeCents) }}
       </div>
       <ReceiptDocument :sale="lastSale" :store="store" />
     </div>

@@ -4,7 +4,6 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { PickedCustomer } from '@/api/customers'
-import { formatPeso } from '@/api/products'
 import {
   createQuotation,
   getQuotation,
@@ -17,7 +16,7 @@ import { computeTotals } from '@/api/sales'
 import { getSettingsOrDefaults, taxRateText } from '@/api/settings'
 import CustomerPicker from '@/components/CustomerPicker.vue'
 import { addDays, toIsoDate } from '@/utils/date'
-import { centsToText, newUid, parsePercentBp, parsePeso } from '@/utils/money'
+import { centsToText, formatMoney, newUid, parsePercentBp, parsePeso } from '@/utils/money'
 import DocumentTotals from '../sales/DocumentTotals.vue'
 import LineItemsEditor from '../sales/LineItemsEditor.vue'
 import { lineCents, toItems, validateLines, type EditorLine } from '../sales/lines'
@@ -242,7 +241,7 @@ async function save() {
             />
             <div v-if="error" class="alert alert-danger py-2 mt-3 mb-0" role="alert">{{ error }}</div>
             <button type="submit" class="btn btn-primary w-100 mt-3" :disabled="saving || loading">
-              {{ saving ? 'Saving…' : `Save Quotation · ${formatPeso(totals.totalCents)}` }}
+              {{ saving ? 'Saving…' : `Save Quotation · ${formatMoney(totals.totalCents)}` }}
             </button>
           </div>
         </div>

@@ -2,7 +2,6 @@
 // Stock on hand for every product, with quick adjust and history.
 import { computed, ref, watch } from 'vue'
 import {
-  formatPeso,
   formatQuantity,
   getProductOptions,
   listProducts,
@@ -15,6 +14,7 @@ import { can } from '@/auth'
 import ListPager from '@/components/ListPager.vue'
 import StockAdjustmentFormModal from './StockAdjustmentFormModal.vue'
 import StockHistoryModal from './StockHistoryModal.vue'
+import { formatMoney } from '@/utils/money'
 
 type StockLevel = 'out' | 'low' | 'ok'
 
@@ -178,11 +178,11 @@ function onAdjusted() {
         <span class="summary-label">{{ showCost ? 'Stock Value (Cost)' : 'Stock Value (Retail)' }}</span>
         <span class="summary-value text-truncate">
           <template v-if="!summary">—</template>
-          <template v-else-if="showCost && summary.costValueCents !== null">{{ formatPeso(summary.costValueCents) }}</template>
-          <template v-else>{{ formatPeso(summary.retailValueCents) }}</template>
+          <template v-else-if="showCost && summary.costValueCents !== null">{{ formatMoney(summary.costValueCents) }}</template>
+          <template v-else>{{ formatMoney(summary.retailValueCents) }}</template>
         </span>
         <span v-if="showCost && summary" class="summary-hint text-truncate">
-          Retail {{ formatPeso(summary.retailValueCents) }}
+          Retail {{ formatMoney(summary.retailValueCents) }}
           <template v-if="summary.missingCostCount">· {{ summary.missingCostCount }} without cost</template>
         </span>
       </span>
@@ -283,7 +283,7 @@ function onAdjusted() {
               <td class="text-end">{{ formatQuantity(product.alertQuantity) }} {{ product.unit.shortName }}</td>
               <td v-if="showCost" class="text-end">
                 <template v-if="stockValue(product) === null"><span class="text-gray-5">No cost</span></template>
-                <template v-else>{{ formatPeso(stockValue(product)!) }}</template>
+                <template v-else>{{ formatMoney(stockValue(product)!) }}</template>
               </td>
               <td>
                 <span class="badge" :class="product.status === 'active' ? 'bg-success' : 'bg-danger'">
@@ -342,7 +342,7 @@ function onAdjusted() {
               <template v-if="showCost">
                 Value:
                 <template v-if="stockValue(product) === null">no cost price</template>
-                <template v-else>{{ formatPeso(stockValue(product)!) }}</template>
+                <template v-else>{{ formatMoney(stockValue(product)!) }}</template>
               </template>
             </span>
             <div class="row-actions flex-shrink-0">

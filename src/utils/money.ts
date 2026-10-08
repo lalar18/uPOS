@@ -1,8 +1,69 @@
-// Helpers for money typed into forms. Amounts are whole centavos (₱12.50 -> 1250).
+// Helpers for money. Amounts are whole hundredths of the store's currency (₱12.50 -> 1250).
+import { currentUser } from '@/auth'
+
+/** Currencies a store can pick on General Settings (keep in step with CURRENCIES in worker/settings.ts). */
+export const CURRENCIES = [
+  { code: 'PHP', name: 'Philippine Peso' },
+  { code: 'USD', name: 'US Dollar' },
+  { code: 'EUR', name: 'Euro' },
+  { code: 'GBP', name: 'British Pound' },
+  { code: 'AUD', name: 'Australian Dollar' },
+  { code: 'CAD', name: 'Canadian Dollar' },
+  { code: 'NZD', name: 'New Zealand Dollar' },
+  { code: 'SGD', name: 'Singapore Dollar' },
+  { code: 'HKD', name: 'Hong Kong Dollar' },
+  { code: 'CNY', name: 'Chinese Yuan' },
+  { code: 'MYR', name: 'Malaysian Ringgit' },
+  { code: 'THB', name: 'Thai Baht' },
+  { code: 'INR', name: 'Indian Rupee' },
+  { code: 'AED', name: 'UAE Dirham' },
+  { code: 'SAR', name: 'Saudi Riyal' },
+  { code: 'QAR', name: 'Qatari Riyal' },
+] as const
+
+const formats = new Map<string, Intl.NumberFormat>()
+
+/** The logged-in store's currency. Reactive inside computed() and templates. */
+export const currencyCode = () => currentUser.value?.store.currency ?? 'PHP'
+
+function moneyFormat(currency: string): Intl.NumberFormat {
+  let format = formats.get(currency)
+  if (!format) {
+    // narrowSymbol shows "$" rather than "US$"
+    format = new Intl.NumberFormat('en-PH', { style: 'currency', currency, currencyDisplay: 'narrowSymbol' })
+    formats.set(currency, format)
+  }
+  return format
+}
+
+/** 1250 -> "₱12.50" (in the store's currency) */
+export const formatMoney = (cents: number, currency = currencyCode()) => moneyFormat(currency).format(cents / 100)
+
+const compactFormats = new Map<string, Intl.NumberFormat>()
+
+/** 1_250_000_00 -> "₱1.25M", for chart axes where space is tight */
+export function formatMoneyCompact(cents: number, currency = currencyCode()): string {
+  let format = compactFormats.get(currency)
+  if (!format) {
+    format = new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency,
+      currencyDisplay: 'narrowSymbol',
+      notation: 'compact',
+      maximumFractionDigits: 1,
+    })
+    compactFormats.set(currency, format)
+  }
+  return format.format(cents / 100)
+}
+
+/** "₱" for PHP, "$" for USD; used beside amount inputs */
+export const currencySymbol = (currency = currencyCode()) =>
+  moneyFormat(currency).formatToParts(0).find((p) => p.type === 'currency')?.value ?? currency
 
 /** "12.5" -> 1250 centavos; '' -> null; anything else (or more than 2 decimals) -> NaN */
 export function parsePeso(text: string | number): number | null {
-  const clean = String(text).replace(/[₱,\s]/g, '')
+  const clean = String(text).replace(/[\p{Sc},\s]/gu, '') // any currency symbol, e.g. ₱ or $
   if (clean === '') return null
   return /^\d+(\.\d{1,2})?$/.test(clean) ? Math.round(Number(clean) * 100) : NaN
 }

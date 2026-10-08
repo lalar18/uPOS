@@ -1,8 +1,8 @@
 // General settings for the logged-in user's store. Any user can read them (the sales
 // screens use them as defaults); only roles with settings.manage can change them.
 //
-//   GET /api/settings                                                    -> settings
-//   PUT /api/settings   { defaultTaxRateBp, quotationValidDays, receiptFooter } -> settings
+//   GET /api/settings                                                              -> settings
+//   PUT /api/settings   { defaultTaxRateBp, quotationValidDays, receiptFooter, currency } -> settings
 
 import { error } from './documents'
 import { can } from './permissions'
@@ -12,20 +12,30 @@ interface SettingsRow {
   default_tax_rate_bp: number
   quotation_valid_days: number
   receipt_footer: string
+  currency: string
 }
 
 const MAX_QUOTATION_VALID_DAYS = 365
 const MAX_RECEIPT_FOOTER_LENGTH = 200
+
+/**
+ * Currencies a store can show amounts in. Amounts are stored as whole hundredths, so only
+ * currencies with 2 decimal places are listed. Keep in step with CURRENCIES in src/utils/money.ts.
+ */
+const CURRENCIES = new Set([
+  'PHP', 'USD', 'EUR', 'GBP', 'AUD', 'CAD', 'NZD', 'SGD', 'HKD', 'CNY', 'MYR', 'THB', 'INR', 'AED', 'SAR', 'QAR',
+])
 
 function publicSettings(row: SettingsRow) {
   return {
     defaultTaxRateBp: row.default_tax_rate_bp,
     quotationValidDays: row.quotation_valid_days,
     receiptFooter: row.receipt_footer,
+    currency: row.currency,
   }
 }
 
-const SETTINGS_COLUMNS = 'default_tax_rate_bp, quotation_valid_days, receipt_footer'
+const SETTINGS_COLUMNS = 'default_tax_rate_bp, quotation_valid_days, receipt_footer, currency'
 
 const isWholeNumber = (value: unknown, max: number): value is number =>
   Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) <= max
@@ -43,13 +53,15 @@ async function updateSettings(db: D1Database, request: Request, user: SessionUse
   if (receiptFooter.length > MAX_RECEIPT_FOOTER_LENGTH) {
     return error(`Receipt message must be ${MAX_RECEIPT_FOOTER_LENGTH} characters or less`, 400)
   }
+  if (typeof body.currency !== 'string' || !CURRENCIES.has(body.currency)) return error('Choose a currency', 400)
 
   const row = await db
     .prepare(
-      `UPDATE stores SET default_tax_rate_bp = ?, quotation_valid_days = ?, receipt_footer = ?, updated_at = datetime('now')
+      `UPDATE stores SET default_tax_rate_bp = ?, quotation_valid_days = ?, receipt_footer = ?, currency = ?,
+         updated_at = datetime('now')
        WHERE id = ? RETURNING ${SETTINGS_COLUMNS}`,
     )
-    .bind(body.defaultTaxRateBp, body.quotationValidDays, receiptFooter, user.store_id)
+    .bind(body.defaultTaxRateBp, body.quotationValidDays, receiptFooter, body.currency, user.store_id)
     .first<SettingsRow>()
   return row ? Response.json(publicSettings(row)) : error('Store not found', 404)
 }

@@ -18,6 +18,7 @@ import {
 import { can } from '@/auth'
 import { formatDuration } from '@/api/warranties'
 import { resizeImage } from '@/utils/image'
+import { currencySymbol } from '@/utils/money'
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024 // 2 MB, checked on the original file
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
@@ -170,7 +171,7 @@ let savedId: number | null = null
 
 /** "12.5" -> 1250 centavos; '' -> null; anything else (or more than 2 decimals) -> NaN */
 function parsePeso(text: string): number | null {
-  const clean = text.replace(/[₱,\s]/g, '')
+  const clean = text.replace(/[\p{Sc},\s]/gu, '') // any currency symbol, e.g. ₱ or $
   if (clean === '') return null
   return /^\d+(\.\d{1,2})?$/.test(clean) ? Math.round(Number(clean) * 100) : NaN
 }
@@ -397,14 +398,14 @@ load()
         <!-- Pricing and stock -->
         <div class="card mb-3">
           <div class="card-header">
-            <h5 class="card-title mb-0"><i class="ti ti-currency-peso me-1 text-primary"></i>Pricing &amp; Stock</h5>
+            <h5 class="card-title mb-0"><i class="ti ti-coin me-1 text-primary"></i>Pricing &amp; Stock</h5>
           </div>
           <div class="card-body">
             <div class="row g-3">
               <div class="col-6">
                 <label class="form-label" for="product-price">Selling Price <span class="text-danger">*</span></label>
                 <div class="input-group">
-                  <span class="input-group-text">₱</span>
+                  <span class="input-group-text">{{ currencySymbol() }}</span>
                   <input
                     id="product-price"
                     v-model="price"
@@ -419,7 +420,7 @@ load()
               <div class="col-6">
                 <label class="form-label" for="product-cost">Cost Price</label>
                 <div class="input-group">
-                  <span class="input-group-text">₱</span>
+                  <span class="input-group-text">{{ currencySymbol() }}</span>
                   <input
                     id="product-cost"
                     v-model="cost"

@@ -2,11 +2,11 @@
 import { computed, ref, watch } from 'vue'
 import { deleteCustomer, listCustomers, type Customer, type CustomerStatus } from '@/api/customers'
 import { parseDbDate } from '@/api/http'
-import { formatPeso } from '@/api/products'
 import { can } from '@/auth'
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal.vue'
 import CustomerFormModal from '@/components/CustomerFormModal.vue'
 import ListPager from '@/components/ListPager.vue'
+import { formatMoney } from '@/utils/money'
 
 // Anyone can add a customer (cashiers do at the till); only roles with customers.manage edit or delete
 const canEdit = computed(() => can('customers.manage'))
@@ -157,7 +157,7 @@ function onDeleted() {
               <td class="address-cell" :title="customer.address ?? undefined">{{ customer.address ?? '—' }}</td>
               <td class="text-end">{{ customer.saleCount }}</td>
               <td class="text-end" :class="{ 'text-danger fw-medium': customer.balanceCents > 0 }">
-                {{ formatPeso(customer.balanceCents) }}
+                {{ formatMoney(customer.balanceCents) }}
               </td>
               <td>{{ formatDate(customer.createdAt) }}</td>
               <td>
@@ -197,7 +197,7 @@ function onDeleted() {
             <span class="fs-12 text-gray-5">
               {{ customer.saleCount }} {{ customer.saleCount === 1 ? 'sale' : 'sales' }}
               <template v-if="customer.balanceCents > 0">
-                · <span class="text-danger fw-medium">{{ formatPeso(customer.balanceCents) }} due</span>
+                · <span class="text-danger fw-medium">{{ formatMoney(customer.balanceCents) }} due</span>
               </template>
             </span>
             <div v-if="canEdit" class="row-actions">

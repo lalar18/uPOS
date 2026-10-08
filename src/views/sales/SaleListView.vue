@@ -3,7 +3,6 @@
 // reads like a sales log, the Invoices page focuses on what's been paid and what's owed.
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { formatPeso } from '@/api/products'
 import {
   invoiceBadge,
   listSales,
@@ -19,6 +18,7 @@ import ListPager from '@/components/ListPager.vue'
 import { formatIsoDate, toIsoDate } from '@/utils/date'
 import { PERIOD_OPTIONS, periodDates, rangeError, type Period } from '@/utils/period'
 import PaymentFormModal from './PaymentFormModal.vue'
+import { formatMoney } from '@/utils/money'
 
 const props = defineProps<{ mode: 'sales' | 'invoices' }>()
 
@@ -160,7 +160,7 @@ function onPaid(sale: Sale) {
         <span class="stat-icon bg-primary-transparent"><i class="ti ti-receipt"></i></span>
         <div class="min-w-0">
           <div class="fs-13 text-gray-5">{{ isInvoices ? 'Invoiced' : 'Sales' }} ({{ total }})</div>
-          <div class="stat-value">{{ formatPeso(sums.totalCents) }}</div>
+          <div class="stat-value">{{ formatMoney(sums.totalCents) }}</div>
         </div>
       </div>
     </div>
@@ -169,7 +169,7 @@ function onPaid(sale: Sale) {
         <span class="stat-icon bg-success-transparent"><i class="ti ti-cash"></i></span>
         <div class="min-w-0">
           <div class="fs-13 text-gray-5">Paid</div>
-          <div class="stat-value">{{ formatPeso(sums.paidCents) }}</div>
+          <div class="stat-value">{{ formatMoney(sums.paidCents) }}</div>
         </div>
       </div>
     </div>
@@ -178,7 +178,7 @@ function onPaid(sale: Sale) {
         <span class="stat-icon bg-danger-transparent"><i class="ti ti-alert-circle"></i></span>
         <div class="min-w-0">
           <div class="fs-13 text-gray-5">Balance due</div>
-          <div class="stat-value">{{ formatPeso(sums.dueCents) }}</div>
+          <div class="stat-value">{{ formatMoney(sums.dueCents) }}</div>
         </div>
       </div>
     </div>
@@ -266,14 +266,14 @@ function onPaid(sale: Sale) {
               </td>
               <td v-else class="text-end">{{ sale.itemCount }}</td>
               <td class="text-end fw-medium text-gray-9">
-                {{ formatPeso(sale.totalCents - sale.returnedCents) }}
+                {{ formatMoney(sale.totalCents - sale.returnedCents) }}
                 <div v-if="sale.returnedCents > 0" class="fs-12 text-gray-5 fw-normal">
-                  of {{ formatPeso(sale.totalCents) }}
+                  of {{ formatMoney(sale.totalCents) }}
                 </div>
               </td>
-              <td class="text-end">{{ formatPeso(sale.paidCents) }}</td>
+              <td class="text-end">{{ formatMoney(sale.paidCents) }}</td>
               <td class="text-end" :class="sale.dueCents > 0 ? 'text-danger fw-medium' : 'text-gray-5'">
-                {{ formatPeso(Math.max(sale.dueCents, 0)) }}
+                {{ formatMoney(Math.max(sale.dueCents, 0)) }}
               </td>
               <td>
                 <span class="badge" :class="invoiceBadge(sale, today).className">{{ invoiceBadge(sale, today).label }}</span>
@@ -307,7 +307,7 @@ function onPaid(sale: Sale) {
                 <div class="text-gray-9 text-break">{{ sale.customer.name }}</div>
               </div>
               <div class="text-end flex-shrink-0">
-                <div class="fw-semibold text-gray-9">{{ formatPeso(sale.totalCents - sale.returnedCents) }}</div>
+                <div class="fw-semibold text-gray-9">{{ formatMoney(sale.totalCents - sale.returnedCents) }}</div>
                 <span class="badge" :class="invoiceBadge(sale, today).className">{{ invoiceBadge(sale, today).label }}</span>
               </div>
             </div>
@@ -317,7 +317,7 @@ function onPaid(sale: Sale) {
                 · {{ sale.itemCount }} {{ sale.itemCount === 1 ? 'item' : 'items' }}
               </span>
               <span v-if="sale.dueCents > 0" class="text-danger fw-medium">
-                Due {{ formatPeso(sale.dueCents) }}<template v-if="sale.dueDate"> by {{ formatIsoDate(sale.dueDate) }}</template>
+                Due {{ formatMoney(sale.dueCents) }}<template v-if="sale.dueDate"> by {{ formatIsoDate(sale.dueDate) }}</template>
               </span>
             </div>
           </RouterLink>

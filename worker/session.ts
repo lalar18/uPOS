@@ -12,6 +12,7 @@ export interface SessionUser {
   full_name: string
   store_id: number
   store_name: string
+  store_currency: string // ISO 4217, e.g. 'PHP'
   avatar_updated_at: string | null
   role_id: number
   role_name: string
@@ -22,7 +23,7 @@ export interface SessionUser {
 }
 
 /** Columns (and joins, as `FROM ...`) that sessionUserFromRow() reads. Alias the users table `u`. */
-export const SESSION_USER_COLUMNS = `u.id, u.email, u.full_name, u.store_id, st.name AS store_name,
+export const SESSION_USER_COLUMNS = `u.id, u.email, u.full_name, u.store_id, st.name AS store_name, st.currency AS store_currency,
   a.updated_at AS avatar_updated_at, u.role_id, r.name AS role_name, r.is_admin, r.permissions,
   st.plan_expires_at, (st.plan_expires_at IS NULL OR st.plan_expires_at <= datetime('now')) AS subscription_expired`
 export const SESSION_USER_JOINS = `JOIN stores st ON st.id = u.store_id
@@ -43,6 +44,7 @@ export function sessionUserFromRow(row: SessionUserRow): SessionUser {
     full_name: row.full_name,
     store_id: row.store_id,
     store_name: row.store_name,
+    store_currency: row.store_currency,
     avatar_updated_at: row.avatar_updated_at,
     role_id: row.role_id,
     role_name: row.role_name,

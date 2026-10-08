@@ -2,12 +2,12 @@
 // A sale as a till receipt, sized for 58–80 mm thermal paper. Shown in the POS receipt
 // dialog and printed through a .print-root (see utils/print.ts).
 import { computed } from 'vue'
-import { formatPeso, formatQuantity } from '@/api/products'
+import { formatQuantity } from '@/api/products'
 import { paymentMethodLabel, type Sale } from '@/api/sales'
 import { formatDateTime } from '@/api/stock'
 import type { Store } from '@/api/store'
 import { DEFAULT_SETTINGS } from '@/api/settings'
-import { formatPercentBp } from '@/utils/money'
+import { formatMoney, formatPercentBp } from '@/utils/money'
 
 const props = defineProps<{ sale: Sale; store: Store | null }>()
 
@@ -41,33 +41,33 @@ const payments = computed(() => props.sale.payments.filter((p) => p.amountCents 
     <div v-for="item in sale.items" :key="item.id" class="item">
       <div class="item-name">{{ item.name }}</div>
       <div class="row-between">
-        <span>{{ formatQuantity(item.quantity) }} {{ item.unitShortName }} × {{ formatPeso(item.priceCents) }}</span>
-        <span>{{ formatPeso(item.totalCents) }}</span>
+        <span>{{ formatQuantity(item.quantity) }} {{ item.unitShortName }} × {{ formatMoney(item.priceCents) }}</span>
+        <span>{{ formatMoney(item.totalCents) }}</span>
       </div>
     </div>
 
     <div class="rule"></div>
-    <div class="row-between"><span>Subtotal</span><span>{{ formatPeso(sale.subtotalCents) }}</span></div>
+    <div class="row-between"><span>Subtotal</span><span>{{ formatMoney(sale.subtotalCents) }}</span></div>
     <div v-if="sale.discountCents > 0" class="row-between">
-      <span>Discount</span><span>−{{ formatPeso(sale.discountCents) }}</span>
+      <span>Discount</span><span>−{{ formatMoney(sale.discountCents) }}</span>
     </div>
     <div v-if="sale.taxRateBp > 0" class="row-between">
-      <span>Tax ({{ formatPercentBp(sale.taxRateBp) }})</span><span>{{ formatPeso(sale.taxCents) }}</span>
+      <span>Tax ({{ formatPercentBp(sale.taxRateBp) }})</span><span>{{ formatMoney(sale.taxCents) }}</span>
     </div>
-    <div class="row-between total"><span>TOTAL</span><span>{{ formatPeso(sale.totalCents) }}</span></div>
+    <div class="row-between total"><span>TOTAL</span><span>{{ formatMoney(sale.totalCents) }}</span></div>
 
     <template v-for="payment in payments" :key="payment.id">
       <div class="row-between">
         <span>{{ paymentMethodLabel(payment.method) }}</span>
-        <span>{{ formatPeso(payment.tenderedCents ?? payment.amountCents) }}</span>
+        <span>{{ formatMoney(payment.tenderedCents ?? payment.amountCents) }}</span>
       </div>
       <div v-if="payment.changeCents" class="row-between">
-        <span>Change</span><span>{{ formatPeso(payment.changeCents) }}</span>
+        <span>Change</span><span>{{ formatMoney(payment.changeCents) }}</span>
       </div>
       <div v-if="payment.reference" class="small">Ref: {{ payment.reference }}</div>
     </template>
     <div v-if="sale.dueCents > 0" class="row-between strong">
-      <span>Balance due</span><span>{{ formatPeso(sale.dueCents) }}</span>
+      <span>Balance due</span><span>{{ formatMoney(sale.dueCents) }}</span>
     </div>
 
     <div class="rule"></div>

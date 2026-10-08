@@ -2,7 +2,6 @@
 // Quotations (/quotations), newest first.
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { formatPeso } from '@/api/products'
 import {
   listQuotations,
   QUOTATION_STATUSES,
@@ -15,6 +14,7 @@ import { can } from '@/auth'
 import ListPager from '@/components/ListPager.vue'
 import { formatIsoDate, toIsoDate } from '@/utils/date'
 import { PERIOD_OPTIONS, periodDates, rangeError, type Period } from '@/utils/period'
+import { formatMoney } from '@/utils/money'
 
 const router = useRouter()
 const today = toIsoDate()
@@ -174,7 +174,7 @@ const detailRoute = (q: QuotationSummary) => ({ name: 'quotation-detail', params
               <td><div class="customer-name text-gray-9">{{ q.customer.name }}</div></td>
               <td>{{ q.validUntil ? formatIsoDate(q.validUntil) : '—' }}</td>
               <td class="text-end">{{ q.itemCount }}</td>
-              <td class="text-end fw-medium text-gray-9">{{ formatPeso(q.totalCents) }}</td>
+              <td class="text-end fw-medium text-gray-9">{{ formatMoney(q.totalCents) }}</td>
               <td>
                 <span class="badge" :class="quotationBadge(q, today).className">{{ quotationBadge(q, today).label }}</span>
                 <div v-if="q.sale" class="fs-12 text-gray-5">{{ q.sale.reference }}</div>
@@ -193,7 +193,7 @@ const detailRoute = (q: QuotationSummary) => ({ name: 'quotation-detail', params
               <div class="text-gray-9 text-break">{{ q.customer.name }}</div>
             </div>
             <div class="text-end flex-shrink-0">
-              <div class="fw-semibold text-gray-9">{{ formatPeso(q.totalCents) }}</div>
+              <div class="fw-semibold text-gray-9">{{ formatMoney(q.totalCents) }}</div>
               <span class="badge" :class="quotationBadge(q, today).className">{{ quotationBadge(q, today).label }}</span>
             </div>
           </div>

@@ -3,7 +3,6 @@
 // returns, and actions to record a payment, return items or print it (A4 or receipt).
 import { computed, nextTick, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { formatPeso } from '@/api/products'
 import { getSale, invoiceBadge, paymentMethodLabel, type Sale } from '@/api/sales'
 import { returnReasonLabel } from '@/api/salesReturns'
 import { formatDateTime } from '@/api/stock'
@@ -14,6 +13,7 @@ import { usePrintRoot } from '@/utils/print'
 import InvoiceDocument from './InvoiceDocument.vue'
 import PaymentFormModal from './PaymentFormModal.vue'
 import ReceiptDocument from './ReceiptDocument.vue'
+import { formatMoney } from '@/utils/money'
 
 const props = defineProps<{ id: string }>()
 
@@ -159,13 +159,13 @@ function onPaid(updated: Sale) {
             <h5 class="card-title mb-0">Balance</h5>
             <span v-if="badge" class="badge" :class="badge.className">{{ badge.label }}</span>
           </div>
-          <div class="summary-row"><span>Total</span><span>{{ formatPeso(sale.totalCents) }}</span></div>
+          <div class="summary-row"><span>Total</span><span>{{ formatMoney(sale.totalCents) }}</span></div>
           <div v-if="sale.returnedCents > 0" class="summary-row">
-            <span>Returned</span><span>−{{ formatPeso(sale.returnedCents) }}</span>
+            <span>Returned</span><span>−{{ formatMoney(sale.returnedCents) }}</span>
           </div>
-          <div class="summary-row"><span>Paid</span><span>{{ formatPeso(sale.paidCents) }}</span></div>
+          <div class="summary-row"><span>Paid</span><span>{{ formatMoney(sale.paidCents) }}</span></div>
           <div class="summary-row summary-due" :class="{ 'text-danger': sale.dueCents > 0 }">
-            <span>Balance due</span><span>{{ formatPeso(Math.max(sale.dueCents, 0)) }}</span>
+            <span>Balance due</span><span>{{ formatMoney(Math.max(sale.dueCents, 0)) }}</span>
           </div>
           <div class="fs-12 text-gray-5 mt-2">
             Sold by {{ sale.userName }} · {{ formatDateTime(sale.createdAt) }}
@@ -194,12 +194,12 @@ function onPaid(updated: Sale) {
                 {{ formatIsoDate(payment.paidDate) }} · {{ payment.userName }}
                 <template v-if="payment.reference"> · Ref {{ payment.reference }}</template>
                 <template v-if="payment.return"> · {{ payment.return.reference }}</template>
-                <template v-if="payment.changeCents"> · Change {{ formatPeso(payment.changeCents) }}</template>
+                <template v-if="payment.changeCents"> · Change {{ formatMoney(payment.changeCents) }}</template>
               </div>
               <div v-if="payment.note && !payment.return" class="fs-12 text-gray-5 text-break">{{ payment.note }}</div>
             </div>
             <div class="fw-semibold text-nowrap" :class="payment.amountCents < 0 ? 'text-danger' : 'text-success'">
-              {{ payment.amountCents < 0 ? '−' : '' }}{{ formatPeso(Math.abs(payment.amountCents)) }}
+              {{ payment.amountCents < 0 ? '−' : '' }}{{ formatMoney(Math.abs(payment.amountCents)) }}
             </div>
           </div>
         </div>
@@ -220,8 +220,8 @@ function onPaid(updated: Sale) {
               <div class="fs-12 text-gray-5">{{ formatIsoDate(ret.returnDate) }} · {{ returnReasonLabel(ret.reason) }}</div>
             </div>
             <div class="text-end text-nowrap">
-              <div class="fw-semibold text-gray-9">{{ formatPeso(ret.totalCents) }}</div>
-              <div v-if="ret.refundCents > 0" class="fs-12 text-danger">Refunded {{ formatPeso(ret.refundCents) }}</div>
+              <div class="fw-semibold text-gray-9">{{ formatMoney(ret.totalCents) }}</div>
+              <div v-if="ret.refundCents > 0" class="fs-12 text-danger">Refunded {{ formatMoney(ret.refundCents) }}</div>
             </div>
           </RouterLink>
         </div>

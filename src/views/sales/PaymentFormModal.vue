@@ -1,7 +1,6 @@
 <script setup lang="ts">
 // "Record payment" dialog for an invoice with a balance due.
 import { computed, ref } from 'vue'
-import { formatPeso } from '@/api/products'
 import {
   addSalePayment,
   PAYMENT_METHODS,
@@ -12,7 +11,7 @@ import {
 } from '@/api/sales'
 import AppModal from '@/components/AppModal.vue'
 import { toIsoDate } from '@/utils/date'
-import { centsToText, parsePeso } from '@/utils/money'
+import { centsToText, currencySymbol, formatMoney, parsePeso } from '@/utils/money'
 
 const props = defineProps<{ sale: SaleSummary }>()
 const emit = defineEmits<{ close: []; saved: [sale: Sale] }>()
@@ -38,7 +37,7 @@ const changeCents = computed(() => {
 function validate(): string {
   const cents = amountCents.value
   if (cents === null || Number.isNaN(cents) || cents <= 0) return 'Enter the amount paid, like 150.00.'
-  if (cents > props.sale.dueCents) return `The balance due is only ${formatPeso(props.sale.dueCents)}.`
+  if (cents > props.sale.dueCents) return `The balance due is only ${formatMoney(props.sale.dueCents)}.`
   if (method.value === 'cash' && receivedCents.value !== null) {
     if (Number.isNaN(receivedCents.value)) return 'Cash received must be an amount like 200.00.'
     if (receivedCents.value < cents) return 'Cash received is less than the amount paid.'
@@ -83,7 +82,7 @@ async function save() {
           </div>
           <div class="text-end">
             <div class="fs-12 text-gray-5">Balance due</div>
-            <div class="fw-bold text-danger">{{ formatPeso(sale.dueCents) }}</div>
+            <div class="fw-bold text-danger">{{ formatMoney(sale.dueCents) }}</div>
           </div>
         </div>
 
@@ -91,7 +90,7 @@ async function save() {
           <div class="col-sm-6">
             <label class="form-label" for="payment-amount">Amount <span class="text-danger">*</span></label>
             <div class="input-group">
-              <span class="input-group-text">₱</span>
+              <span class="input-group-text">{{ currencySymbol() }}</span>
               <input id="payment-amount" v-model="amount" type="text" class="form-control" inputmode="decimal" />
             </div>
           </div>
@@ -106,11 +105,11 @@ async function save() {
               Cash received <span class="text-gray-5 fw-normal">(optional)</span>
             </label>
             <div class="input-group">
-              <span class="input-group-text">₱</span>
+              <span class="input-group-text">{{ currencySymbol() }}</span>
               <input id="payment-received" v-model="received" type="text" class="form-control" inputmode="decimal" />
             </div>
             <div v-if="changeCents !== null && changeCents >= 0" class="form-text">
-              Change: <strong class="text-gray-9">{{ formatPeso(changeCents) }}</strong>
+              Change: <strong class="text-gray-9">{{ formatMoney(changeCents) }}</strong>
             </div>
           </div>
           <div v-else class="col-sm-6">

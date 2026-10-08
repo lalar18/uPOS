@@ -3,10 +3,9 @@
 // reference number. A named customer can pay part now or charge it all to their account;
 // a walk-in customer must pay in full. The parent saves the sale and passes back errors.
 import { computed, ref } from 'vue'
-import { formatPeso } from '@/api/products'
 import { PAYMENT_METHODS, paymentMethodLabel, type PaymentInput, type PaymentMethod } from '@/api/sales'
 import AppModal from '@/components/AppModal.vue'
-import { centsToText, parsePeso } from '@/utils/money'
+import { centsToText, currencySymbol, formatMoney, parsePeso } from '@/utils/money'
 
 const props = defineProps<{
   totalCents: number
@@ -71,7 +70,7 @@ function confirm() {
       return
     }
     if (given < total && !canPayLater.value) {
-      localError.value = `Cash received is ${formatPeso(total - given)} short. Walk-in sales must be paid in full.`
+      localError.value = `Cash received is ${formatMoney(total - given)} short. Walk-in sales must be paid in full.`
       return
     }
     const amount = Math.min(given, total) // less than the total leaves a balance on the customer's account
@@ -103,7 +102,7 @@ function payLater() {
       <div class="modal-body">
         <div class="total-box mb-3">
           <div class="fs-13 text-gray-5">Amount to pay</div>
-          <div class="total-amount">{{ formatPeso(totalCents) }}</div>
+          <div class="total-amount">{{ formatMoney(totalCents) }}</div>
           <div class="fs-13 text-gray-5">{{ customerName ?? 'Walk-in Customer' }}</div>
         </div>
 
@@ -127,7 +126,7 @@ function payLater() {
         <template v-if="method === 'cash'">
           <label class="form-label" for="pos-received">Cash received</label>
           <div class="input-group input-group-lg mb-2">
-            <span class="input-group-text">₱</span>
+            <span class="input-group-text">{{ currencySymbol() }}</span>
             <input
               id="pos-received"
               v-model="receivedText"
@@ -146,12 +145,12 @@ function payLater() {
               class="btn btn-sm btn-white border"
               @click="receivedText = centsToText(amount)"
             >
-              {{ amount === totalCents ? 'Exact' : formatPeso(amount) }}
+              {{ amount === totalCents ? 'Exact' : formatMoney(amount) }}
             </button>
           </div>
           <div v-if="changeCents !== null" class="change-row" :class="changeCents < 0 ? 'text-danger' : 'text-success'">
             <span>{{ changeCents < 0 ? (canPayLater ? 'Left on account' : 'Short by') : 'Change' }}</span>
-            <span>{{ formatPeso(Math.abs(changeCents)) }}</span>
+            <span>{{ formatMoney(Math.abs(changeCents)) }}</span>
           </div>
         </template>
 
@@ -160,7 +159,7 @@ function payLater() {
             <div v-if="canPayLater" class="col-sm-6">
               <label class="form-label" for="pos-amount">Amount paid</label>
               <div class="input-group">
-                <span class="input-group-text">₱</span>
+                <span class="input-group-text">{{ currencySymbol() }}</span>
                 <input id="pos-amount" v-model="amountText" type="text" class="form-control" inputmode="decimal" />
               </div>
             </div>

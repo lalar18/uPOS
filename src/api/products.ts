@@ -112,11 +112,6 @@ export async function uploadProductImage(id: number, image: Blob): Promise<Produ
 
 export const removeProductImage = (id: number) => sendJson<Product>('DELETE', `/api/products/${id}/image`)
 
-const pesoFormat = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' })
-
-/** 1250 -> "₱12.50" */
-export const formatPeso = (cents: number) => pesoFormat.format(cents / 100)
-
 /** 1.5 -> "1.5", 12 -> "12" (stock is kept to 3 decimals) */
 export const formatQuantity = (value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 3 })
 

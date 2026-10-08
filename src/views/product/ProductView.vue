@@ -2,7 +2,6 @@
 import { computed, ref, watch } from 'vue'
 import {
   deleteProduct,
-  formatPeso,
   formatQuantity,
   getProductOptions,
   listProducts,
@@ -13,6 +12,7 @@ import {
 import { can } from '@/auth'
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal.vue'
 import ListPager from '@/components/ListPager.vue'
+import { formatMoney } from '@/utils/money'
 
 const canEdit = computed(() => can('products.manage'))
 
@@ -190,7 +190,7 @@ function onDeleted() {
                 <div v-if="product.subcategory" class="fs-12 text-gray-5">{{ product.subcategory.name }}</div>
               </td>
               <td>{{ product.brand?.name ?? '—' }}</td>
-              <td class="text-end fw-medium text-gray-9">{{ formatPeso(product.priceCents) }}</td>
+              <td class="text-end fw-medium text-gray-9">{{ formatMoney(product.priceCents) }}</td>
               <td class="text-end">
                 <div>{{ formatQuantity(product.quantity) }} {{ product.unit.shortName }}</div>
                 <div v-if="stockLevel(product) !== 'ok'" class="fs-12" :class="`stock-${stockLevel(product)}`">
@@ -226,7 +226,7 @@ function onDeleted() {
             <div class="flex-grow-1 min-w-0">
               <div class="d-flex justify-content-between align-items-start gap-2">
                 <div class="fw-medium text-gray-9 text-break min-w-0">{{ product.name }}</div>
-                <div class="fw-semibold text-gray-9 text-nowrap">{{ formatPeso(product.priceCents) }}</div>
+                <div class="fw-semibold text-gray-9 text-nowrap">{{ formatMoney(product.priceCents) }}</div>
               </div>
               <div class="fs-12 text-gray-5 text-break">
                 {{ product.sku }}

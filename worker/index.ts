@@ -1,6 +1,7 @@
 import { handleBrands } from './brands'
 import { handleCategories } from './categories'
 import { handleCustomers } from './customers'
+import { handleDashboard, handleUserDashboard, userDashboardId } from './dashboard'
 import { clearLoginFailures, loginKey, loginRetryAfter, recordLoginFailure, tooManyAttempts } from './loginThrottle'
 import { verifyPassword } from './password'
 import { handleProducts } from './products'
@@ -46,6 +47,7 @@ function publicUser(user: SessionUser) {
     store: {
       id: user.store_id,
       name: user.store_name,
+      currency: user.store_currency,
       subscription: { expiresAt: user.plan_expires_at, expired: user.subscription_expired },
     },
     // The version param changes on every upload, so browsers never show a stale picture
@@ -58,7 +60,8 @@ function publicUser(user: SessionUser) {
 const notLoggedIn = () => Response.json({ error: 'Not logged in' }, { status: 401 })
 
 const READ_METHODS = new Set(['GET', 'HEAD'])
-const ALLOWED_WHILE_EXPIRED = /^\/api\/(profile|subscription)\//
+// (the dashboard layout is a personal preference, like the profile)
+const ALLOWED_WHILE_EXPIRED = /^\/api\/(profile|subscription)\/|^\/api\/dashboard\/layout$/
 
 // Added to every API response. Pages and static files get theirs from public/_headers.
 const API_SECURITY_HEADERS: Record<string, string> = {
@@ -164,6 +167,12 @@ async function route(request: Request, env: Env): Promise<Response> {
     return changePassword(env.DB, request, user)
   }
 
+  if (url.pathname.startsWith('/api/dashboard/')) {
+    if (!user) return notLoggedIn()
+    const response = await handleDashboard(env.DB, request, url, user)
+    if (response) return response
+  }
+
   if (url.pathname.startsWith('/api/categories')) {
     if (!user) return notLoggedIn()
     const response = await handleCategories(env.DB, request, url, user)
@@ -246,6 +255,13 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (url.pathname === '/api/settings') {
     if (!user) return notLoggedIn()
     return handleSettings(env.DB, request, user)
+  }
+
+  // Checked before /api/users, which it also starts with
+  const dashboardUserId = userDashboardId(url.pathname)
+  if (dashboardUserId !== null) {
+    if (!user) return notLoggedIn()
+    return handleUserDashboard(env.DB, request, dashboardUserId, user)
   }
 
   if (url.pathname.startsWith('/api/users')) {

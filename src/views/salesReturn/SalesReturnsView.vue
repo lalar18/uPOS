@@ -3,7 +3,6 @@
 // (the sale page's "Return items" link); ?view=<id> opens a return's details.
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { formatPeso } from '@/api/products'
 import {
   listSalesReturns,
   RETURN_REASONS,
@@ -17,6 +16,7 @@ import { formatIsoDate } from '@/utils/date'
 import { PERIOD_OPTIONS, periodDates, rangeError, type Period } from '@/utils/period'
 import SalesReturnDetailModal from './SalesReturnDetailModal.vue'
 import SalesReturnFormModal from './SalesReturnFormModal.vue'
+import { formatMoney } from '@/utils/money'
 
 const route = useRoute()
 const router = useRouter()
@@ -155,7 +155,7 @@ watch(
         <span class="stat-icon bg-warning-transparent"><i class="ti ti-receipt-refund"></i></span>
         <div class="min-w-0">
           <div class="fs-13 text-gray-5">Returned ({{ total }})</div>
-          <div class="stat-value">{{ formatPeso(sums.totalCents) }}</div>
+          <div class="stat-value">{{ formatMoney(sums.totalCents) }}</div>
         </div>
       </div>
     </div>
@@ -164,7 +164,7 @@ watch(
         <span class="stat-icon bg-danger-transparent"><i class="ti ti-cash-banknote"></i></span>
         <div class="min-w-0">
           <div class="fs-13 text-gray-5">Refunded</div>
-          <div class="stat-value">{{ formatPeso(sums.refundCents) }}</div>
+          <div class="stat-value">{{ formatMoney(sums.refundCents) }}</div>
         </div>
       </div>
     </div>
@@ -236,9 +236,9 @@ watch(
                 <div>{{ returnReasonLabel(entry.reason) }}</div>
                 <div class="fs-12 text-gray-5">{{ entry.itemCount }} {{ entry.itemCount === 1 ? 'item' : 'items' }}</div>
               </td>
-              <td class="text-end fw-medium text-gray-9">{{ formatPeso(entry.totalCents) }}</td>
+              <td class="text-end fw-medium text-gray-9">{{ formatMoney(entry.totalCents) }}</td>
               <td class="text-end" :class="entry.refundCents > 0 ? 'text-danger' : 'text-gray-5'">
-                {{ formatPeso(entry.refundCents) }}
+                {{ formatMoney(entry.refundCents) }}
               </td>
               <td>
                 <span class="badge" :class="entry.restock ? 'bg-success' : 'bg-secondary'">
@@ -259,8 +259,8 @@ watch(
               <div class="text-gray-9 text-break">{{ entry.customer.name }}</div>
             </div>
             <div class="text-end flex-shrink-0">
-              <div class="fw-semibold text-gray-9">{{ formatPeso(entry.totalCents) }}</div>
-              <div v-if="entry.refundCents > 0" class="fs-12 text-danger">Refunded {{ formatPeso(entry.refundCents) }}</div>
+              <div class="fw-semibold text-gray-9">{{ formatMoney(entry.totalCents) }}</div>
+              <div v-if="entry.refundCents > 0" class="fs-12 text-danger">Refunded {{ formatMoney(entry.refundCents) }}</div>
             </div>
           </div>
           <div class="fs-12 text-gray-5 mt-1 text-start">
