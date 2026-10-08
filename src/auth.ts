@@ -51,10 +51,7 @@ export async function login(email: string, password: string, rememberMe: boolean
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password, rememberMe }),
   })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error ?? 'Login failed')
-
-  currentUser.value = data
+  currentUser.value = await readJson<User>(res)
   sessionChecked = true
 }
 

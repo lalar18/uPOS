@@ -74,7 +74,11 @@ const API_SECURITY_HEADERS: Record<string, string> = {
 
 export default {
   async fetch(request, env) {
-    const response = await route(request, env)
+    // Unhandled errors (e.g. a failed query) still answer in JSON, so the frontend can show them
+    const response = await route(request, env).catch((err: unknown) => {
+      console.error(err)
+      return Response.json({ error: 'Something went wrong on the server' }, { status: 500 })
+    })
     for (const [name, value] of Object.entries(API_SECURITY_HEADERS)) {
       if (!response.headers.has(name)) response.headers.set(name, value)
     }
