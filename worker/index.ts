@@ -23,7 +23,7 @@ import {
 } from './session'
 import { handleSubcategories } from './subcategories'
 import { handleSettings } from './settings'
-import { handleSubscription } from './subscription'
+import { handleSubscription, subscriptionExpired } from './subscription'
 import { handleSuppliers } from './suppliers'
 import { handleUnits } from './units'
 import { handleUsers } from './users'
@@ -42,7 +42,11 @@ function publicUser(user: SessionUser) {
     fullName: user.full_name,
     role: { id: user.role_id, name: user.role_name, isAdmin: user.is_admin },
     permissions: [...user.permissions],
-    store: { id: user.store_id, name: user.store_name },
+    store: {
+      id: user.store_id,
+      name: user.store_name,
+      subscription: { expiresAt: user.plan_expires_at, expired: user.subscription_expired },
+    },
     // The version param changes on every upload, so browsers never show a stale picture
     avatarUrl: user.avatar_updated_at
       ? `/api/users/${user.id}/avatar?v=${encodeURIComponent(user.avatar_updated_at)}`
@@ -51,6 +55,9 @@ function publicUser(user: SessionUser) {
 }
 
 const notLoggedIn = () => Response.json({ error: 'Not logged in' }, { status: 401 })
+
+const READ_METHODS = new Set(['GET', 'HEAD'])
+const ALLOWED_WHILE_EXPIRED = /^\/api\/(profile|subscription)\//
 
 // Added to every API response. Pages and static files get theirs from public/_headers.
 const API_SECURITY_HEADERS: Record<string, string> = {
@@ -119,6 +126,11 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   // Everything below requires a logged-in user
   const user = await getSessionUser(env.DB, request)
+
+  // An expired store is read-only: only your own profile and renewing the plan can still be changed
+  if (user?.subscription_expired && !READ_METHODS.has(request.method) && !ALLOWED_WHILE_EXPIRED.test(url.pathname)) {
+    return subscriptionExpired(user)
+  }
 
   // Returns the currently logged-in user (used by the frontend to check the session)
   if (url.pathname === '/api/me') {
@@ -237,9 +249,10 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (response) return response
   }
 
-  if (url.pathname === '/api/subscription') {
+  if (url.pathname.startsWith('/api/subscription')) {
     if (!user) return notLoggedIn()
-    return handleSubscription(env.DB, request, user)
+    const response = await handleSubscription(env.DB, request, url, user)
+    if (response) return response
   }
 
   if (url.pathname === '/api/store') {

@@ -17,18 +17,22 @@ export interface SessionUser {
   role_name: string
   is_admin: boolean // has the store's Admin role
   permissions: ReadonlySet<Permission> // every permission for admins
+  plan_expires_at: string | null
+  subscription_expired: boolean // the store is read-only until its plan is renewed
 }
 
 /** Columns (and joins, as `FROM ...`) that sessionUserFromRow() reads. Alias the users table `u`. */
 export const SESSION_USER_COLUMNS = `u.id, u.email, u.full_name, u.store_id, st.name AS store_name,
-  a.updated_at AS avatar_updated_at, u.role_id, r.name AS role_name, r.is_admin, r.permissions`
+  a.updated_at AS avatar_updated_at, u.role_id, r.name AS role_name, r.is_admin, r.permissions,
+  st.plan_expires_at, (st.plan_expires_at IS NULL OR st.plan_expires_at <= datetime('now')) AS subscription_expired`
 export const SESSION_USER_JOINS = `JOIN stores st ON st.id = u.store_id
   JOIN roles r ON r.id = u.role_id
   LEFT JOIN user_avatars a ON a.user_id = u.id`
 
-export interface SessionUserRow extends Omit<SessionUser, 'is_admin' | 'permissions'> {
+export interface SessionUserRow extends Omit<SessionUser, 'is_admin' | 'permissions' | 'subscription_expired'> {
   is_admin: number
   permissions: string
+  subscription_expired: number
 }
 
 export function sessionUserFromRow(row: SessionUserRow): SessionUser {
@@ -44,6 +48,8 @@ export function sessionUserFromRow(row: SessionUserRow): SessionUser {
     role_name: row.role_name,
     is_admin: isAdmin,
     permissions: new Set(isAdmin ? PERMISSIONS : parsePermissions(row.permissions)),
+    plan_expires_at: row.plan_expires_at,
+    subscription_expired: row.subscription_expired === 1,
   }
 }
 

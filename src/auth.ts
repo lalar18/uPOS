@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { readJson } from './api/http'
+import { parseDbDate, readJson } from './api/http'
 import type { Permission, RoleSummary } from './api/roles'
 
 export interface User {
@@ -8,8 +8,13 @@ export interface User {
   fullName: string
   role: RoleSummary
   permissions: Permission[] // every permission for admins
-  store: { id: number; name: string } // every user belongs to exactly one store
+  store: { id: number; name: string; subscription: StoreSubscription } // every user belongs to exactly one store
   avatarUrl: string | null
+}
+
+export interface StoreSubscription {
+  expiresAt: string | null // UTC "YYYY-MM-DD HH:MM:SS"
+  expired: boolean // the store is read-only until renewed
 }
 
 /** The logged-in user, or null when signed out. Shared across the app. */
@@ -20,6 +25,13 @@ export const can = (permission: Permission) => currentUser.value?.permissions.in
 
 /** True when the logged-in user has the store's Admin role (the only one that manages users and roles). */
 export const isAdmin = () => currentUser.value?.role.isAdmin ?? false
+
+/** True when the store's subscription has run out, so nothing can be saved (the API refuses too). */
+export function subscriptionExpired(): boolean {
+  const subscription = currentUser.value?.store.subscription
+  if (!subscription) return false
+  return subscription.expired || !subscription.expiresAt || parseDbDate(subscription.expiresAt) <= new Date()
+}
 
 let sessionChecked = false
 

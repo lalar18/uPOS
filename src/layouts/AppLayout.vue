@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { can, currentUser, isAdmin, logout } from '@/auth'
+import { can, currentUser, isAdmin, logout, subscriptionExpired } from '@/auth'
+import SubscriptionBanner from '@/components/SubscriptionBanner.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import { menu, type MenuItem } from './menu'
 
@@ -213,7 +214,7 @@ async function handleLogout() {
           </li>
 
           <!-- Add New -->
-          <li class="nav-item dropdown link-nav" data-dropdown>
+          <li v-if="!subscriptionExpired()" class="nav-item dropdown link-nav" data-dropdown>
             <a
               href="#"
               class="btn btn-primary btn-md d-inline-flex align-items-center"
@@ -237,7 +238,7 @@ async function handleLogout() {
           </li>
 
           <!-- POS -->
-          <li v-if="can('sales.create')" class="nav-item pos-nav">
+          <li v-if="can('sales.create') && !subscriptionExpired()" class="nav-item pos-nav">
             <RouterLink to="/pos" class="btn btn-dark btn-md d-inline-flex align-items-center">
               <i class="ti ti-device-laptop me-1"></i>POS
             </RouterLink>
@@ -344,6 +345,7 @@ async function handleLogout() {
     <!-- Page content -->
     <div class="page-wrapper">
       <div class="content">
+        <SubscriptionBanner />
         <!-- Keyed by path so e.g. /products/create and /products/1/edit never share a component instance -->
         <RouterView :key="route.path" />
       </div>

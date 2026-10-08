@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { Permission } from './api/roles'
-import { loadSession } from './auth'
+import { loadSession, subscriptionExpired } from './auth'
 import AppLayout from './layouts/AppLayout.vue'
 import BrandView from './views/brand/BrandView.vue'
 import CategoryView from './views/category/CategoryView.vue'
@@ -56,7 +56,7 @@ const router = createRouter({
           path: 'products/create',
           name: 'product-create',
           component: ProductFormView,
-          meta: { permission: 'products.manage' },
+          meta: { permission: 'products.manage', writes: true },
         },
         { path: 'products/expired', name: 'products-expired', component: ExpiredProductsView },
         { path: 'products/low-stocks', name: 'products-low-stocks', component: LowStocksView },
@@ -65,7 +65,7 @@ const router = createRouter({
           name: 'product-edit',
           component: ProductFormView,
           props: true,
-          meta: { menu: '/products', permission: 'products.manage' }, // menu highlights "Products" in the sidebar
+          meta: { menu: '/products', permission: 'products.manage', writes: true }, // menu highlights "Products" in the sidebar
         },
         { path: 'variant-attributes', name: 'variant-attributes', component: VariantAttributeView },
         { path: 'warranties', name: 'warranties', component: WarrantyView },
@@ -78,7 +78,7 @@ const router = createRouter({
           path: 'sales/create',
           name: 'sale-create',
           component: SaleFormView,
-          meta: { menu: '/sales', permission: 'sales.create' },
+          meta: { menu: '/sales', permission: 'sales.create', writes: true },
         },
         {
           path: 'sales/:id(\\d+)',
@@ -101,7 +101,7 @@ const router = createRouter({
           path: 'quotations/create',
           name: 'quotation-create',
           component: QuotationFormView,
-          meta: { menu: '/quotations', permission: 'quotations.manage' },
+          meta: { menu: '/quotations', permission: 'quotations.manage', writes: true },
         },
         {
           path: 'quotations/:id(\\d+)',
@@ -115,9 +115,9 @@ const router = createRouter({
           name: 'quotation-edit',
           component: QuotationFormView,
           props: true,
-          meta: { menu: '/quotations', permission: 'quotations.manage' },
+          meta: { menu: '/quotations', permission: 'quotations.manage', writes: true },
         },
-        { path: 'pos', name: 'pos', component: PosView, meta: { permission: 'sales.create' } },
+        { path: 'pos', name: 'pos', component: PosView, meta: { permission: 'sales.create', writes: true } },
         { path: 'customers', name: 'customers', component: CustomerView },
         { path: 'suppliers', name: 'suppliers', component: SupplierView },
         { path: 'store', name: 'store', component: StoreView },
@@ -153,6 +153,10 @@ router.beforeEach(async (to) => {
   if (to.meta.permission && !user?.permissions.includes(to.meta.permission)) {
     return { name: 'dashboard' }
   }
+  // Nothing can be saved while the subscription is expired (the banner explains why)
+  if (to.meta.writes && subscriptionExpired()) {
+    return { name: user?.role.isAdmin ? 'subscription' : 'dashboard' }
+  }
 })
 
 declare module 'vue-router' {
@@ -161,6 +165,7 @@ declare module 'vue-router' {
     guestOnly?: boolean
     adminOnly?: boolean // only the store's Admin role (users, roles, subscription)
     permission?: Permission
+    writes?: boolean // only for saving things (POS, create/edit forms); closed while the subscription is expired
     menu?: string // sidebar link to highlight
   }
 }

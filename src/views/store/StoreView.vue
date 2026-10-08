@@ -57,7 +57,7 @@ async function save() {
     store.value = await updateStore(form.value)
     form.value = toInput(store.value)
     // The header shows the store name
-    if (currentUser.value) currentUser.value.store = { id: store.value.id, name: store.value.name }
+    if (currentUser.value) currentUser.value.store.name = store.value.name
     saveSuccess.value = 'Store information saved.'
   } catch (e) {
     saveError.value = e instanceof Error ? e.message : 'Could not save the store'
