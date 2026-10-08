@@ -2,12 +2,12 @@
 // Products at or below their low stock alert, and products that have run out.
 import { computed, ref, watch } from 'vue'
 import { formatQuantity, getProductOptions, listProducts, type Product, type ProductOptions } from '@/api/products'
-import { currentUser } from '@/auth'
+import { can } from '@/auth'
 import ListPager from '@/components/ListPager.vue'
 
 type Tab = 'low' | 'out'
 
-const isAdmin = computed(() => currentUser.value?.role === 'admin')
+const canEdit = computed(() => can('products.manage'))
 
 // --- List, filters and paging ---
 
@@ -158,7 +158,7 @@ function stockPercent(product: Product): number {
               <th>Brand</th>
               <th class="text-end">In Stock</th>
               <th class="text-end">Alert At</th>
-              <th v-if="isAdmin" class="text-end">Actions</th>
+              <th v-if="canEdit" class="text-end">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -186,7 +186,7 @@ function stockPercent(product: Product): number {
                 </div>
               </td>
               <td class="text-end">{{ formatQuantity(product.alertQuantity) }} {{ product.unit.shortName }}</td>
-              <td v-if="isAdmin" class="text-end">
+              <td v-if="canEdit" class="text-end">
                 <div class="row-actions">
                   <RouterLink :to="{ name: 'product-edit', params: { id: product.id } }" title="Edit">
                     <i class="ti ti-edit"></i>
@@ -228,7 +228,7 @@ function stockPercent(product: Product): number {
               <span :style="{ width: `${stockPercent(product)}%` }"></span>
             </div>
             <span v-else class="fs-12 text-danger">Out of stock</span>
-            <div v-if="isAdmin" class="row-actions">
+            <div v-if="canEdit" class="row-actions">
               <RouterLink :to="{ name: 'product-edit', params: { id: product.id } }" title="Edit">
                 <i class="ti ti-edit"></i>
               </RouterLink>

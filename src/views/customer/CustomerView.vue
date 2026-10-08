@@ -3,13 +3,13 @@ import { computed, ref, watch } from 'vue'
 import { deleteCustomer, listCustomers, type Customer, type CustomerStatus } from '@/api/customers'
 import { parseDbDate } from '@/api/http'
 import { formatPeso } from '@/api/products'
-import { currentUser } from '@/auth'
+import { can } from '@/auth'
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal.vue'
 import CustomerFormModal from '@/components/CustomerFormModal.vue'
 import ListPager from '@/components/ListPager.vue'
 
-// Anyone can add a customer (cashiers do at the till); only admins edit or delete
-const isAdmin = computed(() => currentUser.value?.role === 'admin')
+// Anyone can add a customer (cashiers do at the till); only roles with customers.manage edit or delete
+const canEdit = computed(() => can('customers.manage'))
 
 // --- List, filters and paging ---
 
@@ -144,7 +144,7 @@ function onDeleted() {
               <th class="text-end">Balance Due</th>
               <th>Created On</th>
               <th>Status</th>
-              <th v-if="isAdmin" class="text-end">Actions</th>
+              <th v-if="canEdit" class="text-end">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -165,7 +165,7 @@ function onDeleted() {
                   <i class="ti ti-point-filled me-1"></i>{{ customer.status === 'active' ? 'Active' : 'Inactive' }}
                 </span>
               </td>
-              <td v-if="isAdmin" class="text-end">
+              <td v-if="canEdit" class="text-end">
                 <div class="row-actions">
                   <button type="button" title="Edit" @click="openForm(customer)"><i class="ti ti-edit"></i></button>
                   <button type="button" title="Delete" @click="deleting = customer"><i class="ti ti-trash"></i></button>
@@ -200,7 +200,7 @@ function onDeleted() {
                 · <span class="text-danger fw-medium">{{ formatPeso(customer.balanceCents) }} due</span>
               </template>
             </span>
-            <div v-if="isAdmin" class="row-actions">
+            <div v-if="canEdit" class="row-actions">
               <button type="button" title="Edit" @click="openForm(customer)"><i class="ti ti-edit"></i></button>
               <button type="button" title="Delete" @click="deleting = customer"><i class="ti ti-trash"></i></button>
             </div>

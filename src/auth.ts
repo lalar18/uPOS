@@ -1,17 +1,25 @@
 import { ref } from 'vue'
 import { readJson } from './api/http'
+import type { Permission, RoleSummary } from './api/roles'
 
 export interface User {
   id: number
   email: string
   fullName: string
-  role: 'admin' | 'cashier'
+  role: RoleSummary
+  permissions: Permission[] // every permission for admins
   store: { id: number; name: string } // every user belongs to exactly one store
   avatarUrl: string | null
 }
 
 /** The logged-in user, or null when signed out. Shared across the app. */
 export const currentUser = ref<User | null>(null)
+
+/** True when the logged-in user's role has this permission. Reactive inside computed() and templates. */
+export const can = (permission: Permission) => currentUser.value?.permissions.includes(permission) ?? false
+
+/** True when the logged-in user has the store's Admin role (the only one that manages users and roles). */
+export const isAdmin = () => currentUser.value?.role.isAdmin ?? false
 
 let sessionChecked = false
 

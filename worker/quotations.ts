@@ -1,5 +1,6 @@
-// Quotation endpoints. Any logged-in user can create, edit and update the status of
-// quotations; only admins can delete them. Quotations don't touch stock. Converting one
+// Quotation endpoints. Any logged-in user can view quotations; roles with quotations.manage
+// can create, edit and update their status, and roles with quotations.delete can delete
+// them. Quotations don't touch stock. Converting one
 // is done by creating a sale with its quotationId (see sales.ts), which marks it converted;
 // a converted quotation can't be edited or deleted. Every query is limited to the user's own store.
 //
@@ -33,6 +34,7 @@ import {
   type Line,
   type Totals,
 } from './documents'
+import { can } from './permissions'
 import type { SessionUser } from './session'
 
 const EDITABLE_STATUSES = ['draft', 'sent', 'accepted', 'declined'] as const
@@ -444,7 +446,10 @@ export async function handleQuotations(
 
   const storeId = user.store_id
   if (isCollection && request.method === 'GET') return listQuotations(db, storeId, url)
-  if (isCollection && request.method === 'POST') return createQuotation(db, request, user)
+  const noManage = () => error("You don't have permission to change quotations", 403)
+  if (isCollection && request.method === 'POST') {
+    return can(user, 'quotations.manage') ? createQuotation(db, request, user) : noManage()
+  }
   if (!itemMatch) return error('Method not allowed', 405)
 
   const id = Number(itemMatch[1])
@@ -452,10 +457,11 @@ export async function handleQuotations(
     const detail = await getQuotationDetail(db, storeId, id)
     return detail ? Response.json(detail) : error('Quotation not found', 404)
   }
+  if ((request.method === 'PUT' || request.method === 'PATCH') && !can(user, 'quotations.manage')) return noManage()
   if (request.method === 'PUT') return updateQuotation(db, request, storeId, id)
   if (request.method === 'PATCH') return setStatus(db, request, storeId, id)
   if (request.method === 'DELETE') {
-    if (user.role !== 'admin') return error('Only admins can delete quotations', 403)
+    if (!can(user, 'quotations.delete')) return error("You don't have permission to delete quotations", 403)
     return deleteQuotation(db, storeId, id)
   }
 

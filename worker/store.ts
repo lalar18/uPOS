@@ -1,9 +1,10 @@
 // Store information for the logged-in user's store. Any user can read it
-// (e.g. for receipts); only admins can change it.
+// (e.g. for receipts); only roles with store.manage can change it.
 //
 //   GET /api/store                                                        -> store
 //   PUT /api/store   { name, email, phone, address, city, province, postalCode, tin }  -> store
 
+import { can } from './permissions'
 import type { SessionUser } from './session'
 
 interface StoreRow {
@@ -122,7 +123,7 @@ async function updateStore(db: D1Database, request: Request, user: SessionUser):
 export async function handleStore(db: D1Database, request: Request, user: SessionUser): Promise<Response> {
   if (request.method === 'GET') return getStore(db, user)
   if (request.method === 'PUT') {
-    if (user.role !== 'admin') return error('Only admins can change store information', 403)
+    if (!can(user, 'store.manage')) return error("You don't have permission to change store information", 403)
     return updateStore(db, request, user)
   }
   return error('Method not allowed', 405)

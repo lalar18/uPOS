@@ -1,13 +1,12 @@
 import { readJson, sendJson } from './http'
-
-export type UserRole = 'admin' | 'cashier'
+import type { RoleSummary } from './roles'
 
 /** A user as listed on the Users page (admins only). */
 export interface ManagedUser {
   id: number
   email: string
   fullName: string
-  role: UserRole
+  role: RoleSummary
   active: boolean
   avatarUrl: string | null
   createdAt: string
@@ -17,14 +16,14 @@ export interface ManagedUser {
 export interface ManagedUserInput {
   email: string
   fullName: string
-  role: UserRole
+  roleId: number
   active: boolean
   password?: string // required when adding; ignored when editing
 }
 
 export interface UserQuery {
   search: string
-  role: UserRole | ''
+  roleId: number | null
   status: 'active' | 'inactive' | ''
   page: number
   pageSize: number
@@ -33,12 +32,10 @@ export interface UserQuery {
 /** Keep in step with MIN_PASSWORD_LENGTH in worker/password.ts */
 export const MIN_PASSWORD_LENGTH = 8
 
-export const roleLabel = (role: UserRole) => (role === 'admin' ? 'Admin' : 'Cashier')
-
 export async function listUsers(query: UserQuery): Promise<{ items: ManagedUser[]; total: number }> {
   const params = new URLSearchParams({ page: String(query.page), pageSize: String(query.pageSize) })
   if (query.search) params.set('search', query.search)
-  if (query.role) params.set('role', query.role)
+  if (query.roleId !== null) params.set('roleId', String(query.roleId))
   if (query.status) params.set('status', query.status)
   return readJson(await fetch(`/api/users?${params}`))
 }

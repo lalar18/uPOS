@@ -1,8 +1,10 @@
 <script setup lang="ts">
-// Users of this store (admins only; the router keeps cashiers out).
-import { ref, watch } from 'vue'
+// Users of this store (Admin role only; the router keeps everyone else out).
+import { computed, ref, watch } from 'vue'
 import { parseDbDate } from '@/api/http'
-import { deleteUser, listUsers, roleLabel, type ManagedUser, type UserRole } from '@/api/users'
+import { listRoles, type Role } from '@/api/roles'
+import { describeSeats, getSubscription, type Subscription } from '@/api/subscription'
+import { deleteUser, listUsers, type ManagedUser } from '@/api/users'
 import { currentUser } from '@/auth'
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal.vue'
 import ListPager from '@/components/ListPager.vue'
@@ -21,7 +23,7 @@ const loadError = ref('')
 const notice = ref('') // e.g. "Password reset for …"
 
 const search = ref('')
-const roleFilter = ref<UserRole | ''>('')
+const roleFilter = ref<number | null>(null)
 const statusFilter = ref<'active' | 'inactive' | ''>('')
 const page = ref(1)
 const pageSize = ref(10)
@@ -35,7 +37,7 @@ async function load() {
   try {
     const result = await listUsers({
       search: search.value.trim(),
-      role: roleFilter.value,
+      roleId: roleFilter.value,
       status: statusFilter.value,
       page: page.value,
       pageSize: pageSize.value,
@@ -70,6 +72,29 @@ watch([roleFilter, statusFilter, pageSize], resetToFirstPage)
 watch(page, load)
 load()
 
+// --- Roles (for the filter and form) and the plan's user seats ---
+
+const roles = ref<Role[]>([])
+const subscription = ref<Subscription | null>(null)
+
+async function loadPlan() {
+  try {
+    subscription.value = await getSubscription()
+  } catch {
+    subscription.value = null // the API still enforces the limit
+  }
+}
+
+listRoles()
+  .then((items) => (roles.value = items))
+  .catch((e) => (loadError.value = e instanceof Error ? e.message : 'Could not load roles'))
+loadPlan()
+
+const seatsFull = computed(() => {
+  const s = subscription.value
+  return s !== null && s.usage.users >= s.plan.maxUsers
+})
+
 const dateFormat = new Intl.DateTimeFormat(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
 const formatDate = (value: string) => dateFormat.format(parseDbDate(value))
 
@@ -94,6 +119,7 @@ function onSaved(user: ManagedUser) {
     currentUser.value.email = user.email
   }
   load()
+  loadPlan()
 }
 
 function onPasswordReset() {
@@ -104,6 +130,7 @@ function onPasswordReset() {
 function onDeleted() {
   deleting.value = null
   load()
+  loadPlan()
 }
 </script>
 
@@ -117,10 +144,28 @@ function onDeleted() {
       <button type="button" class="btn btn-white border" title="Refresh" :disabled="loading" @click="load">
         <i class="ti ti-refresh"></i>
       </button>
-      <button type="button" class="btn btn-primary" @click="openForm(null)">
+      <RouterLink :to="{ name: 'roles' }" class="btn btn-white border">
+        <i class="ti ti-shield-lock me-1"></i>Roles
+      </RouterLink>
+      <button type="button" class="btn btn-primary" :disabled="seatsFull" @click="openForm(null)">
         <i class="ti ti-circle-plus me-1"></i>Add User
       </button>
     </div>
+  </div>
+
+  <!-- Seats on the store's subscription plan -->
+  <div
+    v-if="subscription"
+    class="alert py-2 d-flex flex-wrap align-items-center justify-content-between gap-2"
+    :class="seatsFull ? 'alert-warning' : 'alert-light border'"
+    role="status"
+  >
+    <span>
+      <strong>{{ subscription.usage.users }} of {{ subscription.plan.maxUsers }}</strong> users on the
+      {{ subscription.plan.name }} plan ({{ describeSeats(subscription.plan) }}).
+      <template v-if="seatsFull">Delete a user or upgrade your plan to add another.</template>
+    </span>
+    <RouterLink :to="{ name: 'subscription' }" class="fw-medium">View plan</RouterLink>
   </div>
 
   <div v-if="notice" class="alert alert-success py-2 d-flex align-items-center justify-content-between gap-2" role="status">
@@ -145,9 +190,8 @@ function onDeleted() {
       </div>
       <div class="filters d-flex gap-2">
         <select v-model="roleFilter" class="form-select" aria-label="Filter by role">
-          <option value="">All roles</option>
-          <option value="admin">Admin</option>
-          <option value="cashier">Cashier</option>
+          <option :value="null">All roles</option>
+          <option v-for="role in roles" :key="role.id" :value="role.id">{{ role.name }}</option>
         </select>
         <select v-model="statusFilter" class="form-select" aria-label="Filter by status">
           <option value="">All statuses</option>
@@ -187,8 +231,8 @@ function onDeleted() {
                 </div>
               </td>
               <td>
-                <span class="badge" :class="user.role === 'admin' ? 'bg-primary' : 'bg-secondary'">
-                  {{ roleLabel(user.role) }}
+                <span class="badge" :class="user.role.isAdmin ? 'bg-primary' : 'bg-secondary'">
+                  {{ user.role.name }}
                 </span>
               </td>
               <td>{{ formatDate(user.createdAt) }}</td>
@@ -235,8 +279,8 @@ function onDeleted() {
             </span>
           </div>
           <div class="d-flex justify-content-between align-items-center gap-2 mt-2">
-            <span class="badge" :class="user.role === 'admin' ? 'bg-primary' : 'bg-secondary'">
-              {{ roleLabel(user.role) }}
+            <span class="badge" :class="user.role.isAdmin ? 'bg-primary' : 'bg-secondary'">
+              {{ user.role.name }}
             </span>
             <div class="row-actions">
               <button type="button" title="Edit" @click="openForm(user)"><i class="ti ti-edit"></i></button>
@@ -267,7 +311,14 @@ function onDeleted() {
     <ListPager v-model:page="page" v-model:page-size="pageSize" :total="total" label="User pages" />
   </div>
 
-  <UserFormModal v-if="formOpen" :user="editing" @close="formOpen = false" @saved="onSaved" />
+  <UserFormModal
+    v-if="formOpen"
+    :user="editing"
+    :roles="roles"
+    :subscription="subscription"
+    @close="formOpen = false"
+    @saved="onSaved"
+  />
   <ResetPasswordModal v-if="resetting" :user="resetting" @close="resetting = null" @saved="onPasswordReset" />
   <ConfirmDeleteModal
     v-if="deleting"

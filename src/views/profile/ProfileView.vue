@@ -158,7 +158,7 @@ async function handleChangePassword() {
           <UserAvatar :user="currentUser" :size="120" radius="50%" class="mb-3" />
           <h5 class="mb-1">{{ currentUser?.fullName }}</h5>
           <p class="text-gray-5 mb-2">{{ currentUser?.email }}</p>
-          <span class="badge bg-primary-transparent text-capitalize mb-3">{{ currentUser?.role }}</span>
+          <span class="badge bg-primary-transparent mb-3">{{ currentUser?.role.name }}</span>
 
           <div v-if="avatarError" class="alert alert-danger py-2 text-start" role="alert">{{ avatarError }}</div>
 

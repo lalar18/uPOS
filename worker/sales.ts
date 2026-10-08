@@ -1,6 +1,7 @@
-// Sale endpoints. Every sale is also its invoice (INV-00042). Any logged-in user can sell,
-// view sales and record payments; only admins can sell at a price other than the product's
-// (cashiers may use the price on the quotation being converted). Every query is limited to
+// Sale endpoints. Every sale is also its invoice (INV-00042). Any logged-in user can view
+// sales; roles with sales.create can sell and record payments, and only roles with
+// sales.price can sell at a price other than the product's (others may use the price on
+// the quotation being converted). Every query is limited to
 // the user's own store. Sales are never edited or deleted: mistakes are fixed with a return.
 //
 //   GET  /api/sales?search=&payment=&source=&customerId=&from=&to=&today=&page=&pageSize=
@@ -42,6 +43,7 @@ import {
   WALK_IN_CUSTOMER,
   type PaymentMethod,
 } from './documents'
+import { can } from './permissions'
 import type { SessionUser } from './session'
 
 const MAX_PAYMENTS = 5
@@ -405,13 +407,13 @@ async function createSale(db: D1Database, request: Request, user: SessionUser): 
 
   const lines = await readLines(db, storeId, body.items)
   if (lines instanceof Response) return lines
-  const isAdmin = user.role === 'admin'
+  const canSetPrice = can(user, 'sales.price')
   for (const line of lines) {
     if (line.status !== 'active') return error(`${line.name} is inactive and can't be sold`, 400)
     const allowedPrice = quotedPrices.get(line.productId) ?? line.catalogPriceCents
-    if (!isAdmin && line.priceCents !== allowedPrice && line.priceCents !== line.catalogPriceCents) {
+    if (!canSetPrice && line.priceCents !== allowedPrice && line.priceCents !== line.catalogPriceCents) {
       const price = (line.catalogPriceCents / 100).toFixed(2)
-      return error(`${line.name} sells for ₱${price}. Only admins can sell at a different price.`, 409)
+      return error(`${line.name} sells for ₱${price}. You don't have permission to sell at a different price.`, 409)
     }
     if (line.quantity > line.stock) {
       return error(`Only ${Math.max(line.stock, 0)} ${line.unitShortName} of ${line.name} left in stock`, 409)
@@ -625,6 +627,10 @@ export async function handleSales(
   const itemMatch = url.pathname.match(/^\/api\/sales\/(\d+)$/)
   const paymentsMatch = url.pathname.match(/^\/api\/sales\/(\d+)\/payments$/)
   if (!isCollection && !itemMatch && !paymentsMatch) return null
+
+  if (request.method !== 'GET' && !can(user, 'sales.create')) {
+    return error("You don't have permission to make sales or record payments", 403)
+  }
 
   if (isCollection && request.method === 'GET') return listSales(db, user.store_id, url)
   if (isCollection && request.method === 'POST') return createSale(db, request, user)

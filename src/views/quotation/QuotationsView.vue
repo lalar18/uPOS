@@ -11,6 +11,7 @@ import {
   type QuotationStatus,
   type QuotationSummary,
 } from '@/api/quotations'
+import { can } from '@/auth'
 import ListPager from '@/components/ListPager.vue'
 import { formatIsoDate, toIsoDate } from '@/utils/date'
 import { PERIOD_OPTIONS, periodDates, rangeError, type Period } from '@/utils/period'
@@ -32,6 +33,7 @@ const customTo = ref('')
 const page = ref(1)
 const pageSize = ref(10)
 
+const canManage = computed(() => can('quotations.manage'))
 const hasFilters = computed(() => search.value !== '' || statusFilter.value !== '' || period.value !== '')
 const customRangeError = computed(() => rangeError(period.value, customFrom.value, customTo.value))
 
@@ -108,7 +110,7 @@ const detailRoute = (q: QuotationSummary) => ({ name: 'quotation-detail', params
       <button type="button" class="btn btn-white border" title="Refresh" :disabled="loading" @click="load">
         <i class="ti ti-refresh"></i>
       </button>
-      <RouterLink :to="{ name: 'quotation-create' }" class="btn btn-primary">
+      <RouterLink v-if="canManage" :to="{ name: 'quotation-create' }" class="btn btn-primary">
         <i class="ti ti-circle-plus me-1"></i>New Quotation
       </RouterLink>
     </div>
@@ -210,7 +212,7 @@ const detailRoute = (q: QuotationSummary) => ({ name: 'quotation-detail', params
         </template>
         <template v-else>
           No quotations yet.
-          <RouterLink :to="{ name: 'quotation-create' }" class="d-block mt-2">Create your first quotation</RouterLink>
+          <RouterLink v-if="canManage" :to="{ name: 'quotation-create' }" class="d-block mt-2">Create your first quotation</RouterLink>
         </template>
       </div>
     </div>

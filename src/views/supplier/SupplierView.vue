@@ -2,12 +2,12 @@
 import { computed, ref, watch } from 'vue'
 import { parseDbDate } from '@/api/http'
 import { deleteSupplier, listSuppliers, type Supplier, type SupplierStatus } from '@/api/suppliers'
-import { currentUser } from '@/auth'
+import { can } from '@/auth'
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal.vue'
 import ListPager from '@/components/ListPager.vue'
 import SupplierFormModal from './SupplierFormModal.vue'
 
-const isAdmin = computed(() => currentUser.value?.role === 'admin')
+const canEdit = computed(() => can('suppliers.manage'))
 
 // --- List, filters and paging ---
 
@@ -99,7 +99,7 @@ function onDeleted() {
       <button type="button" class="btn btn-white border" title="Refresh" :disabled="loading" @click="load">
         <i class="ti ti-refresh"></i>
       </button>
-      <button v-if="isAdmin" type="button" class="btn btn-primary" @click="openForm(null)">
+      <button v-if="canEdit" type="button" class="btn btn-primary" @click="openForm(null)">
         <i class="ti ti-circle-plus me-1"></i>Add Supplier
       </button>
     </div>
@@ -141,7 +141,7 @@ function onDeleted() {
               <th>Address</th>
               <th>Created On</th>
               <th>Status</th>
-              <th v-if="isAdmin" class="text-end">Actions</th>
+              <th v-if="canEdit" class="text-end">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -159,7 +159,7 @@ function onDeleted() {
                   <i class="ti ti-point-filled me-1"></i>{{ supplier.status === 'active' ? 'Active' : 'Inactive' }}
                 </span>
               </td>
-              <td v-if="isAdmin" class="text-end">
+              <td v-if="canEdit" class="text-end">
                 <div class="row-actions">
                   <button type="button" title="Edit" @click="openForm(supplier)"><i class="ti ti-edit"></i></button>
                   <button type="button" title="Delete" @click="deleting = supplier"><i class="ti ti-trash"></i></button>
@@ -192,7 +192,7 @@ function onDeleted() {
           </div>
           <div class="d-flex justify-content-between align-items-center gap-2 mt-2">
             <span class="fs-12 text-gray-5">Added {{ formatDate(supplier.createdAt) }}</span>
-            <div v-if="isAdmin" class="row-actions">
+            <div v-if="canEdit" class="row-actions">
               <button type="button" title="Edit" @click="openForm(supplier)"><i class="ti ti-edit"></i></button>
               <button type="button" title="Delete" @click="deleting = supplier"><i class="ti ti-trash"></i></button>
             </div>

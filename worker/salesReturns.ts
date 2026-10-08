@@ -1,4 +1,4 @@
-// Sales return endpoints. Any logged-in user can view returns; only admins can record one,
+// Sales return endpoints. Any logged-in user can view returns; only roles with sales.returns can record one,
 // because a return can hand money back. Every query is limited to the user's own store.
 //
 //   GET  /api/sales-returns?search=&reason=&from=&to=&page=&pageSize=  -> { items, total, sums: { totalCents, refundCents } }
@@ -29,6 +29,7 @@ import {
   roundQuantity,
   type PaymentMethod,
 } from './documents'
+import { can } from './permissions'
 import { returnReference, saleReference } from './sales'
 import type { SessionUser } from './session'
 
@@ -422,7 +423,7 @@ export async function handleSalesReturns(
   const itemMatch = url.pathname.match(/^\/api\/sales-returns\/(\d+)$/)
   if (!isCollection && !itemMatch) return null
 
-  if (request.method !== 'GET' && user.role !== 'admin') return error('Only admins can record returns', 403)
+  if (request.method !== 'GET' && !can(user, 'sales.returns')) return error("You don't have permission to record returns", 403)
 
   if (isCollection && request.method === 'GET') return listReturns(db, user.store_id, url)
   if (isCollection && request.method === 'POST') return createReturn(db, request, user)

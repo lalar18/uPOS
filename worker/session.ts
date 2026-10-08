@@ -1,5 +1,7 @@
 // Cookie-based sessions stored in D1.
 
+import { parsePermissions, PERMISSIONS, type Permission } from './permissions'
+
 const COOKIE_NAME = 'session'
 const SHORT_SESSION_SECONDS = 60 * 60 * 12 // 12 hours
 const REMEMBER_ME_SECONDS = 60 * 60 * 24 * 30 // 30 days
@@ -8,10 +10,41 @@ export interface SessionUser {
   id: number
   email: string
   full_name: string
-  role: 'admin' | 'cashier'
   store_id: number
   store_name: string
   avatar_updated_at: string | null
+  role_id: number
+  role_name: string
+  is_admin: boolean // has the store's Admin role
+  permissions: ReadonlySet<Permission> // every permission for admins
+}
+
+/** Columns (and joins, as `FROM ...`) that sessionUserFromRow() reads. Alias the users table `u`. */
+export const SESSION_USER_COLUMNS = `u.id, u.email, u.full_name, u.store_id, st.name AS store_name,
+  a.updated_at AS avatar_updated_at, u.role_id, r.name AS role_name, r.is_admin, r.permissions`
+export const SESSION_USER_JOINS = `JOIN stores st ON st.id = u.store_id
+  JOIN roles r ON r.id = u.role_id
+  LEFT JOIN user_avatars a ON a.user_id = u.id`
+
+export interface SessionUserRow extends Omit<SessionUser, 'is_admin' | 'permissions'> {
+  is_admin: number
+  permissions: string
+}
+
+export function sessionUserFromRow(row: SessionUserRow): SessionUser {
+  const isAdmin = row.is_admin === 1
+  return {
+    id: row.id,
+    email: row.email,
+    full_name: row.full_name,
+    store_id: row.store_id,
+    store_name: row.store_name,
+    avatar_updated_at: row.avatar_updated_at,
+    role_id: row.role_id,
+    role_name: row.role_name,
+    is_admin: isAdmin,
+    permissions: new Set(isAdmin ? PERMISSIONS : parsePermissions(row.permissions)),
+  }
 }
 
 async function sha256Hex(value: string): Promise<string> {
@@ -52,18 +85,18 @@ export async function getSessionUser(db: D1Database, request: Request): Promise<
   const token = readSessionToken(request)
   if (!token) return null
 
-  return db
+  // The role is read on every request, so permission changes apply right away
+  const row = await db
     .prepare(
-      `SELECT u.id, u.email, u.full_name, u.role, u.store_id, st.name AS store_name,
-              a.updated_at AS avatar_updated_at
+      `SELECT ${SESSION_USER_COLUMNS}
        FROM sessions s
        JOIN users u ON u.id = s.user_id
-       JOIN stores st ON st.id = u.store_id
-       LEFT JOIN user_avatars a ON a.user_id = u.id
+       ${SESSION_USER_JOINS}
        WHERE s.id = ? AND s.expires_at > datetime('now') AND u.is_active = 1 AND st.is_active = 1`,
     )
     .bind(await sha256Hex(token))
-    .first<SessionUser>()
+    .first<SessionUserRow>()
+  return row ? sessionUserFromRow(row) : null
 }
 
 /** Signs the user out everywhere except this request's session (e.g. after a password change). */

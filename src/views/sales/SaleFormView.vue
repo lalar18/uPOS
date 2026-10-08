@@ -17,7 +17,7 @@ import {
   type PaymentMethod,
 } from '@/api/sales'
 import { getSettingsOrDefaults, taxRateText } from '@/api/settings'
-import { currentUser } from '@/auth'
+import { can } from '@/auth'
 import CustomerPicker from '@/components/CustomerPicker.vue'
 import { toIsoDate } from '@/utils/date'
 import { centsToText, newUid, parsePercentBp, parsePeso } from '@/utils/money'
@@ -29,7 +29,7 @@ type PaymentMode = 'full' | 'partial' | 'none'
 
 const route = useRoute()
 const router = useRouter()
-const isAdmin = computed(() => currentUser.value?.role === 'admin')
+const canSetPrice = computed(() => can('sales.price'))
 
 // Reused if saving is retried, so a sale whose response was lost is never saved twice
 const uid = newUid()
@@ -245,9 +245,9 @@ async function save() {
         <div class="card mb-0 h-100">
           <div class="card-header"><h5 class="card-title mb-0">Products</h5></div>
           <div class="card-body">
-            <LineItemsEditor v-model="lines" :can-edit-price="isAdmin" :check-stock="true" />
-            <div v-if="!isAdmin" class="form-text">
-              Prices come from the product{{ quotationId ? ' or the quotation' : '' }}. Only admins can change them.
+            <LineItemsEditor v-model="lines" :can-edit-price="canSetPrice" :check-stock="true" />
+            <div v-if="!canSetPrice" class="form-text">
+              Prices come from the product{{ quotationId ? ' or the quotation' : '' }}. Your role doesn't allow changing them.
             </div>
           </div>
         </div>

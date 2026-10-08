@@ -11,14 +11,15 @@ import {
   type ProductStatus,
 } from '@/api/products'
 import { getStockSummary, type StockSummary } from '@/api/stock'
-import { currentUser } from '@/auth'
+import { can } from '@/auth'
 import ListPager from '@/components/ListPager.vue'
 import StockAdjustmentFormModal from './StockAdjustmentFormModal.vue'
 import StockHistoryModal from './StockHistoryModal.vue'
 
 type StockLevel = 'out' | 'low' | 'ok'
 
-const isAdmin = computed(() => currentUser.value?.role === 'admin')
+const canAdjust = computed(() => can('stock.adjust'))
+const showCost = computed(() => can('products.manage')) // the API leaves costs out otherwise
 
 // --- Summary ---
 
@@ -123,7 +124,7 @@ function stockLevel(product: Product): StockLevel {
 
 const LEVEL_LABELS: Record<StockLevel, string> = { out: 'Out of stock', low: 'Low stock', ok: 'In stock' }
 
-/** Cost of the stock on hand, or null without a cost price (admins only see costs) */
+/** Cost of the stock on hand, or null without a cost price (only shown with products.manage) */
 function stockValue(product: Product): number | null {
   if (product.costCents === null) return null
   return product.quantity > 0 ? Math.round(product.quantity * product.costCents) : 0
@@ -156,7 +157,7 @@ function onAdjusted() {
       <button type="button" class="btn btn-white border" title="Refresh" :disabled="loading" @click="refresh">
         <i class="ti ti-refresh"></i>
       </button>
-      <button v-if="isAdmin" type="button" class="btn btn-primary" @click="openAdjust(null)">
+      <button v-if="canAdjust" type="button" class="btn btn-primary" @click="openAdjust(null)">
         <i class="ti ti-adjustments-horizontal me-1"></i>Adjust Stock
       </button>
     </div>
@@ -174,13 +175,13 @@ function onAdjusted() {
     <div class="summary-card">
       <span class="summary-icon bg-success-soft"><i class="ti ti-currency-peso"></i></span>
       <span class="min-w-0">
-        <span class="summary-label">{{ isAdmin ? 'Stock Value (Cost)' : 'Stock Value (Retail)' }}</span>
+        <span class="summary-label">{{ showCost ? 'Stock Value (Cost)' : 'Stock Value (Retail)' }}</span>
         <span class="summary-value text-truncate">
           <template v-if="!summary">—</template>
-          <template v-else-if="isAdmin && summary.costValueCents !== null">{{ formatPeso(summary.costValueCents) }}</template>
+          <template v-else-if="showCost && summary.costValueCents !== null">{{ formatPeso(summary.costValueCents) }}</template>
           <template v-else>{{ formatPeso(summary.retailValueCents) }}</template>
         </span>
-        <span v-if="isAdmin && summary" class="summary-hint text-truncate">
+        <span v-if="showCost && summary" class="summary-hint text-truncate">
           Retail {{ formatPeso(summary.retailValueCents) }}
           <template v-if="summary.missingCostCount">· {{ summary.missingCostCount }} without cost</template>
         </span>
@@ -251,7 +252,7 @@ function onAdjusted() {
               <th>Category</th>
               <th class="text-end">In Stock</th>
               <th class="text-end">Alert At</th>
-              <th v-if="isAdmin" class="text-end">Stock Value</th>
+              <th v-if="showCost" class="text-end">Stock Value</th>
               <th>Status</th>
               <th class="text-end">Actions</th>
             </tr>
@@ -280,7 +281,7 @@ function onAdjusted() {
                 </div>
               </td>
               <td class="text-end">{{ formatQuantity(product.alertQuantity) }} {{ product.unit.shortName }}</td>
-              <td v-if="isAdmin" class="text-end">
+              <td v-if="showCost" class="text-end">
                 <template v-if="stockValue(product) === null"><span class="text-gray-5">No cost</span></template>
                 <template v-else>{{ formatPeso(stockValue(product)!) }}</template>
               </td>
@@ -294,7 +295,7 @@ function onAdjusted() {
                   <button type="button" title="Stock history" @click="historyOf = product">
                     <i class="ti ti-history"></i>
                   </button>
-                  <button v-if="isAdmin" type="button" title="Adjust stock" @click="openAdjust(product)">
+                  <button v-if="canAdjust" type="button" title="Adjust stock" @click="openAdjust(product)">
                     <i class="ti ti-adjustments-horizontal"></i>
                   </button>
                 </div>
@@ -338,7 +339,7 @@ function onAdjusted() {
           </div>
           <div class="d-flex justify-content-between align-items-center gap-3 mt-2">
             <span class="fs-12 text-gray-5 min-w-0 text-truncate">
-              <template v-if="isAdmin">
+              <template v-if="showCost">
                 Value:
                 <template v-if="stockValue(product) === null">no cost price</template>
                 <template v-else>{{ formatPeso(stockValue(product)!) }}</template>
@@ -348,7 +349,7 @@ function onAdjusted() {
               <button type="button" title="Stock history" @click="historyOf = product">
                 <i class="ti ti-history"></i>
               </button>
-              <button v-if="isAdmin" type="button" title="Adjust stock" @click="openAdjust(product)">
+              <button v-if="canAdjust" type="button" title="Adjust stock" @click="openAdjust(product)">
                 <i class="ti ti-adjustments-horizontal"></i>
               </button>
             </div>

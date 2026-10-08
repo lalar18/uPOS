@@ -1,5 +1,5 @@
-// Stock endpoints. Any logged-in user can view; only admins can adjust.
-// Cashiers never see cost values. Every query is limited to the user's own store.
+// Stock endpoints. Any logged-in user can view; only roles with stock.adjust can adjust.
+// Only roles with products.manage see cost values. Every query is limited to the user's own store.
 //
 //   GET  /api/stock/summary          -> { productCount, lowCount, outCount, retailValueCents, costValueCents, missingCostCount }
 //   GET  /api/stock/adjustments?search=&reason=&direction=in|out&productId=&from=&to=&page=&pageSize=  -> { items, total }
@@ -8,6 +8,7 @@
 //
 // Adjustments are never edited or deleted, so the log always adds up to the product's stock.
 
+import { can } from './permissions'
 import type { SessionUser } from './session'
 
 /**
@@ -296,10 +297,10 @@ export async function handleStock(
   const isAdjustments = url.pathname === '/api/stock/adjustments'
   if (!isSummary && !isAdjustments) return null
 
-  const isAdmin = user.role === 'admin'
-  if (request.method !== 'GET' && !isAdmin) return error('Only admins can adjust stock', 403)
+  const showCost = can(user, 'products.manage')
+  if (request.method !== 'GET' && !can(user, 'stock.adjust')) return error("You don't have permission to adjust stock", 403)
 
-  if (isSummary && request.method === 'GET') return getSummary(db, user.store_id, isAdmin)
+  if (isSummary && request.method === 'GET') return getSummary(db, user.store_id, showCost)
   if (isAdjustments && request.method === 'GET') return listAdjustments(db, user.store_id, url)
   if (isAdjustments && request.method === 'POST') return createAdjustment(db, request, user)
 

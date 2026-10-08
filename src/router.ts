@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import type { Permission } from './api/roles'
 import { loadSession } from './auth'
 import AppLayout from './layouts/AppLayout.vue'
 import BrandView from './views/brand/BrandView.vue'
@@ -16,6 +17,7 @@ import ProductFormView from './views/product/ProductFormView.vue'
 import ProductView from './views/product/ProductView.vue'
 import PosView from './views/pos/PosView.vue'
 import ProfileView from './views/profile/ProfileView.vue'
+import RoleView from './views/role/RoleView.vue'
 import QuotationDetailView from './views/quotation/QuotationDetailView.vue'
 import QuotationFormView from './views/quotation/QuotationFormView.vue'
 import QuotationsView from './views/quotation/QuotationsView.vue'
@@ -26,6 +28,7 @@ import SalesReturnsView from './views/salesReturn/SalesReturnsView.vue'
 import StockAdjustmentView from './views/stock/StockAdjustmentView.vue'
 import StoreView from './views/store/StoreView.vue'
 import SubCategoryView from './views/subcategory/SubCategoryView.vue'
+import SubscriptionView from './views/subscription/SubscriptionView.vue'
 import SupplierView from './views/supplier/SupplierView.vue'
 import UnitView from './views/unit/UnitView.vue'
 import UserView from './views/user/UserView.vue'
@@ -49,7 +52,12 @@ const router = createRouter({
         { path: 'brands', name: 'brands', component: BrandView },
         { path: 'units', name: 'units', component: UnitView },
         { path: 'products', name: 'products', component: ProductView },
-        { path: 'products/create', name: 'product-create', component: ProductFormView },
+        {
+          path: 'products/create',
+          name: 'product-create',
+          component: ProductFormView,
+          meta: { permission: 'products.manage' },
+        },
         { path: 'products/expired', name: 'products-expired', component: ExpiredProductsView },
         { path: 'products/low-stocks', name: 'products-low-stocks', component: LowStocksView },
         {
@@ -57,7 +65,7 @@ const router = createRouter({
           name: 'product-edit',
           component: ProductFormView,
           props: true,
-          meta: { menu: '/products' }, // highlights "Products" in the sidebar
+          meta: { menu: '/products', permission: 'products.manage' }, // menu highlights "Products" in the sidebar
         },
         { path: 'variant-attributes', name: 'variant-attributes', component: VariantAttributeView },
         { path: 'warranties', name: 'warranties', component: WarrantyView },
@@ -66,7 +74,12 @@ const router = createRouter({
         { path: 'stock', name: 'stock', component: ManageStockView },
         { path: 'stock/adjustments', name: 'stock-adjustments', component: StockAdjustmentView },
         { path: 'sales', name: 'sales', component: SaleListView, props: { mode: 'sales' } },
-        { path: 'sales/create', name: 'sale-create', component: SaleFormView, meta: { menu: '/sales' } },
+        {
+          path: 'sales/create',
+          name: 'sale-create',
+          component: SaleFormView,
+          meta: { menu: '/sales', permission: 'sales.create' },
+        },
         {
           path: 'sales/:id(\\d+)',
           name: 'sale-detail',
@@ -84,7 +97,12 @@ const router = createRouter({
           meta: { menu: '/invoices' },
         },
         { path: 'quotations', name: 'quotations', component: QuotationsView },
-        { path: 'quotations/create', name: 'quotation-create', component: QuotationFormView, meta: { menu: '/quotations' } },
+        {
+          path: 'quotations/create',
+          name: 'quotation-create',
+          component: QuotationFormView,
+          meta: { menu: '/quotations', permission: 'quotations.manage' },
+        },
         {
           path: 'quotations/:id(\\d+)',
           name: 'quotation-detail',
@@ -97,14 +115,21 @@ const router = createRouter({
           name: 'quotation-edit',
           component: QuotationFormView,
           props: true,
-          meta: { menu: '/quotations' },
+          meta: { menu: '/quotations', permission: 'quotations.manage' },
         },
-        { path: 'pos', name: 'pos', component: PosView },
+        { path: 'pos', name: 'pos', component: PosView, meta: { permission: 'sales.create' } },
         { path: 'customers', name: 'customers', component: CustomerView },
         { path: 'suppliers', name: 'suppliers', component: SupplierView },
         { path: 'store', name: 'store', component: StoreView },
         { path: 'users', name: 'users', component: UserView, meta: { adminOnly: true } },
-        { path: 'settings', name: 'settings', component: GeneralSettingsView, meta: { adminOnly: true } },
+        { path: 'roles', name: 'roles', component: RoleView, meta: { adminOnly: true } },
+        { path: 'subscription', name: 'subscription', component: SubscriptionView, meta: { adminOnly: true } },
+        {
+          path: 'settings',
+          name: 'settings',
+          component: GeneralSettingsView,
+          meta: { permission: 'settings.manage' },
+        },
         // Sidebar links without a page yet (and unknown URLs) land here
         { path: ':pathMatch(.*)*', name: 'coming-soon', component: ComingSoonView },
       ],
@@ -121,10 +146,23 @@ router.beforeEach(async (to) => {
   if (to.meta.guestOnly && user) {
     return { name: 'dashboard' }
   }
-  // Admin-only pages (the API refuses cashiers too; this just avoids showing them an error)
-  if (to.meta.adminOnly && user?.role !== 'admin') {
+  // Pages the user's role can't use (the API refuses them too; this just avoids showing an error)
+  if (to.meta.adminOnly && !user?.role.isAdmin) {
+    return { name: 'dashboard' }
+  }
+  if (to.meta.permission && !user?.permissions.includes(to.meta.permission)) {
     return { name: 'dashboard' }
   }
 })
+
+declare module 'vue-router' {
+  interface RouteMeta {
+    requiresAuth?: boolean
+    guestOnly?: boolean
+    adminOnly?: boolean // only the store's Admin role (users, roles, subscription)
+    permission?: Permission
+    menu?: string // sidebar link to highlight
+  }
+}
 
 export default router

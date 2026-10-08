@@ -1,11 +1,13 @@
 <script setup lang="ts">
 // Add / edit dialog for a user. Pass `user` to edit, or null to add (which also sets a password).
 import { computed, ref } from 'vue'
-import { createUser, MIN_PASSWORD_LENGTH, updateUser, type ManagedUser, type UserRole } from '@/api/users'
+import { PERMISSION_GROUPS, type Role } from '@/api/roles'
+import type { Subscription } from '@/api/subscription'
+import { createUser, MIN_PASSWORD_LENGTH, updateUser, type ManagedUser } from '@/api/users'
 import { currentUser } from '@/auth'
 import AppModal from '@/components/AppModal.vue'
 
-const props = defineProps<{ user: ManagedUser | null }>()
+const props = defineProps<{ user: ManagedUser | null; roles: Role[]; subscription: Subscription | null }>()
 const emit = defineEmits<{ close: []; saved: [user: ManagedUser, isNew: boolean] }>()
 
 // Admins can't change their own role or status (the API refuses too)
@@ -13,7 +15,30 @@ const isSelf = computed(() => props.user !== null && props.user.id === currentUs
 
 const fullName = ref(props.user?.fullName ?? '')
 const email = ref(props.user?.email ?? '')
-const role = ref<UserRole>(props.user?.role ?? 'cashier')
+// New users start on the first role that isn't Admin (Cashier, unless renamed)
+const roleId = ref<number | null>(
+  props.user?.role.id ?? props.roles.find((r) => !r.isAdmin)?.id ?? props.roles[0]?.id ?? null,
+)
+const selectedRole = computed(() => props.roles.find((r) => r.id === roleId.value) ?? null)
+
+const PERMISSION_LABELS = new Map<string, string>(
+  PERMISSION_GROUPS.flatMap((g) => g.permissions.map((p) => [p.key, p.label] as [string, string])),
+)
+const roleSummary = computed(() => {
+  const role = selectedRole.value
+  if (!role) return ''
+  if (role.isAdmin) return 'Admins can do everything, including managing users, roles and settings.'
+  if (role.permissions.length === 0) return 'This role can look things up but not change anything.'
+  return `Can: ${role.permissions.map((p) => PERMISSION_LABELS.get(p)).join(', ')}.`
+})
+
+// The plan caps admins (e.g. Standard: 1 admin + 2 users); the API checks this too
+const adminSeatsFull = computed(() => {
+  const s = props.subscription
+  if (!s || s.plan.maxAdmins === null || !selectedRole.value?.isAdmin || props.user?.role.isAdmin) return false
+  return s.usage.admins >= s.plan.maxAdmins
+})
+
 const active = ref(props.user?.active ?? true)
 const password = ref('')
 const confirmPassword = ref('')
@@ -24,6 +49,8 @@ const saving = ref(false)
 function validate(): string {
   if (!fullName.value.trim()) return 'Full name is required.'
   if (!email.value.trim()) return 'Email is required.'
+  if (roleId.value === null) return 'Choose a role.'
+  if (adminSeatsFull.value) return 'Your plan has no admin seats left. Choose another role.'
   if (!props.user) {
     if (password.value.length < MIN_PASSWORD_LENGTH) return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`
     if (password.value !== confirmPassword.value) return 'The passwords do not match.'
@@ -35,7 +62,7 @@ async function save() {
   error.value = validate()
   if (error.value) return
 
-  const input = { fullName: fullName.value, email: email.value, role: role.value, active: active.value }
+  const input = { fullName: fullName.value, email: email.value, roleId: roleId.value!, active: active.value }
   saving.value = true
   try {
     const saved = props.user
@@ -73,14 +100,15 @@ async function save() {
         </div>
         <div class="mb-3">
           <label class="form-label" for="user-role">Role <span class="text-danger">*</span></label>
-          <select id="user-role" v-model="role" class="form-select" :disabled="isSelf">
-            <option value="cashier">Cashier</option>
-            <option value="admin">Admin</option>
+          <select id="user-role" v-model="roleId" class="form-select" :disabled="isSelf">
+            <option v-for="r in roles" :key="r.id" :value="r.id">{{ r.name }}</option>
           </select>
           <div class="form-text">
             <template v-if="isSelf">You can't change your own role.</template>
-            <template v-else-if="role === 'admin'">Admins can change products, prices, settings and users.</template>
-            <template v-else>Cashiers can sell and look things up, but not change settings.</template>
+            <span v-else-if="adminSeatsFull" class="text-danger">
+              Your {{ subscription?.plan.name }} plan has no admin seats left. Choose another role.
+            </span>
+            <template v-else>{{ roleSummary }}</template>
           </div>
         </div>
 

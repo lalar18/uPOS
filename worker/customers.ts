@@ -1,5 +1,5 @@
 // Customer endpoints. Any logged-in user can search and add customers (cashiers add them
-// at the till); only admins can edit or delete. Every query is limited to the user's own store.
+// at the till); only roles with customers.manage can edit or delete. Every query is limited to the user's own store.
 //
 //   GET    /api/customers?search=&status=&page=&pageSize=           -> { items, total }
 //   GET    /api/customers/:id                                       -> customer
@@ -9,6 +9,7 @@
 
 import { readContactFields, readPersonName, type ContactFields, type Status } from './contacts'
 import { constraintMessage, error, likePattern, readPaging } from './documents'
+import { can } from './permissions'
 import type { SessionUser } from './session'
 
 interface CustomerRow {
@@ -169,7 +170,7 @@ export async function handleCustomers(
   }
 
   if (itemMatch && (request.method === 'PUT' || request.method === 'DELETE')) {
-    if (user.role !== 'admin') return error('Only admins can change customers', 403)
+    if (!can(user, 'customers.manage')) return error("You don't have permission to change customers", 403)
     const id = Number(itemMatch[1])
     return request.method === 'PUT' ? updateCustomer(db, storeId, request, id) : deleteCustomer(db, storeId, id)
   }

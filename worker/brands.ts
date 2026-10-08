@@ -1,4 +1,4 @@
-// Brand endpoints. Any logged-in user can list and view logos; only admins can change.
+// Brand endpoints. Any logged-in user can list and view logos; only roles with catalog.manage can change.
 // Every query is limited to the user's own store.
 //
 //   GET    /api/brands?search=&status=&page=&pageSize=   -> { items, total }
@@ -9,6 +9,7 @@
 //   PUT    /api/brands/:id/logo   (raw image body)       -> brand
 //   DELETE /api/brands/:id/logo                          -> brand
 
+import { can } from './permissions'
 import { sniffImageType } from './profile'
 import type { SessionUser } from './session'
 
@@ -229,7 +230,7 @@ export async function handleBrands(
   if (!isCollection && !itemMatch && !logoMatch) return null
 
   const isWrite = request.method !== 'GET'
-  if (isWrite && user.role !== 'admin') return error('Only admins can change brands', 403)
+  if (isWrite && !can(user, 'catalog.manage')) return error("You don't have permission to change brands", 403)
 
   const storeId = user.store_id
   if (isCollection && request.method === 'GET') return listBrands(db, storeId, url)

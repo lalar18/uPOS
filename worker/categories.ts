@@ -1,4 +1,4 @@
-// Category endpoints. Any logged-in user can list; only admins can change.
+// Category endpoints. Any logged-in user can list; only roles with catalog.manage can change.
 // Every query is limited to the user's own store.
 //
 //   GET    /api/categories?search=&status=&page=&pageSize=   -> { items, total }
@@ -6,6 +6,7 @@
 //   PUT    /api/categories/:id    { name, slug?, status? }   -> category
 //   DELETE /api/categories/:id                               -> { ok }
 
+import { can } from './permissions'
 import type { SessionUser } from './session'
 
 type Status = 'active' | 'inactive'
@@ -184,7 +185,7 @@ export async function handleCategories(
   if (!isCollection && !itemMatch) return null
 
   const isWrite = request.method !== 'GET'
-  if (isWrite && user.role !== 'admin') return error('Only admins can change categories', 403)
+  if (isWrite && !can(user, 'catalog.manage')) return error("You don't have permission to change categories", 403)
 
   const storeId = user.store_id
   if (isCollection && request.method === 'GET') return listCategories(db, storeId, url)

@@ -10,11 +10,11 @@ import {
   type ProductOptions,
   type ProductStatus,
 } from '@/api/products'
-import { currentUser } from '@/auth'
+import { can } from '@/auth'
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal.vue'
 import ListPager from '@/components/ListPager.vue'
 
-const isAdmin = computed(() => currentUser.value?.role === 'admin')
+const canEdit = computed(() => can('products.manage'))
 
 // --- List, filters and paging ---
 
@@ -116,7 +116,7 @@ function onDeleted() {
       <button type="button" class="btn btn-white border" title="Refresh" :disabled="loading" @click="load">
         <i class="ti ti-refresh"></i>
       </button>
-      <RouterLink v-if="isAdmin" :to="{ name: 'product-create' }" class="btn btn-primary">
+      <RouterLink v-if="canEdit" :to="{ name: 'product-create' }" class="btn btn-primary">
         <i class="ti ti-circle-plus me-1"></i>Add Product
       </RouterLink>
     </div>
@@ -168,7 +168,7 @@ function onDeleted() {
               <th class="text-end">Price</th>
               <th class="text-end">Stock</th>
               <th>Status</th>
-              <th v-if="isAdmin" class="text-end">Actions</th>
+              <th v-if="canEdit" class="text-end">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -202,7 +202,7 @@ function onDeleted() {
                   <i class="ti ti-point-filled me-1"></i>{{ product.status === 'active' ? 'Active' : 'Inactive' }}
                 </span>
               </td>
-              <td v-if="isAdmin" class="text-end">
+              <td v-if="canEdit" class="text-end">
                 <div class="row-actions">
                   <RouterLink :to="{ name: 'product-edit', params: { id: product.id } }" title="Edit">
                     <i class="ti ti-edit"></i>
@@ -246,7 +246,7 @@ function onDeleted() {
             <span class="badge" :class="product.status === 'active' ? 'bg-success' : 'bg-danger'">
               <i class="ti ti-point-filled me-1"></i>{{ product.status === 'active' ? 'Active' : 'Inactive' }}
             </span>
-            <div v-if="isAdmin" class="row-actions">
+            <div v-if="canEdit" class="row-actions">
               <RouterLink :to="{ name: 'product-edit', params: { id: product.id } }" title="Edit">
                 <i class="ti ti-edit"></i>
               </RouterLink>
@@ -262,7 +262,7 @@ function onDeleted() {
         <template v-if="hasFilters">No products match your filters.</template>
         <template v-else>
           No products yet.
-          <RouterLink v-if="isAdmin" :to="{ name: 'product-create' }" class="d-block mt-2">Add your first product</RouterLink>
+          <RouterLink v-if="canEdit" :to="{ name: 'product-create' }" class="d-block mt-2">Add your first product</RouterLink>
         </template>
       </div>
     </div>

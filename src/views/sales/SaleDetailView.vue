@@ -8,7 +8,7 @@ import { getSale, invoiceBadge, paymentMethodLabel, type Sale } from '@/api/sale
 import { returnReasonLabel } from '@/api/salesReturns'
 import { formatDateTime } from '@/api/stock'
 import { getStore, type Store } from '@/api/store'
-import { currentUser } from '@/auth'
+import { can } from '@/auth'
 import { formatIsoDate, toIsoDate } from '@/utils/date'
 import { usePrintRoot } from '@/utils/print'
 import InvoiceDocument from './InvoiceDocument.vue'
@@ -18,7 +18,8 @@ import ReceiptDocument from './ReceiptDocument.vue'
 const props = defineProps<{ id: string }>()
 
 const route = useRoute()
-const isAdmin = computed(() => currentUser.value?.role === 'admin')
+const mayReturn = computed(() => can('sales.returns'))
+const canSell = computed(() => can('sales.create'))
 const isInvoice = computed(() => route.name === 'invoice-detail')
 const today = toIsoDate()
 
@@ -47,7 +48,7 @@ getStore()
 
 const badge = computed(() => (sale.value ? invoiceBadge(sale.value, today) : undefined))
 const canReturn = computed(
-  () => isAdmin.value && !!sale.value?.items.some((item) => item.quantity - item.returnedQuantity > 0),
+  () => mayReturn.value && !!sale.value?.items.some((item) => item.quantity - item.returnedQuantity > 0),
 )
 
 const documentItems = computed(() =>
@@ -120,7 +121,7 @@ function onPaid(updated: Sale) {
         >
           <i class="ti ti-receipt-refund me-1"></i>Return Items
         </RouterLink>
-        <button v-if="sale.dueCents > 0" type="button" class="btn btn-primary" @click="paying = true">
+        <button v-if="canSell && sale.dueCents > 0" type="button" class="btn btn-primary" @click="paying = true">
           <i class="ti ti-cash me-1"></i>Record Payment
         </button>
       </template>

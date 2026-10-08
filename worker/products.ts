@@ -1,5 +1,6 @@
-// Product endpoints. Any logged-in user can list and view; only admins can change.
-// Cashiers never see cost prices. Every query is limited to the user's own store.
+// Product endpoints. Any logged-in user can list and view; only roles with products.manage
+// can change them, and only they see cost prices. The store's subscription plan caps how
+// many products it can have. Every query is limited to the user's own store.
 // Prices are whole centavos (₱12.50 -> 1250).
 //
 //   GET    /api/products?search=&status=&categoryId=&subcategoryId=&brandId=&page=&pageSize=  -> { items, total }
@@ -14,8 +15,10 @@
 //   PUT    /api/products/:id/image (raw image)  -> product
 //   DELETE /api/products/:id/image              -> product
 
+import { can } from './permissions'
 import { sniffImageType } from './profile'
 import type { SessionUser } from './session'
+import { getPlanUsage, PRODUCT_SLOT_FREE, productLimitReached } from './subscription'
 
 type Status = 'active' | 'inactive'
 
@@ -431,13 +434,15 @@ async function createProduct(db: D1Database, user: SessionUser, request: Request
   try {
     // The starting stock is logged as the first stock adjustment. Both run in one batch (a
     // transaction); the new product is found by its SKU, which is unique within the store.
+    // Nothing is inserted once the store's plan is full.
     const [inserted] = await db.batch([
       db
         .prepare(
           `INSERT INTO products (store_id, name, sku, barcode, category_id, subcategory_id, brand_id, unit_id,
              price_cents, cost_cents, quantity, alert_quantity, description, manufactured_date, expiry_date,
              warranty_id, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+           WHERE ${PRODUCT_SLOT_FREE}
            RETURNING id`,
         )
         .bind(
@@ -458,6 +463,8 @@ async function createProduct(db: D1Database, user: SessionUser, request: Request
           input.expiryDate,
           input.warrantyId,
           input.status,
+          storeId,
+          storeId,
         ),
       db
         .prepare(
@@ -469,7 +476,12 @@ async function createProduct(db: D1Database, user: SessionUser, request: Request
         )
         .bind(user.id, user.full_name, storeId, input.sku),
     ])
-    id = (inserted!.results[0] as { id: number }).id
+    const created = inserted!.results[0] as { id: number } | undefined
+    if (!created) {
+      const usage = await getPlanUsage(db, storeId)
+      return usage ? productLimitReached(usage) : error('Store not found', 404)
+    }
+    id = created.id
   } catch (e) {
     return uniqueConflict(e)
   }
@@ -611,17 +623,17 @@ export async function handleProducts(
   const imageMatch = url.pathname.match(/^\/api\/products\/(\d+)\/image$/)
   if (!isCollection && !isOptions && !itemMatch && !imageMatch) return null
 
-  const isAdmin = user.role === 'admin'
+  const canManage = can(user, 'products.manage')
   const isWrite = request.method !== 'GET'
-  if (isWrite && !isAdmin) return error('Only admins can change products', 403)
+  if (isWrite && !canManage) return error("You don't have permission to change products", 403)
 
   const storeId = user.store_id
-  if (isCollection && request.method === 'GET') return listProducts(db, storeId, url, isAdmin)
+  if (isCollection && request.method === 'GET') return listProducts(db, storeId, url, canManage)
   if (isCollection && request.method === 'POST') return createProduct(db, user, request)
   if (isOptions && request.method === 'GET') return listOptions(db, storeId)
   if (itemMatch && request.method === 'GET') {
     const row = await getProduct(db, storeId, Number(itemMatch[1]))
-    return row ? Response.json(publicProduct(row, isAdmin)) : error('Product not found', 404)
+    return row ? Response.json(publicProduct(row, canManage)) : error('Product not found', 404)
   }
   if (itemMatch && request.method === 'PUT') return updateProduct(db, storeId, request, Number(itemMatch[1]))
   if (itemMatch && request.method === 'DELETE') return deleteProduct(db, storeId, Number(itemMatch[1]))

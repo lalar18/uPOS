@@ -1,11 +1,14 @@
 // Sidebar navigation. Add a route in router.ts when a page is built;
 // until then its link opens the "coming soon" placeholder.
 
+import type { Permission } from '@/api/roles'
+
 export interface MenuItem {
   label: string
   to: string
   icon: string // tabler icon name, without the "ti-" prefix
-  adminOnly?: boolean
+  adminOnly?: boolean // only the store's Admin role
+  permission?: Permission // hidden from roles without it
 }
 
 export interface MenuSection {
@@ -22,7 +25,7 @@ export const menu: MenuSection[] = [
     title: 'Inventory',
     items: [
       { label: 'Products', to: '/products', icon: 'box' },
-      { label: 'Create Product', to: '/products/create', icon: 'table-plus' },
+      { label: 'Create Product', to: '/products/create', icon: 'table-plus', permission: 'products.manage' },
       { label: 'Expired Products', to: '/products/expired', icon: 'progress-alert' },
       { label: 'Low Stocks', to: '/products/low-stocks', icon: 'trending-up-2' },
       { label: 'Category', to: '/categories', icon: 'list-details' },
@@ -49,7 +52,7 @@ export const menu: MenuSection[] = [
       { label: 'Invoices', to: '/invoices', icon: 'file-invoice' },
       { label: 'Sales Return', to: '/sales/returns', icon: 'receipt-refund' },
       { label: 'Quotation', to: '/quotations', icon: 'file-description' },
-      { label: 'POS', to: '/pos', icon: 'device-laptop' },
+      { label: 'POS', to: '/pos', icon: 'device-laptop', permission: 'sales.create' },
     ],
   },
   {
@@ -70,8 +73,10 @@ export const menu: MenuSection[] = [
     title: 'Settings',
     items: [
       { label: 'Users', to: '/users', icon: 'users', adminOnly: true },
+      { label: 'Roles & Permissions', to: '/roles', icon: 'shield-lock', adminOnly: true },
+      { label: 'Subscription', to: '/subscription', icon: 'crown', adminOnly: true },
       { label: 'Store Information', to: '/store', icon: 'building-store' },
-      { label: 'General Settings', to: '/settings', icon: 'settings', adminOnly: true },
+      { label: 'General Settings', to: '/settings', icon: 'settings', permission: 'settings.manage' },
     ],
   },
 ]

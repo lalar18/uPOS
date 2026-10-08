@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Store-wide defaults used by the sales screens (admins only; the router keeps cashiers out).
+// Store-wide defaults used by the sales screens (the router keeps out roles without settings.manage).
 import { computed, ref } from 'vue'
 import { getSettings, taxRateText, updateSettings, type Settings } from '@/api/settings'
 import { parsePercentBp } from '@/utils/money'

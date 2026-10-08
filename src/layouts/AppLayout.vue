@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { currentUser, logout } from '@/auth'
+import { can, currentUser, isAdmin, logout } from '@/auth'
 import UserAvatar from '@/components/UserAvatar.vue'
 import { menu, type MenuItem } from './menu'
 
 const router = useRouter()
 const route = useRoute()
 
-const isAdmin = computed(() => currentUser.value?.role === 'admin')
+const allowed = (item: MenuItem) => (!item.adminOnly || isAdmin()) && (!item.permission || can(item.permission))
 const visibleMenu = computed(() =>
   menu
-    .map((section) => ({ ...section, items: section.items.filter((item) => !item.adminOnly || isAdmin.value) }))
+    .map((section) => ({ ...section, items: section.items.filter(allowed) }))
     .filter((section) => section.items.length > 0),
 )
 
@@ -237,7 +237,7 @@ async function handleLogout() {
           </li>
 
           <!-- POS -->
-          <li class="nav-item pos-nav">
+          <li v-if="can('sales.create')" class="nav-item pos-nav">
             <RouterLink to="/pos" class="btn btn-dark btn-md d-inline-flex align-items-center">
               <i class="ti ti-device-laptop me-1"></i>POS
             </RouterLink>
@@ -251,7 +251,7 @@ async function handleLogout() {
           </li>
 
           <!-- Settings -->
-          <li v-if="isAdmin" class="nav-item nav-item-box">
+          <li v-if="can('settings.manage')" class="nav-item nav-item-box">
             <RouterLink to="/settings" title="Settings"><i class="ti ti-settings"></i></RouterLink>
           </li>
 
@@ -271,7 +271,7 @@ async function handleLogout() {
                 <UserAvatar :user="currentUser" :size="40" class="me-2" />
                 <div>
                   <h6 class="fw-medium">{{ currentUser?.fullName }}</h6>
-                  <p class="mb-0"><span class="text-capitalize">{{ currentUser?.role }}</span> · {{ currentUser?.store.name }}</p>
+                  <p class="mb-0">{{ currentUser?.role.name }} · {{ currentUser?.store.name }}</p>
                 </div>
               </div>
               <RouterLink :to="{ name: 'profile' }" class="dropdown-item">

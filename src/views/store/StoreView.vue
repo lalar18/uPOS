@@ -1,11 +1,11 @@
 <script setup lang="ts">
-// Store information for the logged-in user's store. Admins can edit; cashiers see it read-only.
+// Store information for the logged-in user's store. Roles with store.manage can edit; others see it read-only.
 import { computed, ref } from 'vue'
 import { parseDbDate } from '@/api/http'
 import { getStore, updateStore, type Store, type StoreInput } from '@/api/store'
-import { currentUser } from '@/auth'
+import { can, currentUser } from '@/auth'
 
-const isAdmin = computed(() => currentUser.value?.role === 'admin')
+const canEdit = computed(() => can('store.manage'))
 
 const store = ref<Store | null>(null)
 const form = ref<StoreInput>(toInput(null))
@@ -80,7 +80,7 @@ const formatDate = (value: string) => dateFormat.format(parseDbDate(value))
   <div class="page-header">
     <div class="page-title">
       <h4>Store Information</h4>
-      <h6>{{ isAdmin ? 'Manage your store details' : 'Your store details' }}</h6>
+      <h6>{{ canEdit ? 'Manage your store details' : 'Your store details' }}</h6>
     </div>
   </div>
 
@@ -95,7 +95,7 @@ const formatDate = (value: string) => dateFormat.format(parseDbDate(value))
       <span v-if="store" class="fs-12 text-gray-5">Last updated {{ formatDate(store.updatedAt) }}</span>
     </div>
     <form @submit.prevent="save">
-      <fieldset class="card-body" :disabled="!isAdmin || loading || saving">
+      <fieldset class="card-body" :disabled="!canEdit || loading || saving">
         <div v-if="saveError" class="alert alert-danger py-2" role="alert">{{ saveError }}</div>
         <div v-if="saveSuccess" class="alert alert-success py-2" role="alert">{{ saveSuccess }}</div>
 
@@ -168,13 +168,13 @@ const formatDate = (value: string) => dateFormat.format(parseDbDate(value))
           </div>
         </div>
 
-        <div v-if="isAdmin" class="d-flex justify-content-end gap-2">
+        <div v-if="canEdit" class="d-flex justify-content-end gap-2">
           <button type="button" class="btn btn-secondary" :disabled="!isDirty" @click="reset">Discard Changes</button>
           <button type="submit" class="btn btn-primary" :disabled="!isDirty">
             {{ saving ? 'Saving…' : 'Save Changes' }}
           </button>
         </div>
-        <p v-else class="fs-12 text-gray-5 mb-0">Only admins can change store information.</p>
+        <p v-else class="fs-12 text-gray-5 mb-0">Your role doesn't allow changing store information.</p>
       </fieldset>
     </form>
   </div>

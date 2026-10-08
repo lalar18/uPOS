@@ -11,7 +11,7 @@ import {
   type SalesReturn,
   type SalesReturnSummary,
 } from '@/api/salesReturns'
-import { currentUser } from '@/auth'
+import { can } from '@/auth'
 import ListPager from '@/components/ListPager.vue'
 import { formatIsoDate } from '@/utils/date'
 import { PERIOD_OPTIONS, periodDates, rangeError, type Period } from '@/utils/period'
@@ -20,7 +20,7 @@ import SalesReturnFormModal from './SalesReturnFormModal.vue'
 
 const route = useRoute()
 const router = useRouter()
-const isAdmin = computed(() => currentUser.value?.role === 'admin')
+const canReturn = computed(() => can('sales.returns'))
 
 // --- List, filters and paging ---
 
@@ -126,7 +126,7 @@ watch(
     const viewId = Number(viewParam)
     if (!saleParam && !viewParam) return
     router.replace({ query: { ...route.query, sale: undefined, view: undefined } })
-    if (Number.isSafeInteger(saleId) && saleId > 0 && isAdmin.value) openForm(saleId)
+    if (Number.isSafeInteger(saleId) && saleId > 0 && canReturn.value) openForm(saleId)
     else if (Number.isSafeInteger(viewId) && viewId > 0) viewingId.value = viewId
   },
   { immediate: true },
@@ -143,7 +143,7 @@ watch(
       <button type="button" class="btn btn-white border" title="Refresh" :disabled="loading" @click="load">
         <i class="ti ti-refresh"></i>
       </button>
-      <button v-if="isAdmin" type="button" class="btn btn-primary" @click="openForm(null)">
+      <button v-if="canReturn" type="button" class="btn btn-primary" @click="openForm(null)">
         <i class="ti ti-circle-plus me-1"></i>New Return
       </button>
     </div>

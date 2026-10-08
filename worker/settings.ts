@@ -1,10 +1,11 @@
 // General settings for the logged-in user's store. Any user can read them (the sales
-// screens use them as defaults); only admins can change them.
+// screens use them as defaults); only roles with settings.manage can change them.
 //
 //   GET /api/settings                                                    -> settings
 //   PUT /api/settings   { defaultTaxRateBp, quotationValidDays, receiptFooter } -> settings
 
 import { error } from './documents'
+import { can } from './permissions'
 import type { SessionUser } from './session'
 
 interface SettingsRow {
@@ -63,7 +64,7 @@ export async function handleSettings(db: D1Database, request: Request, user: Ses
     return row ? Response.json(publicSettings(row)) : error('Store not found', 404)
   }
   if (request.method === 'PUT') {
-    if (user.role !== 'admin') return error('Only admins can change settings', 403)
+    if (!can(user, 'settings.manage')) return error("You don't have permission to change settings", 403)
     return updateSettings(db, request, user)
   }
   return error('Method not allowed', 405)

@@ -13,7 +13,7 @@ import {
   toDbTimestamp,
   type StockAdjustment,
 } from '@/api/stock'
-import { currentUser } from '@/auth'
+import { can } from '@/auth'
 import ListPager from '@/components/ListPager.vue'
 import { addDays, parseIsoDate, toIsoDate } from '@/utils/date'
 import StockAdjustmentFormModal from './StockAdjustmentFormModal.vue'
@@ -22,7 +22,7 @@ type Period = '' | 'today' | '7' | '30' | 'month' | 'custom'
 
 const route = useRoute()
 const router = useRouter()
-const isAdmin = computed(() => currentUser.value?.role === 'admin')
+const canAdjust = computed(() => can('stock.adjust'))
 
 // --- List, filters and paging ---
 
@@ -157,7 +157,7 @@ watch(
     const id = Number(value)
     if (!value || !Number.isSafeInteger(id) || id <= 0) return
     router.replace({ query: { ...route.query, product: undefined } })
-    if (!isAdmin.value) return
+    if (!canAdjust.value) return
     openError.value = ''
     try {
       openForm(await getProduct(id))
@@ -179,7 +179,7 @@ watch(
       <button type="button" class="btn btn-white border" title="Refresh" :disabled="loading" @click="load">
         <i class="ti ti-refresh"></i>
       </button>
-      <button v-if="isAdmin" type="button" class="btn btn-primary" @click="openForm(null)">
+      <button v-if="canAdjust" type="button" class="btn btn-primary" @click="openForm(null)">
         <i class="ti ti-circle-plus me-1"></i>New Adjustment
       </button>
     </div>

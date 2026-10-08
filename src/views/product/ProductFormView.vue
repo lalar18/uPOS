@@ -15,7 +15,7 @@ import {
   type ProductOption,
   type ProductOptions,
 } from '@/api/products'
-import { currentUser } from '@/auth'
+import { can } from '@/auth'
 import { formatDuration } from '@/api/warranties'
 import { resizeImage } from '@/utils/image'
 
@@ -26,7 +26,7 @@ const IMAGE_SIZE = 600 // images are scaled down to fit a 600x600 px box
 const props = defineProps<{ id?: string }>() // from the route; absent when adding
 const router = useRouter()
 
-const isAdmin = computed(() => currentUser.value?.role === 'admin')
+const canEdit = computed(() => can('products.manage'))
 const isNew = computed(() => props.id === undefined)
 
 // --- Loading ---
@@ -265,10 +265,10 @@ load()
     </RouterLink>
   </div>
 
-  <div v-if="!isAdmin" class="card">
+  <div v-if="!canEdit" class="card">
     <div class="card-body text-center text-gray-5 py-5">
       <i class="ti ti-lock fs-24 d-block mb-2"></i>
-      Only admins can add or edit products.
+      Your role doesn't allow adding or editing products.
     </div>
   </div>
 

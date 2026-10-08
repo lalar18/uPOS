@@ -10,9 +10,20 @@ import { handleSalesReturns } from './salesReturns'
 import { handleStock } from './stock'
 import { handleStore } from './store'
 import { changePassword, deleteAvatar, serveAvatar, uploadAvatar } from './profile'
-import { createSession, destroySession, getSessionUser, type SessionUser } from './session'
+import { handleRoles } from './roles'
+import {
+  createSession,
+  destroySession,
+  getSessionUser,
+  SESSION_USER_COLUMNS,
+  SESSION_USER_JOINS,
+  sessionUserFromRow,
+  type SessionUser,
+  type SessionUserRow,
+} from './session'
 import { handleSubcategories } from './subcategories'
 import { handleSettings } from './settings'
+import { handleSubscription } from './subscription'
 import { handleSuppliers } from './suppliers'
 import { handleUnits } from './units'
 import { handleUsers } from './users'
@@ -23,18 +34,14 @@ interface Env {
   DB: D1Database
 }
 
-interface UserRow extends SessionUser {
-  password_hash: string
-  is_active: number
-}
-
 /** Shape of the user object sent to the browser (never includes password_hash). */
 function publicUser(user: SessionUser) {
   return {
     id: user.id,
     email: user.email,
     fullName: user.full_name,
-    role: user.role,
+    role: { id: user.role_id, name: user.role_name, isAdmin: user.is_admin },
+    permissions: [...user.permissions],
     store: { id: user.store_id, name: user.store_name },
     // The version param changes on every upload, so browsers never show a stale picture
     avatarUrl: user.avatar_updated_at
@@ -86,24 +93,23 @@ async function route(request: Request, env: Env): Promise<Response> {
     const retryAfter = await loginRetryAfter(env.DB, throttleKey)
     if (retryAfter !== null) return tooManyAttempts(retryAfter)
 
-    const user = await env.DB.prepare(
-      `SELECT u.*, st.name AS store_name, a.updated_at AS avatar_updated_at
+    const row = await env.DB.prepare(
+      `SELECT ${SESSION_USER_COLUMNS}, u.password_hash
        FROM users u
-       JOIN stores st ON st.id = u.store_id
-       LEFT JOIN user_avatars a ON a.user_id = u.id
+       ${SESSION_USER_JOINS}
        WHERE u.email = ? AND u.is_active = 1 AND st.is_active = 1`,
     )
       .bind(body.email.trim())
-      .first<UserRow>()
+      .first<SessionUserRow & { password_hash: string }>()
 
-    if (!user || !(await verifyPassword(body.password, user.password_hash))) {
+    if (!row || !(await verifyPassword(body.password, row.password_hash))) {
       await recordLoginFailure(env.DB, throttleKey)
       return Response.json({ error: 'Invalid email or password' }, { status: 401 })
     }
 
     await clearLoginFailures(env.DB, throttleKey)
-    const cookie = await createSession(env.DB, user.id, body.rememberMe === true)
-    return Response.json(publicUser(user), { headers: { 'Set-Cookie': cookie } })
+    const cookie = await createSession(env.DB, row.id, body.rememberMe === true)
+    return Response.json(publicUser(sessionUserFromRow(row)), { headers: { 'Set-Cookie': cookie } })
   }
 
   if (url.pathname === '/api/logout' && request.method === 'POST') {
@@ -223,6 +229,17 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (!user) return notLoggedIn()
     const response = await handleUsers(env.DB, request, url, user)
     if (response) return response
+  }
+
+  if (url.pathname.startsWith('/api/roles')) {
+    if (!user) return notLoggedIn()
+    const response = await handleRoles(env.DB, request, url, user)
+    if (response) return response
+  }
+
+  if (url.pathname === '/api/subscription') {
+    if (!user) return notLoggedIn()
+    return handleSubscription(env.DB, request, user)
   }
 
   if (url.pathname === '/api/store') {

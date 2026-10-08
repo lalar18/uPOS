@@ -1,4 +1,4 @@
-// Unit endpoints. Any logged-in user can list; only admins can change.
+// Unit endpoints. Any logged-in user can list; only roles with catalog.manage can change.
 // Every query is limited to the user's own store.
 //
 //   GET    /api/units?search=&status=&page=&pageSize=                -> { items, total }
@@ -6,6 +6,7 @@
 //   PUT    /api/units/:id   { name, shortName, allowDecimal?, status? } -> unit
 //   DELETE /api/units/:id                                              -> { ok }
 
+import { can } from './permissions'
 import type { SessionUser } from './session'
 
 type Status = 'active' | 'inactive'
@@ -222,7 +223,7 @@ export async function handleUnits(
   if (!isCollection && !itemMatch) return null
 
   const isWrite = request.method !== 'GET'
-  if (isWrite && user.role !== 'admin') return error('Only admins can change units', 403)
+  if (isWrite && !can(user, 'catalog.manage')) return error("You don't have permission to change units", 403)
 
   const storeId = user.store_id
   if (isCollection && request.method === 'GET') return listUnits(db, storeId, url)

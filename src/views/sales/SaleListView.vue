@@ -14,6 +14,7 @@ import {
   type SaleSummary,
   type SaleSums,
 } from '@/api/sales'
+import { can } from '@/auth'
 import ListPager from '@/components/ListPager.vue'
 import { formatIsoDate, toIsoDate } from '@/utils/date'
 import { PERIOD_OPTIONS, periodDates, rangeError, type Period } from '@/utils/period'
@@ -23,6 +24,7 @@ const props = defineProps<{ mode: 'sales' | 'invoices' }>()
 
 const router = useRouter()
 const isInvoices = computed(() => props.mode === 'invoices')
+const canSell = computed(() => can('sales.create'))
 const today = toIsoDate()
 
 // --- List, filters and paging ---
@@ -142,10 +144,10 @@ function onPaid(sale: Sale) {
       <button type="button" class="btn btn-white border" title="Refresh" :disabled="loading" @click="load">
         <i class="ti ti-refresh"></i>
       </button>
-      <RouterLink v-if="!isInvoices" :to="{ name: 'pos' }" class="btn btn-dark">
+      <RouterLink v-if="canSell && !isInvoices" :to="{ name: 'pos' }" class="btn btn-dark">
         <i class="ti ti-device-laptop me-1"></i>POS
       </RouterLink>
-      <RouterLink :to="{ name: 'sale-create' }" class="btn btn-primary">
+      <RouterLink v-if="canSell" :to="{ name: 'sale-create' }" class="btn btn-primary">
         <i class="ti ti-circle-plus me-1"></i>New Sale
       </RouterLink>
     </div>
@@ -279,7 +281,7 @@ function onPaid(sale: Sale) {
               <td v-if="isInvoices" class="text-end">
                 <div class="row-actions">
                   <button
-                    v-if="sale.dueCents > 0"
+                    v-if="canSell && sale.dueCents > 0"
                     type="button"
                     title="Record payment"
                     @click.stop="paying = sale"
@@ -320,7 +322,7 @@ function onPaid(sale: Sale) {
             </div>
           </RouterLink>
           <button
-            v-if="isInvoices && sale.dueCents > 0"
+            v-if="canSell && isInvoices && sale.dueCents > 0"
             type="button"
             class="btn btn-sm btn-outline-primary w-100 mt-2"
             @click="paying = sale"

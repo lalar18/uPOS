@@ -1,4 +1,4 @@
-// Sub category endpoints. Any logged-in user can list; only admins can change.
+// Sub category endpoints. Any logged-in user can list; only roles with catalog.manage can change.
 // Every query is limited to the user's own store.
 //
 //   GET    /api/subcategories?search=&status=&categoryId=&page=&pageSize=   -> { items, total }
@@ -6,6 +6,7 @@
 //   PUT    /api/subcategories/:id    { categoryId, name, description?, status? } -> sub category
 //   DELETE /api/subcategories/:id                                            -> { ok }
 
+import { can } from './permissions'
 import type { SessionUser } from './session'
 
 type Status = 'active' | 'inactive'
@@ -215,7 +216,7 @@ export async function handleSubcategories(
   if (!isCollection && !itemMatch) return null
 
   const isWrite = request.method !== 'GET'
-  if (isWrite && user.role !== 'admin') return error('Only admins can change sub categories', 403)
+  if (isWrite && !can(user, 'catalog.manage')) return error("You don't have permission to change sub categories", 403)
 
   const storeId = user.store_id
   if (isCollection && request.method === 'GET') return listSubcategories(db, storeId, url)

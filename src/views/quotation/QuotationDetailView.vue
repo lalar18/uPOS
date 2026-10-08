@@ -15,7 +15,7 @@ import {
 } from '@/api/quotations'
 import { formatDateTime } from '@/api/stock'
 import { getStore, type Store } from '@/api/store'
-import { currentUser } from '@/auth'
+import { can } from '@/auth'
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal.vue'
 import { formatIsoDate, toIsoDate } from '@/utils/date'
 import { usePrintRoot } from '@/utils/print'
@@ -24,7 +24,9 @@ import InvoiceDocument from '../sales/InvoiceDocument.vue'
 const props = defineProps<{ id: string }>()
 
 const router = useRouter()
-const isAdmin = computed(() => currentUser.value?.role === 'admin')
+const canManage = computed(() => can('quotations.manage'))
+const canDelete = computed(() => can('quotations.delete'))
+const canSell = computed(() => can('sales.create'))
 const today = toIsoDate()
 
 const quotation = ref<Quotation | null>(null)
@@ -86,14 +88,18 @@ const deleting = ref(false)
           <i class="ti ti-printer me-1"></i>Print
         </button>
         <template v-if="!isConverted">
-          <RouterLink :to="{ name: 'quotation-edit', params: { id: quotation.id } }" class="btn btn-white border">
+          <RouterLink
+            v-if="canManage"
+            :to="{ name: 'quotation-edit', params: { id: quotation.id } }"
+            class="btn btn-white border"
+          >
             <i class="ti ti-edit me-1"></i>Edit
           </RouterLink>
-          <button v-if="isAdmin" type="button" class="btn btn-white border text-danger" @click="deleting = true">
+          <button v-if="canDelete" type="button" class="btn btn-white border text-danger" @click="deleting = true">
             <i class="ti ti-trash me-1"></i>Delete
           </button>
           <RouterLink
-            v-if="quotation.status !== 'declined'"
+            v-if="canSell && quotation.status !== 'declined'"
             :to="{ name: 'sale-create', query: { quotation: quotation.id } }"
             class="btn btn-primary"
           >
@@ -150,7 +156,7 @@ const deleting = ref(false)
                 role="radio"
                 :aria-checked="quotation.status === s"
                 :class="{ active: quotation.status === s }"
-                :disabled="busy"
+                :disabled="busy || !canManage"
                 @click="changeStatus(s)"
               >
                 {{ quotationStatusLabel(s) }}

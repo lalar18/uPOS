@@ -1,4 +1,4 @@
-// Supplier endpoints. Any logged-in user can list; only admins can change.
+// Supplier endpoints. Any logged-in user can list; only roles with suppliers.manage can change.
 // Every query is limited to the user's own store.
 //
 //   GET    /api/suppliers?search=&status=&page=&pageSize=                                  -> { items, total }
@@ -9,6 +9,7 @@
 
 import { readContactFields, readPersonName, type ContactFields, type Status } from './contacts'
 import { cleanNote, cleanText, constraintMessage, error, likePattern, MAX_NOTE_LENGTH, readPaging } from './documents'
+import { can } from './permissions'
 import type { SessionUser } from './session'
 
 interface SupplierRow {
@@ -193,7 +194,7 @@ export async function handleSuppliers(
   if (!isCollection && !itemMatch) return null
 
   const isWrite = request.method !== 'GET'
-  if (isWrite && user.role !== 'admin') return error('Only admins can change suppliers', 403)
+  if (isWrite && !can(user, 'suppliers.manage')) return error("You don't have permission to change suppliers", 403)
 
   const storeId = user.store_id
   if (isCollection && request.method === 'GET') return listSuppliers(db, storeId, url)

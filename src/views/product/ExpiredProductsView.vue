@@ -2,7 +2,7 @@
 // Products past their expiry date, or expiring within the next few days.
 import { computed, ref, watch } from 'vue'
 import { formatQuantity, getProductOptions, listProducts, type Product, type ProductOptions } from '@/api/products'
-import { currentUser } from '@/auth'
+import { can } from '@/auth'
 import ListPager from '@/components/ListPager.vue'
 import { addDays, daysBetween, formatIsoDate, toIsoDate } from '@/utils/date'
 
@@ -10,7 +10,7 @@ type Tab = 'expired' | 'soon'
 
 const SOON_CHOICES = [7, 30, 60, 90]
 
-const isAdmin = computed(() => currentUser.value?.role === 'admin')
+const canEdit = computed(() => can('products.manage'))
 
 // --- List, filters and paging ---
 
@@ -184,7 +184,7 @@ const expiryClass = (product: Product) => (daysBetween(today.value, product.expi
               <th>Manufactured</th>
               <th>Expiry Date</th>
               <th class="text-end">Stock</th>
-              <th v-if="isAdmin" class="text-end">Actions</th>
+              <th v-if="canEdit" class="text-end">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -211,7 +211,7 @@ const expiryClass = (product: Product) => (daysBetween(today.value, product.expi
                 <div class="fs-12" :class="expiryClass(product)">{{ expiryLabel(product) }}</div>
               </td>
               <td class="text-end">{{ formatQuantity(product.quantity) }} {{ product.unit.shortName }}</td>
-              <td v-if="isAdmin" class="text-end">
+              <td v-if="canEdit" class="text-end">
                 <div class="row-actions">
                   <RouterLink :to="{ name: 'product-edit', params: { id: product.id } }" title="Edit">
                     <i class="ti ti-edit"></i>
@@ -247,7 +247,7 @@ const expiryClass = (product: Product) => (daysBetween(today.value, product.expi
           </div>
           <div class="d-flex justify-content-between align-items-center mt-2">
             <span class="fs-13">Stock: {{ formatQuantity(product.quantity) }} {{ product.unit.shortName }}</span>
-            <div v-if="isAdmin" class="row-actions">
+            <div v-if="canEdit" class="row-actions">
               <RouterLink :to="{ name: 'product-edit', params: { id: product.id } }" title="Edit">
                 <i class="ti ti-edit"></i>
               </RouterLink>
