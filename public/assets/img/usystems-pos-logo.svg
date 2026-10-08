@@ -1,0 +1,11 @@
+<svg width="420" height="130" viewBox="0 0 420 130" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g transform="translate(0 4)">
+  <rect x="12" y="34" width="96" height="76" rx="22" fill="#FE9F43"/>
+  <rect x="6" y="58" width="108" height="60" rx="28" fill="#092C4C"/>
+  <path d="M40 38v-8a20 20 0 0 1 40 0v8" stroke="#092C4C" stroke-width="6" stroke-linecap="round"/>
+  <path d="M43 70v18a17 17 0 0 0 34 0V70" stroke="#FFFFFF" stroke-width="11" stroke-linecap="round"/>
+  <path d="M38 48h6M76 48h6" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+</g>
+<text x="134" y="98" font-family="Nunito, Poppins, 'Arial Rounded MT Bold', 'Segoe UI', Arial, sans-serif" font-size="54" font-weight="800" fill="#092C4C">Usystems</text>
+<text x="138" y="46" font-family="Nunito, Poppins, 'Arial Rounded MT Bold', 'Segoe UI', Arial, sans-serif" font-size="26" font-weight="800" letter-spacing="7" fill="#FE9F43">POS</text>
+</svg>

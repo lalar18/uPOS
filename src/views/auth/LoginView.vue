@@ -38,7 +38,7 @@ async function handleSubmit() {
           <form @submit.prevent="handleSubmit">
             <div class="login-userset">
               <div class="login-logo logo-normal">
-                <img src="/assets/img/logo.svg" alt="USystems POS" />
+                <img src="/assets/img/usystems-pos-logo.svg" alt="USystems POS" />
               </div>
               <a href="#" class="login-logo logo-white">
                 <img src="/assets/img/logo-white.svg" alt="USystems POS" />
