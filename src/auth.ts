@@ -1,11 +1,12 @@
 import { ref } from 'vue'
-import { parseDbDate, readJson } from './api/http'
+import { parseDbDate, readJson, sendJson } from './api/http'
 import type { Permission, RoleSummary } from './api/roles'
 
 export interface User {
   id: number
   email: string
   fullName: string
+  hasPassword: boolean // false for Google sign-ups until they set one on their profile
   role: RoleSummary
   permissions: Permission[] // every permission for admins
   store: { id: number; name: string; currency: string; subscription: StoreSubscription } // every user belongs to exactly one store; currency is ISO 4217
@@ -55,6 +56,35 @@ export async function login(email: string, password: string, rememberMe: boolean
   sessionChecked = true
 }
 
+/**
+ * Where to send the browser to sign in (or sign up) with Google. The API redirects to Google
+ * and back: existing users land on `redirect`, new Google accounts on the signup page.
+ */
+export function googleSignInUrl(rememberMe = false, redirect = '/'): string {
+  const params = new URLSearchParams({ redirect })
+  if (rememberMe) params.set('remember', '1')
+  return `/api/auth/google?${params}`
+}
+
+export interface GoogleSignup {
+  email: string
+  fullName: string
+  plan: string
+  trialDays: number
+}
+
+/** The Google account waiting to name its store (after Google sent a new account to /signup). */
+export async function getGoogleSignup(): Promise<GoogleSignup> {
+  return readJson<GoogleSignup>(await fetch('/api/signup/google'))
+}
+
+/** Creates the store with the pending Google account as its Admin, and signs in. */
+export async function completeGoogleSignup(store: { name: string; phone: string }): Promise<void> {
+  await sendJson('POST', '/api/signup/google', store)
+  sessionChecked = false
+  await loadSession()
+}
+
 export async function logout(): Promise<void> {
   await fetch('/api/logout', { method: 'POST' })
   currentUser.value = null
@@ -83,4 +113,5 @@ export async function changePassword(currentPassword: string, newPassword: strin
     body: JSON.stringify({ currentPassword, newPassword }),
   })
   await readJson(res)
+  if (currentUser.value) currentUser.value.hasPassword = true
 }

@@ -40,3 +40,7 @@ __screenshots__/
 
 # Cloudflare
 .wrangler
+
+# Local Worker secrets
+.dev.vars*
+!.dev.vars.example

@@ -2,6 +2,7 @@ import { handleBrands } from './brands'
 import { handleCategories } from './categories'
 import { handleCustomers } from './customers'
 import { handleDashboard, handleUserDashboard, userDashboardId } from './dashboard'
+import { handleGoogle, type GoogleEnv } from './google'
 import { clearLoginFailures, loginKey, loginRetryAfter, recordLoginFailure, tooManyAttempts } from './loginThrottle'
 import { verifyPassword } from './password'
 import { handleProducts } from './products'
@@ -32,7 +33,7 @@ import { handleUsers } from './users'
 import { handleVariantAttributes } from './variantAttributes'
 import { handleWarranties } from './warranties'
 
-interface Env {
+interface Env extends GoogleEnv {
   DB: D1Database
 }
 
@@ -42,6 +43,7 @@ function publicUser(user: SessionUser) {
     id: user.id,
     email: user.email,
     fullName: user.full_name,
+    hasPassword: user.has_password, // false for Google sign-ups until they set one
     role: { id: user.role_id, name: user.role_name, isAdmin: user.is_admin },
     permissions: [...user.permissions],
     store: {
@@ -130,6 +132,12 @@ async function route(request: Request, env: Env): Promise<Response> {
     await clearLoginFailures(env.DB, throttleKey)
     const cookie = await createSession(env.DB, row.id, body.rememberMe === true)
     return Response.json(publicUser(sessionUserFromRow(row)), { headers: { 'Set-Cookie': cookie } })
+  }
+
+  // Sign in / sign up with Google
+  if (url.pathname.startsWith('/api/auth/google') || url.pathname === '/api/signup/google') {
+    const response = await handleGoogle(env.DB, env, request, url)
+    if (response) return response
   }
 
   if (url.pathname === '/api/logout' && request.method === 'POST') {

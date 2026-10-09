@@ -10,6 +10,7 @@ export interface SessionUser {
   id: number
   email: string
   full_name: string
+  has_password: boolean // false for users who signed up with Google and haven't set one
   store_id: number
   store_name: string
   store_currency: string // ISO 4217, e.g. 'PHP'
@@ -23,14 +24,15 @@ export interface SessionUser {
 }
 
 /** Columns (and joins, as `FROM ...`) that sessionUserFromRow() reads. Alias the users table `u`. */
-export const SESSION_USER_COLUMNS = `u.id, u.email, u.full_name, u.store_id, st.name AS store_name, st.currency AS store_currency,
+export const SESSION_USER_COLUMNS = `u.id, u.email, u.full_name, u.password_hash != '' AS has_password, u.store_id, st.name AS store_name, st.currency AS store_currency,
   a.updated_at AS avatar_updated_at, u.role_id, r.name AS role_name, r.is_admin, r.permissions,
   st.plan_expires_at, (st.plan_expires_at IS NULL OR st.plan_expires_at <= datetime('now')) AS subscription_expired`
 export const SESSION_USER_JOINS = `JOIN stores st ON st.id = u.store_id
   JOIN roles r ON r.id = u.role_id
   LEFT JOIN user_avatars a ON a.user_id = u.id`
 
-export interface SessionUserRow extends Omit<SessionUser, 'is_admin' | 'permissions' | 'subscription_expired'> {
+export interface SessionUserRow extends Omit<SessionUser, 'has_password' | 'is_admin' | 'permissions' | 'subscription_expired'> {
+  has_password: number
   is_admin: number
   permissions: string
   subscription_expired: number
@@ -42,6 +44,7 @@ export function sessionUserFromRow(row: SessionUserRow): SessionUser {
     id: row.id,
     email: row.email,
     full_name: row.full_name,
+    has_password: row.has_password === 1,
     store_id: row.store_id,
     store_name: row.store_name,
     store_currency: row.store_currency,

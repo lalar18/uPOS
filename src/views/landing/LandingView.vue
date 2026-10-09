@@ -3,6 +3,7 @@
 // so they always match the real limits), and the Portal button that opens the login page.
 import { computed, onBeforeUnmount, onMounted, ref, type Directive } from 'vue'
 import { describeSeats, formatPrice, getPlans, type Plan } from '@/api/subscription'
+import { googleSignInUrl } from '@/auth'
 
 /** Where "Get started" and the contact section send visitors */
 const CONTACT_EMAIL = 'sales@usystems.ph'
@@ -302,7 +303,9 @@ onBeforeUnmount(() => {
                 <a href="#pricing" class="btn btn-primary btn-lg btn-glow" @click.prevent="go('pricing')">
                   See pricing<i class="ti ti-arrow-right ms-2 arrow"></i>
                 </a>
-                <RouterLink :to="{ name: 'login' }" class="btn btn-outline-dark btn-lg">Sign in to portal</RouterLink>
+                <a :href="googleSignInUrl()" class="btn btn-outline-dark btn-lg">
+                  <i class="ti ti-brand-google me-1"></i>Start free trial
+                </a>
               </div>
               <ul class="hero-points hero-in" style="--d: 320ms">
                 <li><i class="ti ti-circle-check"></i>Nothing to install</li>
@@ -504,9 +507,12 @@ onBeforeUnmount(() => {
         <div class="cta-bg" aria-hidden="true"></div>
         <div v-reveal class="container text-center position-relative">
           <h2>Ready to set up your store?</h2>
-          <p>Tell us about your business and we'll get your store account ready.</p>
+          <p>Sign up with Google and start selling today, free for 14 days. Questions? Email us.</p>
           <div class="d-flex flex-wrap justify-content-center gap-2">
-            <a :href="`mailto:${CONTACT_EMAIL}`" class="btn btn-primary btn-lg btn-glow">
+            <a :href="googleSignInUrl()" class="btn btn-primary btn-lg btn-glow">
+              <i class="ti ti-brand-google me-1"></i>Start free trial
+            </a>
+            <a :href="`mailto:${CONTACT_EMAIL}`" class="btn btn-light btn-lg">
               <i class="ti ti-mail me-1"></i>{{ CONTACT_EMAIL }}
             </a>
             <RouterLink :to="{ name: 'login' }" class="btn btn-light btn-lg">Already a customer? Sign in</RouterLink>

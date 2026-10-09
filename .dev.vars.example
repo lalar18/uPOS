@@ -1,0 +1,3 @@
+# Local secrets for `npm run dev`. Copy this file to .dev.vars (which git ignores) and fill it in.
+# In production, set the secret with: npx wrangler secret put GOOGLE_CLIENT_SECRET
+GOOGLE_CLIENT_SECRET=

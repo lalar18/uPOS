@@ -7,6 +7,11 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
+  "vars": {
+    // OAuth client ID for "Continue with Google" (Google Cloud Console > APIs & Services > Credentials).
+    // Its secret is not stored here: `npx wrangler secret put GOOGLE_CLIENT_SECRET` (and .dev.vars locally).
+    "GOOGLE_CLIENT_ID": ""
+  },
   "d1_databases": [
     {
       "binding": "DB",

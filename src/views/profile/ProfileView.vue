@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import Cropper from 'cropperjs'
 import 'cropperjs/dist/cropper.css'
 import { changePassword, currentUser, isAdmin, removeAvatar, uploadAvatar } from '@/auth'
@@ -113,6 +113,8 @@ const show = ref({ current: false, new: false, confirm: false })
 const passwordError = ref('')
 const passwordSuccess = ref('')
 const passwordBusy = ref(false)
+// Google sign-ups have no password until they set one here
+const hasPassword = computed(() => currentUser.value?.hasPassword ?? true)
 
 async function handleChangePassword() {
   passwordError.value = ''
@@ -129,9 +131,12 @@ async function handleChangePassword() {
 
   passwordBusy.value = true
   try {
+    const hadPassword = hasPassword.value
     await changePassword(currentPassword.value, newPassword.value)
     currentPassword.value = newPassword.value = confirmPassword.value = ''
-    passwordSuccess.value = 'Password updated. Any other devices signed in to your account have been logged out.'
+    passwordSuccess.value = hadPassword
+      ? 'Password updated. Any other devices signed in to your account have been logged out.'
+      : 'Password set. You can now sign in with your email and password, or with Google.'
   } catch (e) {
     passwordError.value = e instanceof Error ? e.message : 'Could not change the password'
   } finally {
@@ -193,7 +198,7 @@ async function handleChangePassword() {
     <div class="col-xl-8 col-lg-7 d-flex">
       <div class="card flex-fill">
         <div class="card-header">
-          <h5 class="card-title mb-0">Change Password</h5>
+          <h5 class="card-title mb-0">{{ hasPassword ? 'Change Password' : 'Set Password' }}</h5>
         </div>
         <div class="card-body">
           <form autocomplete="on" @submit.prevent="handleChangePassword">
@@ -203,7 +208,11 @@ async function handleChangePassword() {
             <div v-if="passwordError" class="alert alert-danger py-2" role="alert">{{ passwordError }}</div>
             <div v-if="passwordSuccess" class="alert alert-success py-2" role="alert">{{ passwordSuccess }}</div>
 
-            <div class="mb-3">
+            <p v-if="!hasPassword" class="text-gray-6">
+              You sign in with Google. Set a password to also sign in with your email address.
+            </p>
+
+            <div v-if="hasPassword" class="mb-3">
               <label class="form-label">Current Password <span class="text-danger">*</span></label>
               <div class="pass-group">
                 <input
@@ -263,7 +272,7 @@ async function handleChangePassword() {
 
             <div class="text-end">
               <button type="submit" class="btn btn-primary" :disabled="passwordBusy">
-                {{ passwordBusy ? 'Saving…' : 'Update Password' }}
+                {{ passwordBusy ? 'Saving…' : hasPassword ? 'Update Password' : 'Set Password' }}
               </button>
             </div>
           </form>

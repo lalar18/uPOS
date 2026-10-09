@@ -43,6 +43,13 @@ const router = createRouter({
     // Public site (with pricing); signed-out visitors to "/" land here. Its Portal button opens the login.
     { path: '/welcome', name: 'landing', component: LandingView },
     { path: '/login', name: 'login', component: LoginView, meta: { guestOnly: true } },
+    // A new Google account names its store here (the Google sign-in sends it)
+    {
+      path: '/signup',
+      name: 'signup',
+      component: () => import('./views/auth/SignupView.vue'),
+      meta: { guestOnly: true },
+    },
     // US Panel: the platform owner's back office (super admins only). Loaded on demand, so
     // store users never download it.
     {

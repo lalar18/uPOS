@@ -79,8 +79,8 @@ export async function changePassword(db: D1Database, request: Request, user: Ses
   const body = await request
     .json<{ currentPassword?: string; newPassword?: string }>()
     .catch(() => null)
-  if (!body?.currentPassword || !body.newPassword) {
-    return Response.json({ error: 'Current and new password are required' }, { status: 400 })
+  if (typeof body?.newPassword !== 'string' || !body.newPassword) {
+    return Response.json({ error: 'New password is required' }, { status: 400 })
   }
   if (body.newPassword.length < MIN_PASSWORD_LENGTH || body.newPassword.length > MAX_PASSWORD_LENGTH) {
     return Response.json(
@@ -93,10 +93,13 @@ export async function changePassword(db: D1Database, request: Request, user: Ses
     .prepare('SELECT password_hash FROM users WHERE id = ?')
     .bind(user.id)
     .first<{ password_hash: string }>()
-  if (!row || !(await verifyPassword(body.currentPassword, row.password_hash))) {
+  if (!row) return Response.json({ error: 'Not logged in' }, { status: 401 })
+  // Users who signed up with Google have no password yet, so there's no current one to check
+  const hasPassword = row.password_hash !== ''
+  if (hasPassword && !(await verifyPassword(body.currentPassword ?? '', row.password_hash))) {
     return Response.json({ error: 'Current password is incorrect' }, { status: 400 })
   }
-  if (body.currentPassword === body.newPassword) {
+  if (hasPassword && body.currentPassword === body.newPassword) {
     return Response.json({ error: 'New password must be different from the current one' }, { status: 400 })
   }
 
