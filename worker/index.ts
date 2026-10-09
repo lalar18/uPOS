@@ -5,6 +5,7 @@ import { handleDashboard, handleUserDashboard, userDashboardId } from './dashboa
 import { handleGoogle, type GoogleEnv } from './google'
 import { clearLoginFailures, loginKey, loginRetryAfter, recordLoginFailure, tooManyAttempts } from './loginThrottle'
 import { verifyPassword } from './password'
+import { handlePaymongoWebhook, type PaymongoEnv } from './paymongo'
 import { handleProducts } from './products'
 import { handleQuotations } from './quotations'
 import { handleSales } from './sales'
@@ -33,7 +34,7 @@ import { handleUsers } from './users'
 import { handleVariantAttributes } from './variantAttributes'
 import { handleWarranties } from './warranties'
 
-interface Env extends GoogleEnv {
+interface Env extends GoogleEnv, PaymongoEnv {
   DB: D1Database
 }
 
@@ -138,6 +139,11 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (url.pathname.startsWith('/api/auth/google') || url.pathname === '/api/signup/google') {
     const response = await handleGoogle(env.DB, env, request, url)
     if (response) return response
+  }
+
+  // PayMongo's payment notifications (signed by PayMongo, not a user session)
+  if (url.pathname === '/api/webhooks/paymongo' && request.method === 'POST') {
+    return handlePaymongoWebhook(env.DB, env, request)
   }
 
   if (url.pathname === '/api/logout' && request.method === 'POST') {
@@ -290,7 +296,7 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (url.pathname.startsWith('/api/subscription')) {
     if (!user) return notLoggedIn()
-    const response = await handleSubscription(env.DB, request, url, user)
+    const response = await handleSubscription(env.DB, env, request, url, user)
     if (response) return response
   }
 

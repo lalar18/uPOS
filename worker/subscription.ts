@@ -3,19 +3,23 @@
 // the Admin role, and its products. Plans are billed monthly and run until
 // stores.plan_expires_at; after that the store is read-only (see index.ts) until renewed.
 //
-// Admins request a renewal (optionally on another plan) here. Until online payment exists,
-// a super admin marks it paid in the US Panel (see usPanel/billing.ts), which extends the
-// store by the months paid for.
+// Admins request a renewal (optionally on another plan) here. With online payment on (see
+// paymongo.ts), they pay it on PayMongo's checkout page and its webhook marks it paid;
+// otherwise a super admin marks it paid in the US Panel (see usPanel/billing.ts). Either way
+// the store is extended by the months paid for.
 //
-//   GET    /api/plans                       -> plans, cheapest first (public: the landing page's pricing)
-//   GET    /api/subscription                -> { plan, expiresAt, expired, usage, plans, pendingRenewal, renewals }
-//   POST   /api/subscription/renewals       { planId } -> renewal   (admins; one pending at a time)
-//   DELETE /api/subscription/renewals/:id   -> { ok }                (admins; cancels a pending renewal)
+//   GET    /api/plans                               -> plans, cheapest first (public: the landing page's pricing)
+//   GET    /api/subscription                        -> { plan, expiresAt, expired, usage, plans, pendingRenewal,
+//                                                       renewals, onlinePayment }
+//   POST   /api/subscription/renewals               { planId } -> renewal + { checkoutUrl } (admins; one pending at a time)
+//   POST   /api/subscription/renewals/:id/checkout  -> { checkoutUrl }  (admins; pays a pending renewal online)
+//   DELETE /api/subscription/renewals/:id           -> { ok }           (admins; cancels a pending renewal)
 //
 // The caps are checked inside the INSERT / UPDATE statements themselves (with the SQL
 // below), so two saves at once can't both take the last seat.
 
 import { error } from './documents'
+import { createCheckoutSession, expireCheckoutSession, onlinePaymentEnabled, type PaymongoEnv } from './paymongo'
 import type { SessionUser } from './session'
 
 export interface PlanRow {
@@ -149,7 +153,7 @@ function publicRenewal(row: RenewalRow) {
 
 const MAX_RENEWALS_SHOWN = 12
 
-async function getSubscription(db: D1Database, user: SessionUser): Promise<Response> {
+async function getSubscription(db: D1Database, env: PaymongoEnv, user: SessionUser): Promise<Response> {
   const [usage, plans, renewals] = await Promise.all([
     getPlanUsage(db, user.store_id),
     listPlanRows(db),
@@ -171,10 +175,60 @@ async function getSubscription(db: D1Database, user: SessionUser): Promise<Respo
     plans: plans.results.map(publicPlan),
     pendingRenewal: pending ? publicRenewal(pending) : null,
     renewals: renewals.results.filter((r) => r.status === 'paid').slice(0, MAX_RENEWALS_SHOWN).map(publicRenewal),
+    onlinePayment: onlinePaymentEnabled(env),
   })
 }
 
-async function requestRenewal(db: D1Database, user: SessionUser, request: Request): Promise<Response> {
+/**
+ * Opens a PayMongo checkout session for a pending renewal (replacing any earlier one) and returns
+ * its URL, or null when online payment is off, the plan is free or the renewal isn't pending.
+ */
+async function openCheckout(
+  db: D1Database,
+  env: PaymongoEnv,
+  user: SessionUser,
+  renewalId: number,
+  origin: string,
+): Promise<string | null> {
+  if (!onlinePaymentEnabled(env)) return null
+  const renewal = await db
+    .prepare(
+      `SELECT p.name AS plan_name, p.monthly_price, sr.checkout_session_id
+       FROM subscription_renewals sr JOIN plans p ON p.id = sr.plan_id
+       WHERE sr.id = ? AND sr.store_id = ? AND sr.status = 'pending'`,
+    )
+    .bind(renewalId, user.store_id)
+    .first<{ plan_name: string; monthly_price: number; checkout_session_id: string | null }>()
+  if (!renewal || renewal.monthly_price <= 0) return null
+
+  const session = await createCheckoutSession(env, {
+    renewalId,
+    storeName: user.store_name,
+    planName: renewal.plan_name,
+    pesos: renewal.monthly_price,
+    origin,
+  })
+  await db
+    .prepare('UPDATE subscription_renewals SET checkout_session_id = ? WHERE id = ?')
+    .bind(session.id, renewalId)
+    .run()
+  // Only the newest session can be paid, so the renewal isn't paid twice
+  if (renewal.checkout_session_id) await expireCheckoutSession(env, renewal.checkout_session_id)
+  return session.url
+}
+
+function checkoutFailed(err: unknown): Response {
+  console.error(err)
+  return error('Could not open the payment page. Please try again in a moment.', 502)
+}
+
+async function requestRenewal(
+  db: D1Database,
+  env: PaymongoEnv,
+  user: SessionUser,
+  request: Request,
+  origin: string,
+): Promise<Response> {
   const body = await request.json<{ planId?: unknown }>().catch(() => null)
   const planId = typeof body?.planId === 'string' ? body.planId : ''
   const plan = await db.prepare('SELECT id FROM plans WHERE id = ?').bind(planId).first()
@@ -190,14 +244,49 @@ async function requestRenewal(db: D1Database, user: SessionUser, request: Reques
     .first<{ id: number }>()
   if (!row) return error('A renewal is already waiting for payment. Cancel it first to choose another plan.', 409)
 
+  let checkoutUrl: string | null
+  try {
+    checkoutUrl = await openCheckout(db, env, user, row.id, origin)
+  } catch (err) {
+    // Nothing was paid yet: drop the request, so the admin can simply try again
+    await db.prepare('DELETE FROM subscription_renewals WHERE id = ?').bind(row.id).run()
+    return checkoutFailed(err)
+  }
+
   const renewal = await db
     .prepare(`SELECT ${RENEWAL_COLUMNS} FROM subscription_renewals sr ${RENEWAL_JOINS} WHERE sr.id = ?`)
     .bind(row.id)
     .first<RenewalRow>()
-  return Response.json(publicRenewal(renewal!), { status: 201 })
+  return Response.json({ ...publicRenewal(renewal!), checkoutUrl }, { status: 201 })
 }
 
-async function cancelRenewal(db: D1Database, user: SessionUser, id: number): Promise<Response> {
+/** Opens a new checkout session for a pending renewal (e.g. the admin left the payment page). */
+async function payOnline(
+  db: D1Database,
+  env: PaymongoEnv,
+  user: SessionUser,
+  id: number,
+  origin: string,
+): Promise<Response> {
+  if (!onlinePaymentEnabled(env)) return error('Online payment is not available', 404)
+  try {
+    const checkoutUrl = await openCheckout(db, env, user, id, origin)
+    if (!checkoutUrl) return error('That renewal is no longer waiting for payment', 404)
+    return Response.json({ checkoutUrl })
+  } catch (err) {
+    return checkoutFailed(err)
+  }
+}
+
+async function cancelRenewal(db: D1Database, env: PaymongoEnv, user: SessionUser, id: number): Promise<Response> {
+  const pending = await db
+    .prepare(`SELECT checkout_session_id FROM subscription_renewals WHERE id = ? AND store_id = ? AND status = 'pending'`)
+    .bind(id, user.store_id)
+    .first<{ checkout_session_id: string | null }>()
+  if (!pending) return error('That renewal is no longer pending', 404)
+  // Closed first, so it can't be paid once cancelled (if it was just paid, the webhook still records it)
+  if (pending.checkout_session_id) await expireCheckoutSession(env, pending.checkout_session_id)
+
   const result = await db
     .prepare(`UPDATE subscription_renewals SET status = 'cancelled' WHERE id = ? AND store_id = ? AND status = 'pending'`)
     .bind(id, user.store_id)
@@ -206,24 +295,27 @@ async function cancelRenewal(db: D1Database, user: SessionUser, id: number): Pro
   return Response.json({ ok: true })
 }
 
-/** Handles /api/subscription and /api/subscription/renewals[/:id]. */
+/** Handles /api/subscription and /api/subscription/renewals[/:id[/checkout]]. */
 export async function handleSubscription(
   db: D1Database,
+  env: PaymongoEnv,
   request: Request,
   url: URL,
   user: SessionUser,
 ): Promise<Response | null> {
   if (url.pathname === '/api/subscription') {
     if (request.method !== 'GET') return error('Method not allowed', 405)
-    return getSubscription(db, user)
+    return getSubscription(db, env, user)
   }
 
   const isCollection = url.pathname === '/api/subscription/renewals'
   const itemMatch = url.pathname.match(/^\/api\/subscription\/renewals\/(\d+)$/)
-  if (!isCollection && !itemMatch) return null
+  const checkoutMatch = url.pathname.match(/^\/api\/subscription\/renewals\/(\d+)\/checkout$/)
+  if (!isCollection && !itemMatch && !checkoutMatch) return null
 
   if (!user.is_admin) return error('Only admins can renew the subscription', 403)
-  if (isCollection && request.method === 'POST') return requestRenewal(db, user, request)
-  if (itemMatch && request.method === 'DELETE') return cancelRenewal(db, user, Number(itemMatch[1]))
+  if (isCollection && request.method === 'POST') return requestRenewal(db, env, user, request, url.origin)
+  if (checkoutMatch && request.method === 'POST') return payOnline(db, env, user, Number(checkoutMatch[1]), url.origin)
+  if (itemMatch && request.method === 'DELETE') return cancelRenewal(db, env, user, Number(itemMatch[1]))
   return error('Method not allowed', 405)
 }

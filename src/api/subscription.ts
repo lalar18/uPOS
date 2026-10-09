@@ -28,6 +28,7 @@ export interface Subscription {
   plans: Plan[] // every plan, cheapest first
   pendingRenewal: Renewal | null // waiting for payment
   renewals: Renewal[] // paid ones, newest first
+  onlinePayment: boolean // renewals are paid on PayMongo's checkout page (else confirmed by a super admin)
 }
 
 /** Every plan and its price; works without logging in (the landing page uses it). */
@@ -38,8 +39,16 @@ export const formatPrice = (pesos: number) => `₱${pesos.toLocaleString('en-US'
 
 export const getSubscription = async (): Promise<Subscription> => readJson(await fetch('/api/subscription'))
 
-/** Asks to renew for another month, on this plan; it takes effect once paid. */
-export const requestRenewal = (planId: string) => sendJson<Renewal>('POST', '/api/subscription/renewals', { planId })
+/**
+ * Asks to renew for another month, on this plan; it takes effect once paid. With online payment,
+ * `checkoutUrl` is the PayMongo page to pay it on.
+ */
+export const requestRenewal = (planId: string) =>
+  sendJson<Renewal & { checkoutUrl: string | null }>('POST', '/api/subscription/renewals', { planId })
+
+/** A new PayMongo payment page for a renewal waiting for payment. */
+export const payRenewalOnline = (id: number) =>
+  sendJson<{ checkoutUrl: string }>('POST', `/api/subscription/renewals/${id}/checkout`)
 
 export const cancelRenewal = (id: number) => sendJson<{ ok: true }>('DELETE', `/api/subscription/renewals/${id}`)
 

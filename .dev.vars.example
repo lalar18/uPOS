@@ -1,3 +1,7 @@
 # Local secrets for `npm run dev`. Copy this file to .dev.vars (which git ignores) and fill it in.
-# In production, set the secret with: npx wrangler secret put GOOGLE_CLIENT_SECRET
+# In production, set each secret with: npx wrangler secret put <NAME>
 GOOGLE_CLIENT_SECRET=
+# PayMongo (Developers > API Keys): online payment of subscription renewals; see worker/paymongo.ts
+PAYMONGO_SECRET_KEY=
+# Shown when the PayMongo webhook is created; without it, online payments aren't recorded
+PAYMONGO_WEBHOOK_SECRET=

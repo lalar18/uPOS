@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // The store's subscription plan, when it expires, and how much of it is used (Admin role only).
-// Plans are billed monthly. Renewing adds a request that the platform owner confirms once
-// it's paid (online payment comes later), which extends the store by a month.
-import { computed, ref } from 'vue'
+// Plans are billed monthly. Renewing adds a request that's paid on PayMongo's checkout page
+// (or, without online payment, confirmed by the platform owner), which extends the store by a month.
+import { computed, onBeforeUnmount, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { currentUser } from '@/auth'
 import {
   cancelRenewal,
@@ -10,15 +11,23 @@ import {
   describeSeats,
   formatDate,
   getSubscription,
+  payRenewalOnline,
   requestRenewal,
   type Subscription,
 } from '@/api/subscription'
+
+const route = useRoute()
+const router = useRouter()
 
 const subscription = ref<Subscription | null>(null)
 const loading = ref(false)
 const loadError = ref('')
 const saving = ref(false)
 const actionError = ref('')
+
+// Back from PayMongo's checkout page (?payment=success|cancelled)
+const paymentResult = ref(route.query.payment === 'success' || route.query.payment === 'cancelled' ? route.query.payment : null)
+if (route.query.payment) router.replace({ query: {} })
 
 async function load() {
   loading.value = true
@@ -38,17 +47,54 @@ async function load() {
     loading.value = false
   }
 }
-load()
+
+// PayMongo tells the server about the payment separately, a few seconds after the admin is
+// sent back here, so reload until the renewal shows as paid
+const CONFIRM_CHECKS = 10
+const CONFIRM_INTERVAL_MS = 3000
+let confirmTimer: ReturnType<typeof setTimeout> | undefined
+
+async function waitForConfirmation(checksLeft: number) {
+  await load()
+  if (subscription.value?.pendingRenewal && checksLeft > 1) {
+    confirmTimer = setTimeout(() => waitForConfirmation(checksLeft - 1), CONFIRM_INTERVAL_MS)
+  }
+}
+if (paymentResult.value === 'success') waitForConfirmation(CONFIRM_CHECKS)
+else load()
+onBeforeUnmount(() => clearTimeout(confirmTimer))
+
+/** Whether the payment the admin just made is still being confirmed */
+const confirming = computed(() => paymentResult.value === 'success' && !!subscription.value?.pendingRenewal)
+
+function goToCheckout(url: string) {
+  // Stays "saving" while the browser leaves for PayMongo
+  window.location.assign(url)
+}
 
 async function renew(planId: string) {
   saving.value = true
   actionError.value = ''
+  paymentResult.value = null
   try {
-    await requestRenewal(planId)
+    const renewal = await requestRenewal(planId)
+    if (renewal.checkoutUrl) return goToCheckout(renewal.checkoutUrl)
     await load()
   } catch (e) {
     actionError.value = e instanceof Error ? e.message : 'Could not request the renewal'
-  } finally {
+  }
+  saving.value = false
+}
+
+async function payPending() {
+  if (!subscription.value?.pendingRenewal) return
+  saving.value = true
+  actionError.value = ''
+  paymentResult.value = null
+  try {
+    goToCheckout((await payRenewalOnline(subscription.value.pendingRenewal.id)).checkoutUrl)
+  } catch (e) {
+    actionError.value = e instanceof Error ? e.message : 'Could not open the payment page'
     saving.value = false
   }
 }
@@ -57,6 +103,7 @@ async function cancelPending() {
   if (!subscription.value?.pendingRenewal) return
   saving.value = true
   actionError.value = ''
+  paymentResult.value = null
   try {
     await cancelRenewal(subscription.value.pendingRenewal.id)
     await load()
@@ -152,6 +199,14 @@ const barClass = (used: number, max: number) => (used >= max ? 'bg-danger' : use
 
         <div v-if="actionError" class="alert alert-danger py-2" role="alert">{{ actionError }}</div>
 
+        <!-- Back from PayMongo -->
+        <div v-if="paymentResult === 'success' && !subscription.pendingRenewal" class="alert alert-success py-2" role="status">
+          <i class="ti ti-circle-check me-1"></i>Payment received. Thank you, your subscription has been renewed.
+        </div>
+        <div v-else-if="paymentResult === 'cancelled'" class="alert alert-warning py-2" role="status">
+          The payment wasn't completed. You can pay it any time below, or cancel the request.
+        </div>
+
         <!-- Waiting for payment -->
         <div
           v-if="subscription.pendingRenewal"
@@ -160,19 +215,46 @@ const barClass = (used: number, max: number) => (used >= max ? 'bg-danger' : use
         >
           <div>
             <div class="fw-semibold">
-              <i class="ti ti-hourglass me-1"></i>Renewal on the {{ subscription.pendingRenewal.plan.name }} plan is
-              waiting for payment
+              <template v-if="confirming">
+                <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Confirming your payment
+                for the {{ subscription.pendingRenewal.plan.name }} plan…
+              </template>
+              <template v-else>
+                <i class="ti ti-hourglass me-1"></i>Renewal on the {{ subscription.pendingRenewal.plan.name }} plan is
+                waiting for payment
+              </template>
             </div>
             <div class="fs-13">
-              Requested {{ formatDate(subscription.pendingRenewal.createdAt) }}
-              <template v-if="subscription.pendingRenewal.requestedBy">
-                by {{ subscription.pendingRenewal.requestedBy }}</template
-              >. Once your system provider confirms the payment, your subscription is extended by one month.
+              <template v-if="confirming">
+                This usually takes a few seconds. If it doesn't update, refresh this page in a minute.
+              </template>
+              <template v-else>
+                Requested {{ formatDate(subscription.pendingRenewal.createdAt) }}
+                <template v-if="subscription.pendingRenewal.requestedBy">
+                  by {{ subscription.pendingRenewal.requestedBy }}</template
+                >.
+                {{
+                  subscription.onlinePayment
+                    ? 'Pay it online and your subscription is extended by one month right away.'
+                    : 'Once your system provider confirms the payment, your subscription is extended by one month.'
+                }}
+              </template>
             </div>
           </div>
-          <button type="button" class="btn btn-sm btn-white border" :disabled="saving" @click="cancelPending">
-            Cancel request
-          </button>
+          <div v-if="!confirming" class="d-flex gap-2">
+            <button
+              v-if="subscription.onlinePayment"
+              type="button"
+              class="btn btn-sm btn-primary"
+              :disabled="saving"
+              @click="payPending"
+            >
+              <i class="ti ti-credit-card me-1"></i>Pay now
+            </button>
+            <button type="button" class="btn btn-sm btn-white border" :disabled="saving" @click="cancelPending">
+              Cancel request
+            </button>
+          </div>
         </div>
 
         <div class="row g-4">
@@ -242,7 +324,12 @@ const barClass = (used: number, max: number) => (used >= max ? 'bg-danger' : use
       </div>
     </div>
     <p class="fs-13 text-gray-5 mt-3">
-      A renewal on another plan switches to it as soon as it's paid. Payment is confirmed by your system provider.
+      A renewal on another plan switches to it as soon as it's paid.
+      {{
+        subscription.onlinePayment
+          ? 'Pay with GCash, Maya, card, QR Ph or GrabPay through PayMongo.'
+          : 'Payment is confirmed by your system provider.'
+      }}
     </p>
 
     <!-- Paid renewals -->
