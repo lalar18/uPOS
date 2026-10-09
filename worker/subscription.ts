@@ -10,7 +10,7 @@
 //
 //   GET    /api/plans                               -> plans, cheapest first (public: the landing page's pricing)
 //   GET    /api/subscription                        -> { plan, expiresAt, expired, usage, plans, pendingRenewal,
-//                                                       renewals, onlinePayment }
+//                                                       renewals, onlinePayment, onlinePaymentFee }
 //   POST   /api/subscription/renewals               { planId } -> renewal + { checkoutUrl } (admins; one pending at a time)
 //   POST   /api/subscription/renewals/:id/checkout  -> { checkoutUrl }  (admins; pays a pending renewal online)
 //   DELETE /api/subscription/renewals/:id           -> { ok }           (admins; cancels a pending renewal)
@@ -19,7 +19,13 @@
 // below), so two saves at once can't both take the last seat.
 
 import { error } from './documents'
-import { createCheckoutSession, expireCheckoutSession, onlinePaymentEnabled, type PaymongoEnv } from './paymongo'
+import {
+  createCheckoutSession,
+  expireCheckoutSession,
+  onlinePaymentEnabled,
+  onlinePaymentFee,
+  type PaymongoEnv,
+} from './paymongo'
 import type { SessionUser } from './session'
 
 export interface PlanRow {
@@ -176,6 +182,7 @@ async function getSubscription(db: D1Database, env: PaymongoEnv, user: SessionUs
     pendingRenewal: pending ? publicRenewal(pending) : null,
     renewals: renewals.results.filter((r) => r.status === 'paid').slice(0, MAX_RENEWALS_SHOWN).map(publicRenewal),
     onlinePayment: onlinePaymentEnabled(env),
+    onlinePaymentFee: onlinePaymentEnabled(env) ? onlinePaymentFee(user.store_currency) : 0,
   })
 }
 
@@ -206,6 +213,7 @@ async function openCheckout(
     storeName: user.store_name,
     planName: renewal.plan_name,
     pesos: renewal.monthly_price,
+    feePesos: onlinePaymentFee(user.store_currency),
     origin,
   })
   await db

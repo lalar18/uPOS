@@ -29,6 +29,7 @@ export interface Subscription {
   pendingRenewal: Renewal | null // waiting for payment
   renewals: Renewal[] // paid ones, newest first
   onlinePayment: boolean // renewals are paid on PayMongo's checkout page (else confirmed by a super admin)
+  onlinePaymentFee: number // whole pesos added to a renewal paid online (0: none)
 }
 
 /** Every plan and its price; works without logging in (the landing page uses it). */

@@ -34,6 +34,14 @@ const METHOD_LABELS: Record<string, string> = {
 
 export const onlinePaymentEnabled = (env: PaymongoEnv) => !!env.PAYMONGO_SECRET_KEY
 
+/**
+ * Fee added to a renewal paid online, in whole pesos, by the store's currency (standing in for
+ * its country). Currencies not listed pay no fee.
+ */
+const ONLINE_PAYMENT_FEES: Record<string, number> = { PHP: 10 }
+
+export const onlinePaymentFee = (currency: string) => ONLINE_PAYMENT_FEES[currency] ?? 0
+
 async function callApi<T>(env: PaymongoEnv, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     method: 'POST',
@@ -56,6 +64,7 @@ export interface CheckoutInput {
   storeName: string
   planName: string
   pesos: number // whole pesos
+  feePesos: number // onlinePaymentFee(), a line item of its own
   origin: string // the app's origin, for the return URLs
 }
 
@@ -73,6 +82,9 @@ export async function createCheckoutSession(
         attributes: {
           line_items: [
             { name: `${input.planName} plan, 1 month`, amount: input.pesos * 100, currency: 'PHP', quantity: 1 },
+            ...(input.feePesos > 0
+              ? [{ name: 'Online payment fee', amount: input.feePesos * 100, currency: 'PHP', quantity: 1 }]
+              : []),
           ],
           payment_method_types: PAYMENT_METHOD_TYPES,
           description: `Subscription renewal for ${input.storeName}`,

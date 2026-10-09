@@ -13,8 +13,10 @@ import {
   getSubscription,
   payRenewalOnline,
   requestRenewal,
+  type Plan,
   type Subscription,
 } from '@/api/subscription'
+import PaymentSummaryModal from './PaymentSummaryModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -72,7 +74,28 @@ function goToCheckout(url: string) {
   window.location.assign(url)
 }
 
-async function renew(planId: string) {
+// With online payment, the amount (plus its fee) is shown before going to PayMongo
+const confirmPayment = ref<{ plan: Plan; pay: () => Promise<void> } | null>(null)
+
+function renew(plan: Plan) {
+  // Free plans aren't paid online (see openCheckout in worker/subscription.ts)
+  if (subscription.value?.onlinePayment && plan.monthlyPrice > 0) confirmPayment.value = { plan, pay: () => submitRenewal(plan.id) }
+  else submitRenewal(plan.id)
+}
+
+function payPending() {
+  const pending = subscription.value?.pendingRenewal
+  const plan = subscription.value?.plans.find((p) => p.id === pending?.plan.id)
+  if (plan) confirmPayment.value = { plan, pay: submitPayPending }
+}
+
+async function pay() {
+  await confirmPayment.value?.pay()
+  // Stays open only while the browser leaves for PayMongo; an error shows on the page instead
+  if (!saving.value) confirmPayment.value = null
+}
+
+async function submitRenewal(planId: string) {
   saving.value = true
   actionError.value = ''
   paymentResult.value = null
@@ -86,7 +109,7 @@ async function renew(planId: string) {
   saving.value = false
 }
 
-async function payPending() {
+async function submitPayPending() {
   if (!subscription.value?.pendingRenewal) return
   saving.value = true
   actionError.value = ''
@@ -191,7 +214,7 @@ const barClass = (used: number, max: number) => (used >= max ? 'bg-danger' : use
             type="button"
             class="btn btn-primary"
             :disabled="saving"
-            @click="renew(subscription.plan.id)"
+            @click="renew(subscription.plan)"
           >
             <i class="ti ti-refresh me-1"></i>Renew {{ subscription.plan.name }} for 1 month
           </button>
@@ -315,7 +338,7 @@ const barClass = (used: number, max: number) => (used >= max ? 'bg-danger' : use
               type="button"
               class="btn btn-sm btn-outline-primary mt-auto align-self-start"
               :disabled="saving"
-              @click="renew(plan.id)"
+              @click="renew(plan)"
             >
               Renew on {{ plan.name }}
             </button>
@@ -331,6 +354,15 @@ const barClass = (used: number, max: number) => (used >= max ? 'bg-danger' : use
           : 'Payment is confirmed by your system provider.'
       }}
     </p>
+
+    <PaymentSummaryModal
+      v-if="confirmPayment"
+      :plan="confirmPayment.plan"
+      :fee="subscription.onlinePaymentFee"
+      :saving="saving"
+      @close="confirmPayment = null"
+      @confirm="pay"
+    />
 
     <!-- Paid renewals -->
     <template v-if="subscription.renewals.length">
