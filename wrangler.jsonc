@@ -10,7 +10,7 @@
   "vars": {
     // OAuth client ID for "Continue with Google" (Google Cloud Console > APIs & Services > Credentials).
     // Its secret is not stored here: `npx wrangler secret put GOOGLE_CLIENT_SECRET` (and .dev.vars locally).
-    "GOOGLE_CLIENT_ID": ""
+    "GOOGLE_CLIENT_ID": "436051304053-672gmbt3lk7u5pils95keft1bhu790i2.apps.googleusercontent.com"
   },
   "d1_databases": [
     {
