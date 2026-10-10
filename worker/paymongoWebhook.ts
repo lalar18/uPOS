@@ -1,10 +1,12 @@
 // PayMongo's webhook: records a paid checkout session against what it was opened for, a
-// subscription renewal (subscription.ts) or a sale (saleCheckouts.ts).
+// subscription renewal (subscription.ts) or a sale (saleCheckouts.ts), and checks the withdrawals
+// sent through PayMongo when their transfers finish (payoutTransfers.ts).
 //
 //   POST /api/webhooks/paymongo   (PayMongo only; signed with the webhook's secret)
 //
 // The webhook is created in the PayMongo dashboard (Developers > Webhooks) for the
-// checkout_session.payment.paid event, pointing at https://<your domain>/api/webhooks/paymongo.
+// checkout_session.payment.paid event (and transfer.outward.successful and
+// transfer.outward.failed), pointing at https://<your domain>/api/webhooks/paymongo.
 
 import {
   METHOD_LABELS,
@@ -15,6 +17,7 @@ import {
   type PaidCheckout,
   type PaymongoEnv,
 } from './paymongo'
+import { refreshTransfersNamedIn } from './payoutTransfers'
 import { recordSaleCheckout } from './saleCheckouts'
 
 interface CheckoutSessionEvent {
@@ -41,7 +44,14 @@ export async function handlePaymongoWebhook(db: D1Database, env: PaymongoEnv, re
   )
   if (!valid) return Response.json({ error: 'Invalid signature' }, { status: 401 })
 
-  // Other events are acknowledged and ignored (the webhook only needs this one)
+  // A withdrawal sent through PayMongo finished (transfer.outward.successful / .failed): its
+  // status is read back from PayMongo
+  if (attributes?.type?.startsWith('transfer.')) {
+    await refreshTransfersNamedIn(db, env, rawBody)
+    return Response.json({ ok: true })
+  }
+
+  // Other events are acknowledged and ignored
   const session = attributes?.data
   if (attributes?.type !== 'checkout_session.payment.paid' || !session) return Response.json({ ok: true })
 

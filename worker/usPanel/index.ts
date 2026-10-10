@@ -5,12 +5,13 @@ import { error } from '../documents'
 import { listStoreRenewals, handleRenewals, recordStorePayment } from './billing'
 import { handleIncome } from './income'
 import { getOverview } from './overview'
+import type { PaymongoEnv } from '../paymongo'
 import { handlePayouts } from './payouts'
 import { handlePlans } from './plans'
 import { changePassword, getSuperAdmin, login, logout, publicSuperAdmin } from './session'
 import { handleStores } from './stores'
 
-export async function handleUsPanel(db: D1Database, request: Request, url: URL): Promise<Response> {
+export async function handleUsPanel(db: D1Database, env: PaymongoEnv, request: Request, url: URL): Promise<Response> {
   const path = url.pathname
 
   if (path === '/api/us-panel/login') {
@@ -31,10 +32,11 @@ export async function handleUsPanel(db: D1Database, request: Request, url: URL):
   // Payouts of online sales (checked before the other store routes)
   if (
     path === '/api/us-panel/payouts' ||
+    path === '/api/us-panel/payouts/banks' ||
     /^\/api\/us-panel\/stores\/\d+\/payouts$/.test(path) ||
-    /^\/api\/us-panel\/withdrawals\/\d+\/(send|reject)$/.test(path)
+    /^\/api\/us-panel\/withdrawals\/\d+\/(transfer|send|reject)$/.test(path)
   ) {
-    const response = await handlePayouts(db, request, url, admin)
+    const response = await handlePayouts(db, env, request, url, admin)
     if (response) return response
   }
 

@@ -102,7 +102,10 @@ function onSaved(message: string) {
                 <td>
                   <RouterLink :to="{ name: 'us-store', params: { id: s.id } }" class="fw-medium text-gray-9">{{ s.name }}</RouterLink>
                   <div class="fs-12 text-gray-5">{{ storeCode(s.id) }}</div>
-                  <span v-if="s.pendingWithdrawal" class="badge bg-warning me-1">
+                  <span v-if="s.pendingWithdrawal?.sending" class="badge bg-info me-1">
+                    Sending {{ peso(s.pendingWithdrawal.amountCents) }}
+                  </span>
+                  <span v-else-if="s.pendingWithdrawal" class="badge bg-warning me-1">
                     Withdraw {{ peso(s.pendingWithdrawal.amountCents) }}
                   </span>
                   <span v-if="s.refundsDue" class="badge bg-secondary">{{ s.refundsDue }} to refund</span>
@@ -120,7 +123,7 @@ function onSaved(message: string) {
                     :class="s.pendingWithdrawal ? 'btn-primary' : 'btn-white border'"
                     @click="selected = s"
                   >
-                    {{ s.pendingWithdrawal ? 'Send' : s.balanceCents > 0 ? 'Pay Out' : 'History' }}
+                    {{ s.pendingWithdrawal?.sending ? 'Status' : s.pendingWithdrawal ? 'Send' : s.balanceCents > 0 ? 'Pay Out' : 'History' }}
                   </button>
                 </td>
               </tr>

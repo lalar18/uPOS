@@ -7,6 +7,7 @@ import { clearLoginFailures, loginKey, loginRetryAfter, recordLoginFailure, tooM
 import { verifyPassword } from './password'
 import type { PaymongoEnv } from './paymongo'
 import { handlePaymongoWebhook } from './paymongoWebhook'
+import { handleTransferCallback, refreshPendingTransfers, TRANSFER_CALLBACK_PATH } from './payoutTransfers'
 import { handleProducts } from './products'
 import { handleQuotations } from './quotations'
 import { handleSales } from './sales'
@@ -91,6 +92,12 @@ export default {
     }
     return response
   },
+
+  // Every 10 minutes (wrangler.jsonc triggers): checks the withdrawals being sent through PayMongo,
+  // in case its callbacks didn't arrive
+  async scheduled(_controller, env, ctx) {
+    ctx.waitUntil(refreshPendingTransfers(env.DB, env, null, 50).catch((err) => console.error(err)))
+  },
 } satisfies ExportedHandler<Env>
 
 async function route(request: Request, env: Env): Promise<Response> {
@@ -149,6 +156,10 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (url.pathname === '/api/webhooks/paymongo' && request.method === 'POST') {
     return handlePaymongoWebhook(env.DB, env, request)
   }
+  // PayMongo's transfer callbacks (unsigned: they only say which transfers to look up)
+  if (url.pathname === TRANSFER_CALLBACK_PATH && request.method === 'POST') {
+    return handleTransferCallback(env.DB, env, request)
+  }
 
   if (url.pathname === '/api/logout' && request.method === 'POST') {
     const cookie = await destroySession(env.DB, request)
@@ -157,7 +168,7 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   // The US Panel (super admins) has its own sign-in, separate from store users
   if (url.pathname === '/api/us-panel' || url.pathname.startsWith('/api/us-panel/')) {
-    return handleUsPanel(env.DB, request, url)
+    return handleUsPanel(env.DB, env, request, url)
   }
 
   // Everything below requires a logged-in user
@@ -281,7 +292,7 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (url.pathname.startsWith('/api/wallet')) {
     if (!user) return notLoggedIn()
-    const response = await handleWallet(env.DB, request, url, user)
+    const response = await handleWallet(env.DB, env, request, url, user)
     if (response) return response
   }
 

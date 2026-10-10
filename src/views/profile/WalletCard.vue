@@ -9,6 +9,8 @@ import {
   cancelWithdrawal,
   describeDestination,
   getWallet,
+  TRANSFER_STATUS,
+  transferProviderLabel,
   WITHDRAWAL_STATUS,
   type Wallet,
 } from '@/api/store'
@@ -125,11 +127,27 @@ async function cancelPending() {
           role="status"
         >
           <div class="min-w-0">
-            <i class="ti ti-hourglass me-1"></i>{{ peso(wallet.pendingWithdrawal.amountCents) }} to
-            {{ describeDestination(wallet.pendingWithdrawal) }} ({{ wallet.pendingWithdrawal.accountName }}), requested
-            {{ formatDate(wallet.pendingWithdrawal.createdAt) }}, is waiting to be sent.
+            <i class="ti me-1" :class="wallet.pendingWithdrawal.sending ? 'ti-send' : 'ti-hourglass'"></i>
+            {{ peso(wallet.pendingWithdrawal.amountCents) }} to {{ describeDestination(wallet.pendingWithdrawal) }}
+            ({{ wallet.pendingWithdrawal.accountName }}), requested {{ formatDate(wallet.pendingWithdrawal.createdAt) }},
+            {{ wallet.pendingWithdrawal.sending ? 'is being sent to you now.' : 'is waiting to be sent.' }}
+            <div v-if="wallet.pendingWithdrawal.sending && wallet.pendingWithdrawal.transfer" class="fs-12">
+              Ref {{ wallet.pendingWithdrawal.transfer.reference }}
+            </div>
+            <div
+              v-else-if="wallet.pendingWithdrawal.transfer?.status === 'failed'"
+              class="fs-12 text-danger text-break"
+            >
+              The last try didn't go through: {{ wallet.pendingWithdrawal.transfer.failureMessage }}
+            </div>
           </div>
-          <button type="button" class="btn btn-sm btn-white border" :disabled="cancelling" @click="cancelPending">
+          <button
+            v-if="!wallet.pendingWithdrawal.sending"
+            type="button"
+            class="btn btn-sm btn-white border"
+            :disabled="cancelling"
+            @click="cancelPending"
+          >
             {{ cancelling ? 'Cancelling…' : 'Cancel' }}
           </button>
         </div>
@@ -147,7 +165,9 @@ async function cancelPending() {
             <div v-for="w in wallet.withdrawals" :key="w.id" class="list-row">
               <div class="min-w-0">
                 <div class="text-gray-9">
-                  {{ w.reference }} <span class="badge ms-1" :class="WITHDRAWAL_STATUS[w.status].class">{{ WITHDRAWAL_STATUS[w.status].label }}</span>
+                  {{ w.reference }}
+                  <span v-if="w.sending" class="badge ms-1" :class="TRANSFER_STATUS.pending.class">{{ TRANSFER_STATUS.pending.label }}</span>
+                  <span v-else class="badge ms-1" :class="WITHDRAWAL_STATUS[w.status].class">{{ WITHDRAWAL_STATUS[w.status].label }}</span>
                 </div>
                 <div class="fs-12 text-gray-5 text-break">
                   {{ describeDestination(w) }} · {{ w.accountName }} · {{ formatDate(w.createdAt) }}
@@ -165,6 +185,9 @@ async function cancelPending() {
                 <div class="text-gray-9">{{ p.reference }} · {{ paymentMethodLabel(p.method) }}</div>
                 <div class="fs-12 text-gray-5 text-break">
                   {{ p.paidDate }}<template v-if="p.paymentReference"> · Ref {{ p.paymentReference }}</template>
+                </div>
+                <div v-if="p.transfer" class="fs-12 text-gray-5 text-break">
+                  {{ transferProviderLabel(p.transfer.provider) }} through PayMongo · {{ p.transfer.reference }}
                 </div>
               </div>
               <div class="fw-semibold text-nowrap">{{ peso(p.amountCents) }}</div>

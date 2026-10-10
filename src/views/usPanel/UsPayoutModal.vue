@@ -1,11 +1,26 @@
 <script setup lang="ts">
-// A store's wallet: what it's owed, the withdrawal it asked for (send it, or reject it), recording
-// a payout made without a request, and the history.
+// A store's wallet: what it's owed, the withdrawal it asked for (send it through PayMongo, mark it
+// sent by hand, or reject it), recording a payout made without a request, and the history,
+// including every transfer sent through PayMongo.
 import { computed, ref } from 'vue'
 import { parseDbDate } from '@/api/http'
 import { PAYMENT_METHODS, paymentMethodLabel } from '@/api/sales'
-import { describeDestination, WITHDRAWAL_STATUS, type Wallet } from '@/api/store'
-import { getStorePayouts, recordPayout, rejectWithdrawal, sendWithdrawal } from '@/api/usPanel'
+import {
+  describeDestination,
+  TRANSFER_STATUS,
+  transferProviderLabel,
+  WITHDRAWAL_STATUS,
+  type Bank,
+  type Wallet,
+} from '@/api/store'
+import {
+  getPayoutBanks,
+  getStorePayouts,
+  recordPayout,
+  rejectWithdrawal,
+  sendWithdrawal,
+  transferWithdrawal,
+} from '@/api/usPanel'
 import AppModal from '@/components/AppModal.vue'
 import { toIsoDate } from '@/utils/date'
 import { centsToText, formatMoney, parsePeso } from '@/utils/money'
@@ -13,26 +28,93 @@ import { centsToText, formatMoney, parsePeso } from '@/utils/money'
 const props = defineProps<{ store: { id: number; name: string } }>()
 const emit = defineEmits<{ close: []; saved: [message: string] }>()
 
+/** InstaPay's most per transfer (₱50,000); PayMongo sends more by PESONet */
+const INSTAPAY_MAX_CENTS = 50_000_00
+
 const summary = ref<Wallet | null>(null)
 const amount = ref('')
 const method = ref('bank_transfer')
 const reference = ref('')
 const paidDate = ref(toIsoDate())
 const note = ref('')
-const rejecting = ref(false)
+// What to do with the pending request: send it through PayMongo, record it as sent by hand, or reject it
+const mode = ref<'paymongo' | 'manual' | 'reject'>('paymongo')
 const rejectReason = ref('')
+// For a bank request made without a bank from PayMongo's list
+const banks = ref<Bank[] | null>(null)
+const bankCode = ref('')
 const error = ref('')
 const saving = ref(false)
+const checking = ref(false)
 
 const peso = (cents: number) => formatMoney(cents, 'PHP')
 const pending = computed(() => summary.value?.pendingWithdrawal ?? null)
+const needsBank = computed(() => pending.value?.destination === 'bank' && !pending.value.bankCode)
+
+function show(result: Wallet) {
+  summary.value = result
+  amount.value = result.availableCents > 0 ? centsToText(result.availableCents) : ''
+  if (!result.transfersEnabled && mode.value === 'paymongo') mode.value = 'manual'
+  const request = result.pendingWithdrawal
+  if (result.transfersEnabled && request?.destination === 'bank' && !request.bankCode && !banks.value) {
+    getPayoutBanks()
+      .then((list) => (banks.value = list))
+      .catch((e) => (error.value = e instanceof Error ? e.message : 'Could not load the list of banks'))
+  }
+}
 
 getStorePayouts(props.store.id)
-  .then((result) => {
-    summary.value = result
-    amount.value = result.availableCents > 0 ? centsToText(result.availableCents) : ''
-  })
+  .then(show)
   .catch((e) => (error.value = e instanceof Error ? e.message : 'Could not load the payouts'))
+
+/** Asks again how the transfer on its way is going (the server checks with PayMongo) */
+async function checkStatus() {
+  error.value = ''
+  checking.value = true
+  const id = pending.value?.id
+  try {
+    const result = await getStorePayouts(props.store.id)
+    const w = result.withdrawals.find((x) => x.id === id)
+    if (w?.status === 'sent') {
+      emit('saved', `${peso(w.amountCents)} sent to ${props.store.name} through PayMongo (${w.transfer?.reference}).`)
+      return
+    }
+    show(result)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not check the transfer'
+  } finally {
+    checking.value = false
+  }
+}
+
+async function sendThroughPaymongo(id: number) {
+  if (needsBank.value && !bankCode.value) {
+    error.value = "Choose the store's bank."
+    return
+  }
+  saving.value = true
+  try {
+    const result = await transferWithdrawal(id, needsBank.value ? bankCode.value : null)
+    const w = result.withdrawals.find((x) => x.id === id)
+    const transfer = w?.transfer
+    if (w?.status === 'sent') {
+      emit('saved', `${peso(w.amountCents)} sent to ${props.store.name} through PayMongo (${transfer?.reference}).`)
+    } else if (transfer?.status === 'pending') {
+      emit(
+        'saved',
+        `Sending ${peso(transfer.amountCents)} to ${props.store.name} through PayMongo (${transfer.reference}). It shows as sent once PayMongo confirms.`,
+      )
+    } else {
+      show(result)
+      error.value = transfer?.failureMessage ?? "PayMongo couldn't send it."
+    }
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not send the withdrawal'
+    getStorePayouts(props.store.id).then(show).catch(() => {})
+  } finally {
+    saving.value = false
+  }
+}
 
 function checkDate(): boolean {
   if (!paidDate.value || paidDate.value > toIsoDate()) {
@@ -58,7 +140,12 @@ async function save() {
   error.value = ''
   const request = pending.value
   if (request) {
-    if (rejecting.value) {
+    if (request.sending) return
+    if (mode.value === 'paymongo') {
+      await sendThroughPaymongo(request.id)
+      return
+    }
+    if (mode.value === 'reject') {
       if (!rejectReason.value.trim()) {
         error.value = 'Tell the store why the withdrawal was rejected.'
         return
@@ -181,28 +268,100 @@ async function copy(value: string) {
               <div v-if="pending.note" class="fs-12 text-gray-5 text-break">{{ pending.note }}</div>
             </div>
 
-            <div class="form-check form-switch mb-3">
-              <input id="payout-reject" v-model="rejecting" class="form-check-input" type="checkbox" />
-              <label class="form-check-label" for="payout-reject">Reject this request instead</label>
-            </div>
-            <div v-if="rejecting" class="mb-3">
-              <label class="form-label" for="payout-reject-reason">Reason (shown to the store) <span class="text-danger">*</span></label>
-              <textarea id="payout-reject-reason" v-model="rejectReason" rows="2" maxlength="500" class="form-control"></textarea>
-            </div>
-            <div v-else class="row g-3 mb-3">
-              <div class="col-sm-6">
-                <label class="form-label" for="payout-reference">Transfer reference no.</label>
-                <input id="payout-reference" v-model="reference" type="text" maxlength="50" class="form-control" />
-              </div>
-              <div class="col-sm-6">
-                <label class="form-label" for="payout-date">Date sent <span class="text-danger">*</span></label>
-                <input id="payout-date" v-model="paidDate" type="date" class="form-control" :max="toIsoDate()" />
-              </div>
-              <div class="col-12">
-                <label class="form-label" for="payout-note">Note</label>
-                <textarea id="payout-note" v-model="note" rows="2" maxlength="500" class="form-control"></textarea>
+            <!-- On its way through PayMongo: nothing to do but wait for it -->
+            <div v-if="pending.sending && pending.transfer" class="alert alert-info py-2" role="status">
+              <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div class="min-w-0">
+                  <div class="fw-medium">
+                    <i class="ti ti-send me-1"></i>Sending through PayMongo ({{ transferProviderLabel(pending.transfer.provider) }})
+                  </div>
+                  <div class="fs-12 text-break">
+                    Ref {{ pending.transfer.reference }}
+                    <template v-if="pending.transfer.transferId"> · {{ pending.transfer.transferId }}</template>
+                    · by {{ pending.transfer.sentBy }} · {{ parseDbDate(pending.transfer.createdAt).toLocaleString() }}
+                  </div>
+                  <div class="fs-12">InstaPay usually takes a few minutes; PESONet, up to a banking day.</div>
+                </div>
+                <button type="button" class="btn btn-sm btn-white border" :disabled="checking" @click="checkStatus">
+                  <i class="ti ti-refresh me-1"></i>{{ checking ? 'Checking…' : 'Check status' }}
+                </button>
               </div>
             </div>
+
+            <template v-else>
+              <div
+                v-if="pending.transfer?.status === 'failed'"
+                class="alert alert-warning py-2 fs-14"
+                role="alert"
+              >
+                The last transfer ({{ pending.transfer.reference }}) failed: {{ pending.transfer.failureMessage }}
+              </div>
+
+              <div class="btn-group w-100 mb-3 flex-wrap" role="group" aria-label="What to do with this request">
+                <button
+                  v-if="summary.transfersEnabled"
+                  type="button"
+                  class="btn"
+                  :class="mode === 'paymongo' ? 'btn-primary' : 'btn-white border'"
+                  :aria-pressed="mode === 'paymongo'"
+                  @click="mode = 'paymongo'"
+                >
+                  <i class="ti ti-send me-1"></i>Send via PayMongo
+                </button>
+                <button
+                  type="button"
+                  class="btn"
+                  :class="mode === 'manual' ? 'btn-primary' : 'btn-white border'"
+                  :aria-pressed="mode === 'manual'"
+                  @click="mode = 'manual'"
+                >
+                  <i class="ti ti-check me-1"></i>Sent by hand
+                </button>
+                <button
+                  type="button"
+                  class="btn"
+                  :class="mode === 'reject' ? 'btn-danger' : 'btn-white border'"
+                  :aria-pressed="mode === 'reject'"
+                  @click="mode = 'reject'"
+                >
+                  <i class="ti ti-x me-1"></i>Reject
+                </button>
+              </div>
+
+              <div v-if="mode === 'paymongo'" class="mb-3">
+                <div v-if="needsBank" class="mb-3">
+                  <label class="form-label" for="payout-bank">Store's bank <span class="text-danger">*</span></label>
+                  <select id="payout-bank" v-model="bankCode" class="form-select" :disabled="!banks">
+                    <option value="" disabled>{{ banks ? `Choose the bank (the store wrote "${pending.bankName}")` : 'Loading banks…' }}</option>
+                    <option v-for="b in banks ?? []" :key="b.code" :value="b.code">{{ b.name }}</option>
+                  </select>
+                </div>
+                <p class="fs-14 text-gray-5 mb-0">
+                  {{ peso(pending.amountCents) }} goes from the platform's PayMongo Wallet to the account above by
+                  {{ pending.amountCents > INSTAPAY_MAX_CENTS ? 'PESONet (next banking cycle)' : 'InstaPay (usually instant)' }}.
+                  PayMongo charges the platform its transfer fee. The payout is recorded with its reference numbers once PayMongo
+                  confirms it.
+                </p>
+              </div>
+              <div v-else-if="mode === 'reject'" class="mb-3">
+                <label class="form-label" for="payout-reject-reason">Reason (shown to the store) <span class="text-danger">*</span></label>
+                <textarea id="payout-reject-reason" v-model="rejectReason" rows="2" maxlength="500" class="form-control"></textarea>
+              </div>
+              <div v-else class="row g-3 mb-3">
+                <div class="col-sm-6">
+                  <label class="form-label" for="payout-reference">Transfer reference no.</label>
+                  <input id="payout-reference" v-model="reference" type="text" maxlength="50" class="form-control" />
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label" for="payout-date">Date sent <span class="text-danger">*</span></label>
+                  <input id="payout-date" v-model="paidDate" type="date" class="form-control" :max="toIsoDate()" />
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="payout-note">Note</label>
+                  <textarea id="payout-note" v-model="note" rows="2" maxlength="500" class="form-control"></textarea>
+                </div>
+              </div>
+            </template>
           </template>
 
           <!-- A payout without a request -->
@@ -244,7 +403,8 @@ async function copy(value: string) {
                 <div class="min-w-0">
                   <div class="text-gray-9">
                     {{ w.reference }}
-                    <span class="badge ms-1" :class="WITHDRAWAL_STATUS[w.status].class">{{ WITHDRAWAL_STATUS[w.status].label }}</span>
+                    <span v-if="w.sending" class="badge ms-1" :class="TRANSFER_STATUS.pending.class">{{ TRANSFER_STATUS.pending.label }}</span>
+                    <span v-else class="badge ms-1" :class="WITHDRAWAL_STATUS[w.status].class">{{ WITHDRAWAL_STATUS[w.status].label }}</span>
                   </div>
                   <div class="fs-12 text-gray-5 text-break">
                     {{ describeDestination(w) }} · {{ w.accountName }}
@@ -273,12 +433,45 @@ async function copy(value: string) {
               </div>
             </div>
           </div>
+
+          <!-- Every transfer through PayMongo, whatever happened to it -->
+          <template v-if="summary.transfers.length">
+            <h6 class="mt-4 mb-2">PayMongo transfers</h6>
+            <div v-for="t in summary.transfers" :key="t.id" class="list-row">
+              <div class="min-w-0">
+                <div class="text-gray-9">
+                  {{ t.reference }}
+                  <span class="badge ms-1" :class="TRANSFER_STATUS[t.status].class">{{ TRANSFER_STATUS[t.status].label }}</span>
+                </div>
+                <div class="fs-12 text-gray-5 text-break">
+                  {{ transferProviderLabel(t.provider) }} to {{ t.bankName }} · {{ t.accountName }} · {{ t.accountNumber }}
+                </div>
+                <div class="fs-12 text-gray-5 text-break">
+                  <template v-if="t.transferId">PayMongo {{ t.transferId }}</template>
+                  <template v-if="t.providerReference"> · {{ transferProviderLabel(t.provider) }} ref {{ t.providerReference }}</template>
+                  <template v-if="t.feeCents !== null"> · fee {{ peso(t.feeCents) }}</template>
+                  · by {{ t.sentBy }} · {{ parseDbDate(t.createdAt).toLocaleString() }}
+                </div>
+                <div v-if="t.failureMessage" class="fs-12 text-danger text-break">{{ t.failureMessage }}</div>
+              </div>
+              <div class="fw-semibold text-nowrap">{{ peso(t.amountCents) }}</div>
+            </div>
+          </template>
         </template>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" :disabled="saving" @click="emit('close')">Close</button>
-        <button v-if="pending" type="submit" class="btn" :class="rejecting ? 'btn-danger' : 'btn-primary'" :disabled="saving">
-          {{ saving ? 'Saving…' : rejecting ? 'Reject Request' : 'Mark as Sent' }}
+        <button
+          v-if="pending && !pending.sending"
+          type="submit"
+          class="btn"
+          :class="mode === 'reject' ? 'btn-danger' : 'btn-primary'"
+          :disabled="saving"
+        >
+          <template v-if="saving">{{ mode === 'paymongo' ? 'Sending…' : 'Saving…' }}</template>
+          <template v-else>
+            {{ mode === 'paymongo' ? `Send ${peso(pending.amountCents)}` : mode === 'reject' ? 'Reject Request' : 'Mark as Sent' }}
+          </template>
         </button>
         <button v-else-if="summary && summary.availableCents > 0" type="submit" class="btn btn-primary" :disabled="saving">
           {{ saving ? 'Saving…' : 'Record Payout' }}

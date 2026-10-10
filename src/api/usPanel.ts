@@ -2,7 +2,7 @@
 import { readJson, sendJson } from './http'
 import type { ServiceCharge } from './serviceCharge'
 import type { Plan } from './subscription'
-import type { StoreInput, Wallet } from './store'
+import type { Bank, StoreInput, Wallet } from './store'
 
 const BASE = '/api/us-panel'
 
@@ -190,8 +190,8 @@ export interface StoreBalance {
   balanceCents: number // owed to the store
   refundsDue: number
   lastPayoutDate: string | null
-  // The withdrawal the store asked for, waiting to be sent
-  pendingWithdrawal: { id: number; amountCents: number; createdAt: string } | null
+  // The withdrawal the store asked for, waiting to be sent (sending: through PayMongo right now)
+  pendingWithdrawal: { id: number; amountCents: number; createdAt: string; sending: boolean } | null
 }
 
 /** The money sent: its reference, date and note */
@@ -217,7 +217,18 @@ export const listPayoutBalances = async (): Promise<{
   }
 }> => readJson(await fetch(`${BASE}/payouts`))
 
-/** Records the money sent for a store's withdrawal request */
+/**
+ * Sends a store's withdrawal from the platform's PayMongo Wallet. The wallet it returns has the
+ * transfer (withdrawal.transfer): sending, sent, or failed with the reason.
+ */
+export const transferWithdrawal = (id: number, bankCode: string | null) =>
+  sendJson<Wallet>('POST', `${BASE}/withdrawals/${id}/transfer`, { bankCode })
+
+/** PayMongo's banks, for a withdrawal requested without one from the list */
+export const getPayoutBanks = async (): Promise<Bank[] | null> =>
+  (await readJson<{ banks: Bank[] | null }>(await fetch(`${BASE}/payouts/banks`))).banks
+
+/** Records the money sent by hand for a store's withdrawal request */
 export const sendWithdrawal = (id: number, input: SentInput) =>
   sendJson<Wallet>('POST', `${BASE}/withdrawals/${id}/send`, input)
 

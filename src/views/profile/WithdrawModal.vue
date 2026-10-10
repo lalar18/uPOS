@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // Asks to withdraw from the store's wallet to a GCash number or a bank account. The platform
-// sends the money and marks the request sent; until then the amount is held.
+// sends the money (through PayMongo, to a bank from its list) and the request shows as sent; until
+// then the amount is held.
 import { ref } from 'vue'
-import { requestWithdrawal, type Wallet, type WithdrawalDestination } from '@/api/store'
+import { getWithdrawalBanks, requestWithdrawal, type Bank, type Wallet, type WithdrawalDestination } from '@/api/store'
 import AppModal from '@/components/AppModal.vue'
 import { centsToText, formatMoney, parsePeso } from '@/utils/money'
 
@@ -12,7 +13,18 @@ const emit = defineEmits<{ close: []; saved: [wallet: Wallet] }>()
 // Starts from where the last withdrawal went
 const last = props.wallet.withdrawals[0]
 const destination = ref<WithdrawalDestination>(last?.destination ?? 'gcash')
+const bankCode = ref(last?.destination === 'bank' ? (last.bankCode ?? '') : '')
 const bankName = ref(last?.bankName ?? '')
+// PayMongo's banks; null: there's no list, so the bank name is typed in
+const banks = ref<Bank[] | null>(null)
+const banksLoading = ref(true)
+getWithdrawalBanks()
+  .then((list) => {
+    banks.value = list
+    if (list && !list.some((b) => b.code === bankCode.value)) bankCode.value = ''
+  })
+  .catch((e) => (error.value = e instanceof Error ? e.message : 'Could not load the list of banks'))
+  .finally(() => (banksLoading.value = false))
 const accountName = ref(last?.accountName ?? '')
 const accountNumber = ref(last?.accountNumber ?? '')
 const amount = ref(centsToText(props.wallet.availableCents))
@@ -39,8 +51,8 @@ async function save() {
     error.value = `You can withdraw up to ${peso(props.wallet.availableCents)}.`
     return
   }
-  if (destination.value === 'bank' && !bankName.value.trim()) {
-    error.value = 'Enter the bank name.'
+  if (destination.value === 'bank' && (banks.value ? !bankCode.value : !bankName.value.trim())) {
+    error.value = banks.value ? 'Choose your bank.' : 'Enter the bank name.'
     return
   }
   if (!accountName.value.trim() || !accountNumber.value.trim()) {
@@ -52,7 +64,8 @@ async function save() {
     const wallet = await requestWithdrawal({
       amountCents: cents,
       destination: destination.value,
-      bankName: destination.value === 'bank' ? bankName.value : '',
+      bankCode: destination.value === 'bank' && banks.value ? bankCode.value : '',
+      bankName: destination.value === 'bank' && !banks.value ? bankName.value : '',
       accountName: accountName.value,
       accountNumber: accountNumber.value,
       note: note.value,
@@ -107,7 +120,15 @@ async function save() {
         <div class="row g-3">
           <div v-if="destination === 'bank'" class="col-12">
             <label class="form-label" for="withdraw-bank">Bank <span class="text-danger">*</span></label>
+            <select v-if="banks" id="withdraw-bank" v-model="bankCode" class="form-select">
+              <option value="" disabled>Choose your bank or e-wallet</option>
+              <option v-for="b in banks" :key="b.code" :value="b.code">{{ b.name }}</option>
+            </select>
+            <select v-else-if="banksLoading" id="withdraw-bank" class="form-select" disabled>
+              <option>Loading banks…</option>
+            </select>
             <input
+              v-else
               id="withdraw-bank"
               v-model="bankName"
               type="text"
@@ -142,7 +163,8 @@ async function save() {
           </div>
         </div>
         <p class="fs-12 text-gray-5 mt-3 mb-0">
-          Check the name and number: the money is sent exactly where you say. The amount is held until it's sent.
+          Check the name and number: they must match the account exactly, or the transfer fails. The amount is held
+          until it's sent.
         </p>
       </div>
       <div class="modal-footer">
