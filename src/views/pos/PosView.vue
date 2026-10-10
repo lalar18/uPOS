@@ -1,10 +1,11 @@
 <script setup lang="ts">
-// Point of sale (/pos). Tap products (or scan a barcode into the search box) to fill the
-// cart, then Pay. On wide screens the cart sits beside the products; on phones and tablets
+// Point of sale (/pos). Tap products, scan a barcode into the search box (USB or Bluetooth
+// scanner) or scan barcodes and QR codes with the camera to fill the cart, then Pay. On wide screens the cart sits beside the products; on phones and tablets
 // a bar at the bottom shows the total and opens the cart full screen.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { PickedCustomer } from '@/api/customers'
 import {
+  findProductByCode,
   formatQuantity,
   getProductOptions,
   listProducts,
@@ -16,6 +17,7 @@ import { getOnlinePaymentCharge, type ServiceCharge } from '@/api/serviceCharge'
 import { getSettingsOrDefaults, taxRateText } from '@/api/settings'
 import { getStore, type Store } from '@/api/store'
 import AppModal from '@/components/AppModal.vue'
+import BarcodeScannerModal, { type ScanResult } from '@/components/BarcodeScannerModal.vue'
 import CustomerPicker from '@/components/CustomerPicker.vue'
 import { toIsoDate } from '@/utils/date'
 import { currencySymbol, formatMoney, newUid, parsePercentBp, parsePeso } from '@/utils/money'
@@ -130,28 +132,44 @@ function quantityOf(line: CartLine): number | null {
 
 const lineCents = (line: CartLine) => lineTotal(quantityOf(line) ?? 0, line.product.priceCents)
 
-/** Adds one of the product; returns false when it can't be added */
-function add(product: Product): boolean {
+/** Adds one of the product; returns why it can't be added, or '' when it was */
+function addToCart(product: Product): string {
   const line = cart.value.find((l) => l.product.id === product.id)
   const current = line ? (quantityOf(line) ?? 0) : 0
   if (current + 1 > product.quantity) {
-    showNotice(
-      product.quantity <= 0
-        ? `${product.name} is out of stock.`
-        : `Only ${formatQuantity(product.quantity)} ${product.unit.shortName} of ${product.name} in stock.`,
-    )
-    return false
+    return product.quantity <= 0
+      ? `${product.name} is out of stock.`
+      : `Only ${formatQuantity(product.quantity)} ${product.unit.shortName} of ${product.name} in stock.`
   }
   if (line) {
     line.quantityText = String(round3(current + 1))
   } else {
-    if (cart.value.length >= MAX_CART_LINES) {
-      showNotice(`A sale can have up to ${MAX_CART_LINES} products.`)
-      return false
-    }
+    if (cart.value.length >= MAX_CART_LINES) return `A sale can have up to ${MAX_CART_LINES} products.`
     cart.value.push({ product, quantityText: '1' })
   }
-  return true
+  return ''
+}
+
+/** Adds one of the product, or shows why it can't be; returns whether it was added */
+function add(product: Product): boolean {
+  const problem = addToCart(product)
+  if (problem) showNotice(problem)
+  return !problem
+}
+
+// --- Camera scanner ---
+
+const scanning = ref(false)
+
+async function addScanned(code: string): Promise<ScanResult> {
+  const product = await findProductByCode(code)
+  if (!product) return { ok: false, message: `No product has the code “${code}”.` }
+  refreshCart([product])
+  const problem = addToCart(product)
+  if (problem) return { ok: false, message: problem }
+  const line = cart.value.find((l) => l.product.id === product.id)
+  const inCart = line ? formatQuantity(quantityOf(line) ?? 0) : '1'
+  return { ok: true, message: `Added ${product.name} (${inCart} in cart) · ${formatMoney(product.priceCents)}` }
 }
 
 function step(line: CartLine, delta: number) {
@@ -332,17 +350,22 @@ onBeforeUnmount(() => {
     <!-- Products -->
     <section class="pos-products">
       <div class="pos-search mb-2">
-        <span class="search-icon"><i class="ti ti-scan"></i></span>
-        <input
-          ref="searchInput"
-          v-model="search"
-          type="search"
-          class="form-control"
-          placeholder="Search or scan barcode / SKU"
-          aria-label="Search products"
-          autocomplete="off"
-          @keydown.enter.prevent="addFromSearch"
-        />
+        <div class="search-field">
+          <span class="search-icon"><i class="ti ti-search"></i></span>
+          <input
+            ref="searchInput"
+            v-model="search"
+            type="search"
+            class="form-control"
+            placeholder="Search or scan barcode / SKU"
+            aria-label="Search products"
+            autocomplete="off"
+            @keydown.enter.prevent="addFromSearch"
+          />
+        </div>
+        <button type="button" class="btn btn-primary scan-button" title="Scan with camera" @click="scanning = true">
+          <i class="ti ti-scan"></i><span class="d-none d-sm-inline ms-1">Scan</span>
+        </button>
       </div>
 
       <div class="category-tabs mb-3" role="tablist" aria-label="Categories">
@@ -424,7 +447,7 @@ onBeforeUnmount(() => {
 
       <div class="cart-lines">
         <div v-if="cart.length === 0" class="text-center text-gray-5 py-5">
-          <i class="ti ti-shopping-cart fs-24 d-block mb-2"></i>Tap a product to add it.
+          <i class="ti ti-shopping-cart fs-24 d-block mb-2"></i>Tap or scan a product to add it.
         </div>
         <div v-for="line in cart" :key="line.product.id" class="cart-line">
           <div class="d-flex justify-content-between gap-2">
@@ -518,6 +541,8 @@ onBeforeUnmount(() => {
     </div>
   </div>
 
+  <BarcodeScannerModal v-if="scanning" :on-scan="addScanned" @close="scanning = false" />
+
   <PosPaymentModal
     v-if="paying"
     :total-cents="totals.totalCents"
@@ -577,7 +602,20 @@ onBeforeUnmount(() => {
 /* --- Products --- */
 
 .pos-search {
+  display: flex;
+  gap: 8px;
+}
+
+.search-field {
   position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.scan-button {
+  flex-shrink: 0;
+  height: 44px;
+  font-size: 15px;
 }
 
 .pos-search .search-icon {

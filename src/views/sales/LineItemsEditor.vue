@@ -3,7 +3,8 @@
 // then set each line's quantity and, when allowed, its price. One layout serves every
 // screen size: a table row on wide screens, a stacked card on phones.
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { formatQuantity, listProducts, type Product } from '@/api/products'
+import { findProductByCode, formatQuantity, listProducts, type Product } from '@/api/products'
+import BarcodeScannerModal, { type ScanResult } from '@/components/BarcodeScannerModal.vue'
 import { isOverStock, lineCents, lineFromProduct, lineQuantity, type EditorLine } from './lines'
 import { currencySymbol, formatMoney } from '@/utils/money'
 
@@ -65,18 +66,23 @@ onBeforeUnmount(() => clearTimeout(searchTimer))
 const showResults = computed(() => searchFocused.value && search.value.trim() !== '')
 const addError = ref('')
 
-function add(product: Product) {
-  addError.value = ''
+/** Adds one of the product; returns why it can't be added, or '' when it was */
+function addLine(product: Product): string {
   const existing = lines.value.find((line) => line.productId === product.id)
   if (existing) {
     const quantity = lineQuantity(existing) ?? 0
     existing.quantityText = String(Math.round((quantity + 1) * 1000) / 1000)
   } else if (lines.value.length >= MAX_LINES) {
-    addError.value = `A document can have up to ${MAX_LINES} products.`
-    return
+    return `A document can have up to ${MAX_LINES} products.`
   } else {
     lines.value.push(lineFromProduct(product))
   }
+  return ''
+}
+
+function add(product: Product) {
+  addError.value = addLine(product)
+  if (addError.value) return
   search.value = ''
   results.value = []
   searchInput.value?.focus()
@@ -93,6 +99,22 @@ async function addFromEnter() {
   if (pick) add(pick)
 }
 
+// --- Camera scanner ---
+
+const scanning = ref(false)
+
+async function addScanned(code: string): Promise<ScanResult> {
+  const product = await findProductByCode(code)
+  if (!product) return { ok: false, message: `No product has the code “${code}”.` }
+  addError.value = ''
+  const problem = addLine(product)
+  if (problem) return { ok: false, message: problem }
+  const line = lines.value.find((l) => l.productId === product.id)
+  const quantity = line ? formatQuantity(lineQuantity(line) ?? 0) : '1'
+  const overStock = props.checkStock && line && isOverStock(line) ? ' · more than in stock' : ''
+  return { ok: !overStock, message: `Added ${product.name} (${quantity})${overStock}` }
+}
+
 function remove(index: number) {
   lines.value.splice(index, 1)
 }
@@ -102,20 +124,25 @@ function remove(index: number) {
   <div>
     <!-- Search -->
     <div class="product-search mb-3">
-      <div class="search-input">
-        <span class="search-icon"><i class="ti ti-search"></i></span>
-        <input
-          ref="searchInput"
-          v-model="search"
-          type="search"
-          class="form-control"
-          placeholder="Search or scan product name, SKU or barcode"
-          aria-label="Add a product"
-          autocomplete="off"
-          @focus="searchFocused = true"
-          @blur="searchFocused = false"
-          @keydown.enter.prevent="addFromEnter"
-        />
+      <div class="search-row">
+        <div class="search-input">
+          <span class="search-icon"><i class="ti ti-search"></i></span>
+          <input
+            ref="searchInput"
+            v-model="search"
+            type="search"
+            class="form-control"
+            placeholder="Search or scan product name, SKU or barcode"
+            aria-label="Add a product"
+            autocomplete="off"
+            @focus="searchFocused = true"
+            @blur="searchFocused = false"
+            @keydown.enter.prevent="addFromEnter"
+          />
+        </div>
+        <button type="button" class="btn btn-primary flex-shrink-0" title="Scan with camera" @click="scanning = true">
+          <i class="ti ti-scan"></i><span class="d-none d-sm-inline ms-1">Scan</span>
+        </button>
       </div>
       <div v-if="showResults" class="search-results" :class="{ 'is-loading': searching }">
         <div v-if="searchError" class="text-danger fs-13 p-2">{{ searchError }}</div>
@@ -226,6 +253,8 @@ function remove(index: number) {
         Search for products above to add them.
       </div>
     </div>
+
+    <BarcodeScannerModal v-if="scanning" :on-scan="addScanned" @close="scanning = false" />
   </div>
 </template>
 
@@ -234,8 +263,15 @@ function remove(index: number) {
   position: relative;
 }
 
+.search-row {
+  display: flex;
+  gap: 8px;
+}
+
 .search-input {
   position: relative;
+  flex: 1;
+  min-width: 0;
 }
 
 .search-input .search-icon {

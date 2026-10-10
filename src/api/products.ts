@@ -91,6 +91,32 @@ export async function listProducts(query: ProductQuery): Promise<{ items: Produc
   return readJson(await fetch(`/api/products?${params}`))
 }
 
+/**
+ * The active product whose barcode or SKU is exactly the scanned code, or null. A UPC-A code
+ * read as EAN-13 has an extra leading 0, so a 13-digit code starting with 0 also matches
+ * the 12-digit barcode (and the other way round).
+ */
+export async function findProductByCode(code: string): Promise<Product | null> {
+  const text = code.trim().toLowerCase()
+  if (!text) return null
+  const upc = /^0\d{12}$/.test(text) ? text.slice(1) : text
+  const codes = new Set([text, upc, /^\d{12}$/.test(text) ? `0${text}` : text])
+  const { items } = await listProducts({
+    search: upc, // also finds the 13-digit form, which contains it
+    status: 'active',
+    categoryId: null,
+    subcategoryId: null,
+    brandId: null,
+    page: 1,
+    pageSize: 50,
+  })
+  return (
+    items.find((p) => p.barcode && codes.has(p.barcode.toLowerCase())) ??
+    items.find((p) => codes.has(p.sku.toLowerCase())) ??
+    null
+  )
+}
+
 export async function getProduct(id: number): Promise<Product> {
   return readJson(await fetch(`/api/products/${id}`))
 }
