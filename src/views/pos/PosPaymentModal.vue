@@ -2,7 +2,7 @@
 // The POS "Pay" dialog. Cash shows quick amounts and the change; other methods take a
 // reference number. A named customer can pay part now or charge it all to their account;
 // a walk-in customer must pay in full. Online methods may add a service charge, collected on
-// top of the amount paid. Card, GCash and Maya can also be paid online now (through PayMongo,
+// top of the amount paid. Card, GCash, Maya and QR Ph can also be paid online now (through PayMongo,
 // when the store has it): the parent then saves the sale and waits for the online payment.
 // The parent saves the sale and passes back errors.
 import { computed, ref } from 'vue'
@@ -33,6 +33,7 @@ const METHOD_ICONS: Record<PaymentMethod, string> = {
   card: 'credit-card',
   gcash: 'wallet',
   maya: 'wallet',
+  qrph: 'qrcode',
   bank_transfer: 'building-bank',
   cheque: 'file-dollar',
   other: 'dots',
@@ -42,7 +43,7 @@ const method = ref<PaymentMethod>('cash')
 const receivedText = ref('') // cash handed over
 const amountText = ref(centsToText(props.totalCents)) // other methods
 const reference = ref('')
-const payOnline = ref(true) // card, GCash, Maya: pay online now, or record a payment already made
+const payOnline = ref(true) // card, GCash, Maya, QR Ph: pay online now, or record a payment already made
 const localError = ref('')
 
 const canPayLater = computed(() => props.customerName !== null)

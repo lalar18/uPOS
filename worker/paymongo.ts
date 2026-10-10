@@ -16,7 +16,7 @@ export interface PaymongoEnv {
 const API_URL = 'https://api.paymongo.com/v1'
 
 /** PayMongo's names for payment methods, as ours (worker/documents.ts PAYMENT_METHODS) */
-export const METHOD_NAMES: Record<string, string> = { gcash: 'gcash', paymaya: 'maya', card: 'card' }
+export const METHOD_NAMES: Record<string, string> = { gcash: 'gcash', paymaya: 'maya', card: 'card', qrph: 'qrph' }
 export const METHOD_LABELS: Record<string, string> = {
   gcash: 'GCash',
   paymaya: 'Maya',

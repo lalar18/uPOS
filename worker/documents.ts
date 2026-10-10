@@ -2,7 +2,7 @@
 // customers, working out totals, and reading list filters.
 
 /** Payment methods a user can pick (keep in step with PAYMENT_METHODS in src/api/sales.ts). */
-export const PAYMENT_METHODS = ['cash', 'card', 'gcash', 'maya', 'bank_transfer', 'cheque', 'other'] as const
+export const PAYMENT_METHODS = ['cash', 'card', 'gcash', 'maya', 'qrph', 'bank_transfer', 'cheque', 'other'] as const
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number]
 
 export const WALK_IN_CUSTOMER = 'Walk-in Customer'

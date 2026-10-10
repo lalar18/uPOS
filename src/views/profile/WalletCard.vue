@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The store's wallet, on the Profile page (Admin role only). Sales paid online (card, GCash, Maya
+// The store's wallet, on the Profile page (Admin role only). Sales paid online (card, GCash, Maya, QR Ph
 // through PayMongo) are held by the platform, without the service charge, until the store
 // withdraws them to a GCash number or bank account.
 import { computed, ref } from 'vue'
@@ -85,7 +85,7 @@ async function cancelPending() {
 
       <template v-if="wallet">
         <p class="fs-14 text-gray-5">
-          Sales your customers pay online (card, GCash, Maya) go to your wallet. Service charges aren't included. Withdraw
+          Sales your customers pay online (card, GCash, Maya, QR Ph) go to your wallet. Service charges aren't included. Withdraw
           to your GCash or bank account any time.
         </p>
 

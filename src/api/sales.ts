@@ -1,7 +1,7 @@
 import { readJson, sendJson } from './http'
 
 /** Payment methods (keep in step with PAYMENT_METHODS in worker/documents.ts). */
-export const PAYMENT_METHODS = ['cash', 'card', 'gcash', 'maya', 'bank_transfer', 'cheque', 'other'] as const
+export const PAYMENT_METHODS = ['cash', 'card', 'gcash', 'maya', 'qrph', 'bank_transfer', 'cheque', 'other'] as const
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number]
 
 const METHOD_LABELS: Record<string, string> = {
@@ -9,6 +9,7 @@ const METHOD_LABELS: Record<string, string> = {
   card: 'Card',
   gcash: 'GCash',
   maya: 'Maya',
+  qrph: 'QR Ph',
   bank_transfer: 'Bank transfer',
   cheque: 'Cheque',
   other: 'Other',
@@ -92,7 +93,7 @@ export interface Sale extends SaleSummary {
 // --- Online payment through PayMongo (see worker/saleCheckouts.ts) ---
 
 /** Methods a sale can be paid online with (keep in step with CHECKOUT_METHODS in worker/saleCheckouts.ts) */
-export const CHECKOUT_METHODS = ['card', 'gcash', 'maya'] as const
+export const CHECKOUT_METHODS = ['card', 'gcash', 'maya', 'qrph'] as const
 export type CheckoutMethod = (typeof CHECKOUT_METHODS)[number]
 export const isCheckoutMethod = (method: string): method is CheckoutMethod =>
   (CHECKOUT_METHODS as readonly string[]).includes(method)

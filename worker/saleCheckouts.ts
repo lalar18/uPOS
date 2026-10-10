@@ -1,5 +1,5 @@
-// Online payment of sales through PayMongo (see migration 0024). The cashier picks card, GCash or
-// Maya; a checkout session is opened for that one method, with the service charge set in the US
+// Online payment of sales through PayMongo (see migrations 0024, 0026). The cashier picks card, GCash,
+// Maya or QR Ph; a checkout session is opened for that one method, with the service charge set in the US
 // Panel (serviceCharges.ts) as a line item of its own, and the customer pays on PayMongo's page
 // (scanning its QR code with their phone, or on the store's device). PayMongo's webhook, or the
 // status check the payment dialog keeps making, then records the payment on the sale.
@@ -28,7 +28,7 @@ import { getServiceCharge, saleChargeCents } from './serviceCharges'
 import type { SessionUser } from './session'
 
 /** Methods a sale can be paid online with, by PayMongo's name for each */
-export const CHECKOUT_METHODS = { card: 'card', gcash: 'gcash', maya: 'paymaya' } as const
+export const CHECKOUT_METHODS = { card: 'card', gcash: 'gcash', maya: 'paymaya', qrph: 'qrph' } as const
 export type CheckoutMethod = keyof typeof CHECKOUT_METHODS
 
 /** PayMongo's smallest payment, in centavos (₱20) */
@@ -78,7 +78,7 @@ export type PublicCheckout = ReturnType<typeof publicCheckout>
 export function readOnlinePayment(value: unknown): { method: CheckoutMethod; amountCents: number } | string {
   const body = value as Record<string, unknown> | null
   if (!body || typeof body !== 'object') return 'Invalid online payment'
-  if (!isCheckoutMethod(body.method)) return 'Online payment is by card, GCash or Maya'
+  if (!isCheckoutMethod(body.method)) return 'Online payment is by card, GCash, Maya or QR Ph'
   if (!isCents(body.amountCents) || body.amountCents <= 0) return 'Payment amount must be more than zero'
   return { method: body.method, amountCents: body.amountCents }
 }

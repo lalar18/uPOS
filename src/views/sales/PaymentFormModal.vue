@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // "Record payment" dialog for an invoice with a balance due. Online methods may add a service
-// charge, collected on top of the amount. Card, GCash and Maya can also be paid online now
+// charge, collected on top of the amount. Card, GCash, Maya and QR Ph can also be paid online now
 // (through PayMongo, when the store has it): the dialog then waits for the customer to pay.
 import { computed, ref } from 'vue'
 import { getOnlinePaymentCharge, saleChargeCents, type OnlinePaymentCharge } from '@/api/serviceCharge'
@@ -55,7 +55,7 @@ const serviceChargeCents = computed(() => {
   return saleChargeCents(charge.value, method.value, paid)
 })
 
-const payOnline = ref(true) // card, GCash, Maya: pay online now, or record a payment already made
+const payOnline = ref(true) // card, GCash, Maya, QR Ph: pay online now, or record a payment already made
 const canPayOnline = computed(() => !!charge.value?.checkout && isCheckoutMethod(method.value))
 const online = computed(() => canPayOnline.value && payOnline.value)
 const checkout = ref<SaleCheckout | null>(props.checkout?.status === 'pending' ? props.checkout : null)
