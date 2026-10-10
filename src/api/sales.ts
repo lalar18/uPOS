@@ -1,4 +1,5 @@
 import { readJson, sendJson } from './http'
+import type { ChargeKind } from './serviceCharge'
 
 /** Payment methods (keep in step with PAYMENT_METHODS in worker/documents.ts). */
 export const PAYMENT_METHODS = ['cash', 'card', 'gcash', 'maya', 'qrph', 'bank_transfer', 'cheque', 'other'] as const
@@ -107,6 +108,7 @@ export interface SaleCheckout {
   method: CheckoutMethod
   amountCents: number // towards the sale
   serviceChargeCents: number
+  serviceChargeRate: { kind: ChargeKind; value: number } | null // the rate set when it was opened (null on older ones)
   totalCents: number // what the customer pays
   status: 'pending' | 'paid' | 'cancelled' | 'refund_due'
   checkoutUrl: string | null // while pending

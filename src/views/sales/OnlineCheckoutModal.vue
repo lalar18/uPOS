@@ -6,6 +6,7 @@
 // (a payment made afterwards is still recorded on the sale).
 import QRCode from 'qrcode'
 import { computed, onBeforeUnmount, ref } from 'vue'
+import { chargeRateLabel } from '@/api/serviceCharge'
 import { cancelSaleCheckout, getSaleCheckout, paymentMethodLabel, type SaleCheckout } from '@/api/sales'
 import AppModal from '@/components/AppModal.vue'
 import PaymentLogos from '@/components/PaymentLogos.vue'
@@ -101,8 +102,23 @@ async function cancel() {
         <PaymentLogos :method="current.method" :height="32" class="mb-2" />
         <div class="fs-13 text-gray-5">Pay with {{ paymentMethodLabel(current.method) }} · total to pay</div>
         <div class="total-amount">{{ formatMoney(current.totalCents) }}</div>
-        <div v-if="current.serviceChargeCents > 0" class="fs-13 text-gray-5 mb-2">
-          {{ formatMoney(current.amountCents) }} + {{ formatMoney(current.serviceChargeCents) }} service charge
+
+        <div class="breakdown text-start mt-2 mb-2">
+          <div class="d-flex justify-content-between">
+            <span>Payment for {{ saleReference }}</span>
+            <span>{{ formatMoney(current.amountCents) }}</span>
+          </div>
+          <div class="d-flex justify-content-between">
+            <span>
+              Service charge<template v-if="current.serviceChargeRate">
+                ({{ chargeRateLabel(current.serviceChargeRate) }})</template>
+            </span>
+            <span>{{ formatMoney(current.serviceChargeCents) }}</span>
+          </div>
+          <div class="d-flex justify-content-between fw-bold border-top pt-1 mt-1">
+            <span>Total the customer pays</span>
+            <span>{{ formatMoney(current.totalCents) }}</span>
+          </div>
         </div>
 
         <!-- SVG made by the qrcode library from the payment page URL -->
@@ -158,6 +174,13 @@ async function cancel() {
   display: block;
   width: 100%;
   height: auto;
+}
+
+.breakdown {
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #f9fafb;
+  font-size: 14px;
 }
 
 .waiting {

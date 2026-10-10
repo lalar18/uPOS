@@ -24,7 +24,7 @@ import {
   type PaidCheckout,
   type PaymongoEnv,
 } from './paymongo'
-import { getServiceCharge, saleChargeCents } from './serviceCharges'
+import { getServiceCharge, saleChargeCents, type ChargeKind } from './serviceCharges'
 import type { SessionUser } from './session'
 
 /** Methods a sale can be paid online with, by PayMongo's name for each */
@@ -47,6 +47,8 @@ interface CheckoutRow {
   method: CheckoutMethod
   amount_cents: number
   service_charge_cents: number
+  service_charge_kind: ChargeKind | null // the rate set when it was opened (null on older ones)
+  service_charge_value: number | null
   checkout_session_id: string
   checkout_url: string
   status: 'pending' | 'paid' | 'cancelled' | 'refund_due'
@@ -54,8 +56,8 @@ interface CheckoutRow {
   paid_at: string | null
 }
 
-export const CHECKOUT_COLUMNS = `id, sale_id, method, amount_cents, service_charge_cents, checkout_session_id,
-  checkout_url, status, created_at, paid_at`
+export const CHECKOUT_COLUMNS = `id, sale_id, method, amount_cents, service_charge_cents, service_charge_kind,
+  service_charge_value, checkout_session_id, checkout_url, status, created_at, paid_at`
 
 export function publicCheckout(row: CheckoutRow) {
   return {
@@ -64,6 +66,11 @@ export function publicCheckout(row: CheckoutRow) {
     method: row.method,
     amountCents: row.amount_cents, // towards the sale
     serviceChargeCents: row.service_charge_cents,
+    // the rate it was worked out with, as set in the US Panel
+    serviceChargeRate:
+      row.service_charge_kind && row.service_charge_value !== null
+        ? { kind: row.service_charge_kind, value: row.service_charge_value }
+        : null,
     totalCents: row.amount_cents + row.service_charge_cents, // what the customer pays
     status: row.status,
     checkoutUrl: row.status === 'pending' ? row.checkout_url : null,
@@ -119,7 +126,8 @@ export async function openSaleCheckout(
   if (sale.due_cents <= 0) return error('This invoice is already fully paid', 409)
   if (input.amountCents > sale.due_cents) return error('The payment is more than the balance due', 400)
 
-  const chargeCents = saleChargeCents(await getServiceCharge(db, 'sale'), input.method, input.amountCents)
+  const charge = await getServiceCharge(db, 'sale')
+  const chargeCents = saleChargeCents(charge, input.method, input.amountCents)
   if (input.amountCents + chargeCents < MIN_CHECKOUT_CENTS) {
     return error(`Online payments must be at least ₱${(MIN_CHECKOUT_CENTS / 100).toFixed(2)}`, 400)
   }
@@ -158,11 +166,23 @@ export async function openSaleCheckout(
   const row = await db
     .prepare(
       `INSERT INTO sale_checkouts (store_id, sale_id, method, amount_cents, service_charge_cents,
-         checkout_session_id, checkout_url, user_id, user_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         service_charge_kind, service_charge_value, checkout_session_id, checkout_url, user_id, user_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT DO NOTHING RETURNING ${CHECKOUT_COLUMNS}`,
     )
-    .bind(storeId, saleId, input.method, input.amountCents, chargeCents, session.id, session.url, user.id, user.full_name)
+    .bind(
+      storeId,
+      saleId,
+      input.method,
+      input.amountCents,
+      chargeCents,
+      chargeCents > 0 ? charge.kind : null,
+      chargeCents > 0 ? charge.value : null,
+      session.id,
+      session.url,
+      user.id,
+      user.full_name,
+    )
     .first<CheckoutRow>()
   if (!row) {
     // Another till opened one for this sale at the same moment

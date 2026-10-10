@@ -3,7 +3,7 @@
 // charge, collected on top of the amount. Card, GCash, Maya and QR Ph can also be paid online now
 // (through PayMongo, when the store has it): the dialog then waits for the customer to pay.
 import { computed, ref } from 'vue'
-import { getOnlinePaymentCharge, saleChargeCents, type OnlinePaymentCharge } from '@/api/serviceCharge'
+import { chargeRateLabel, getOnlinePaymentCharge, saleChargeCents, type OnlinePaymentCharge } from '@/api/serviceCharge'
 import {
   addSalePayment,
   getSale,
@@ -229,7 +229,7 @@ async function save() {
           <div v-if="serviceChargeCents > 0" class="col-12">
             <div class="alert alert-light border py-2 mb-0 fs-14 d-flex flex-wrap justify-content-between gap-2">
               <span>
-                Service charge ({{ paymentMethodLabel(method) }}): <strong>{{ formatMoney(serviceChargeCents) }}</strong>
+                Service charge ({{ paymentMethodLabel(method) }} · {{ chargeRateLabel(charge!) }}): <strong>{{ formatMoney(serviceChargeCents) }}</strong>
               </span>
               <span>
                 {{ online ? 'The customer pays' : 'Total to collect' }}: <strong class="text-gray-9">{{ formatMoney(amountCents! + serviceChargeCents) }}</strong>

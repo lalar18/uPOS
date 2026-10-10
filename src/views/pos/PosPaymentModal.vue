@@ -15,7 +15,7 @@ import {
   type PaymentInput,
   type PaymentMethod,
 } from '@/api/sales'
-import { saleChargeCents, type OnlinePaymentCharge } from '@/api/serviceCharge'
+import { chargeRateLabel, saleChargeCents, type OnlinePaymentCharge } from '@/api/serviceCharge'
 import AppModal from '@/components/AppModal.vue'
 import PaymentLogos from '@/components/PaymentLogos.vue'
 import SecuredByPaymongo from '@/components/SecuredByPaymongo.vue'
@@ -252,7 +252,7 @@ function payLater() {
               <span>{{ formatMoney(onlineAmountCents) }}</span>
             </div>
             <div class="d-flex justify-content-between">
-              <span>Service charge ({{ paymentMethodLabel(method) }})</span>
+              <span>Service charge ({{ paymentMethodLabel(method) }} · {{ chargeRateLabel(charge!) }})</span>
               <span>{{ formatMoney(serviceChargeCents) }}</span>
             </div>
             <div class="d-flex justify-content-between fw-bold border-top pt-1 mt-1">

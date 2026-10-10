@@ -1,5 +1,6 @@
 // Service charges on online payments (see worker/serviceCharges.ts). Stores see the charge only
 // on the payment being made; super admins set it in the US Panel.
+import { formatMoney } from '@/utils/money'
 import { readJson } from './http'
 
 export type ChargeKind = 'fixed' | 'percent'
@@ -15,6 +16,10 @@ export function chargeCents(charge: ServiceCharge, amountCents: number): number 
   if (charge.value <= 0 || amountCents <= 0) return 0
   return charge.kind === 'fixed' ? charge.value : Math.round((amountCents * charge.value) / 10_000)
 }
+
+/** The rate as set, for showing beside a charge: "2.5%" or "₱15.00 flat" */
+export const chargeRateLabel = (charge: Pick<ServiceCharge, 'kind' | 'value'>) =>
+  charge.kind === 'percent' ? `${charge.value / 100}%` : `${formatMoney(charge.value)} flat`
 
 /** The charge on a sale payment by `method` (0 while the charge isn't loaded) */
 export const saleChargeCents = (charge: ServiceCharge | null, method: string, amountCents: number) =>
