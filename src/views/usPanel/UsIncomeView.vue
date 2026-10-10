@@ -6,17 +6,9 @@ import { computed, ref, watch } from 'vue'
 import { paymentMethodLabel } from '@/api/sales'
 import type { ServiceCharge } from '@/api/serviceCharge'
 import { storeCode } from '@/api/store'
-import { formatDate } from '@/api/subscription'
-import {
-  getIncome,
-  getIncomeEntries,
-  getServiceCharges,
-  type Income,
-  type IncomeEntries,
-  type IncomeSource,
-  type ServiceCharges,
-} from '@/api/usPanel'
+import { getIncome, getServiceCharges, type Income, type ServiceCharges } from '@/api/usPanel'
 import { formatMoney, formatPercentBp } from '@/utils/money'
+import UsIncomeEntriesModal from './UsIncomeEntriesModal.vue'
 import UsServiceChargeModal from './UsServiceChargeModal.vue'
 
 const thisYear = new Date().getFullYear()
@@ -48,66 +40,14 @@ async function load() {
 watch(year, load)
 load()
 
-// --- Income entries: each payment the income came from ---
+// --- Income entries (each payment the income came from), in a modal ---
 
-const entryMonth = ref<number | null>(null)
-const entryStore = ref<number | null>(null)
-const entrySource = ref<IncomeSource | null>(null)
-const entries = ref<IncomeEntries | null>(null)
-const entriesLoading = ref(false)
-const entriesError = ref('')
-let latestEntries = 0
+/** The month (1-12) or store the entries modal opened for; null when it's closed */
+const entriesFor = ref<{ month: number | null; store: number | null } | null>(null)
 
-async function loadEntries(more = false) {
-  const requestId = ++latestEntries
-  entriesLoading.value = true
-  entriesError.value = ''
-  try {
-    const result = await getIncomeEntries({
-      year: year.value,
-      month: entryMonth.value,
-      store: entryStore.value,
-      source: entrySource.value,
-      offset: more ? (entries.value?.entries.length ?? 0) : 0,
-    })
-    if (requestId !== latestEntries) return
-    entries.value = more && entries.value ? { ...result, entries: [...entries.value.entries, ...result.entries] } : result
-  } catch (e) {
-    if (requestId === latestEntries) entriesError.value = e instanceof Error ? e.message : 'Could not load the income entries'
-  } finally {
-    if (requestId === latestEntries) entriesLoading.value = false
-  }
-}
-watch(year, () => {
-  entryMonth.value = null
-  entryStore.value = null
-})
-watch([year, entryMonth, entryStore, entrySource], () => loadEntries())
-loadEntries()
-
-function refresh() {
-  load()
-  loadEntries()
-}
-
-const entriesCard = ref<HTMLElement | null>(null)
-
-/** Shows the entries of a month or a store (from the tables above) */
-function showEntries(filter: { month?: string; store?: number }) {
-  entryMonth.value = filter.month ? Number(filter.month.slice(5, 7)) : null
-  entryStore.value = filter.store ?? null
-  entrySource.value = null
-  entriesCard.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
-
-const monthNames = Array.from({ length: 12 }, (_, i) =>
-  new Date(2000, i, 1).toLocaleDateString('en-US', { month: 'long' }),
-)
-
-function entryDetail(entry: IncomeEntries['entries'][number]): string {
-  if (entry.source === 'sale') return `${entry.saleReference} · sale paid online`
-  const months = entry.months ? ` · ${entry.months} month${entry.months === 1 ? '' : 's'}` : ''
-  return `${entry.planName ?? 'Plan'}${months}`
+/** Opens the entries of a month or a store (from the tables), or of the whole year */
+function showEntries(filter: { month?: string; store?: number } = {}) {
+  entriesFor.value = { month: filter.month ? Number(filter.month.slice(5, 7)) : null, store: filter.store ?? null }
 }
 
 // --- Where the income came from ---
@@ -187,13 +127,7 @@ function onChargesSaved(saved: ServiceCharges) {
       <select v-model.number="year" class="form-select" aria-label="Year">
         <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
       </select>
-      <button
-        type="button"
-        class="btn btn-white border"
-        title="Refresh"
-        :disabled="loading"
-        @click="refresh"
-      >
+      <button type="button" class="btn btn-white border" title="Refresh" :disabled="loading" @click="load">
         <i class="ti ti-refresh"></i>
       </button>
     </div>
@@ -247,8 +181,11 @@ function onChargesSaved(saved: ServiceCharges) {
 
     <!-- Where it came from -->
     <div v-if="breakdown" class="card" :class="{ 'is-loading': loading }">
-      <div class="card-header">
+      <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
         <h5 class="card-title mb-0">Where the income came from</h5>
+        <button type="button" class="btn btn-sm btn-outline-primary" @click="showEntries()">
+          <i class="ti ti-list-details me-1"></i>View All Entries
+        </button>
       </div>
       <div class="card-body p-0">
         <table class="table statement mb-0">
@@ -475,103 +412,17 @@ function onChargesSaved(saved: ServiceCharges) {
         </div>
       </div>
     </div>
-
-    <!-- Each payment the income came from -->
-    <div ref="entriesCard" class="card">
-      <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-        <h5 class="card-title mb-0">Income entries</h5>
-        <div class="d-flex flex-wrap gap-2">
-          <select v-model="entryMonth" class="form-select form-select-sm w-auto" aria-label="Month">
-            <option :value="null">All of {{ income.year }}</option>
-            <option v-for="(name, i) in monthNames" :key="name" :value="i + 1">{{ name }}</option>
-          </select>
-          <select v-model="entryStore" class="form-select form-select-sm w-auto" aria-label="Store">
-            <option :value="null">All stores</option>
-            <option v-for="s in income.stores" :key="s.id" :value="s.id">{{ s.name }}</option>
-          </select>
-          <select v-model="entrySource" class="form-select form-select-sm w-auto" aria-label="Source">
-            <option :value="null">All sources</option>
-            <option value="subscription">Subscriptions</option>
-            <option value="sale">Sales paid online</option>
-          </select>
-        </div>
-      </div>
-      <div class="card-body p-0">
-        <div v-if="entriesError" class="alert alert-danger py-2 m-3" role="alert">{{ entriesError }}</div>
-        <div class="table-responsive">
-          <table class="table mb-0" :class="{ 'is-loading': entriesLoading }">
-            <thead class="thead-light">
-              <tr>
-                <th>Date</th>
-                <th>Store</th>
-                <th>Source</th>
-                <th>Paid with</th>
-                <th class="text-end">Received</th>
-                <th class="text-end">Income</th>
-                <th class="text-end">PayMongo fee</th>
-                <th class="text-end">Net income</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="e in entries?.entries ?? []" :key="`${e.source}-${e.id}`">
-                <td class="text-nowrap">{{ formatDate(e.at) }}</td>
-                <td>
-                  <RouterLink :to="{ name: 'us-store', params: { id: e.storeId } }" class="text-gray-9">{{ e.storeName }}</RouterLink>
-                  <div class="fs-12 text-gray-5">{{ storeCode(e.storeId) }}</div>
-                </td>
-                <td>
-                  <span class="badge" :class="e.source === 'sale' ? 'bg-info-transparent text-info' : 'bg-primary-transparent text-primary'">
-                    {{ e.source === 'sale' ? 'Sale service charge' : 'Subscription' }}
-                  </span>
-                  <div class="fs-12 text-gray-5">{{ entryDetail(e) }}</div>
-                </td>
-                <td>
-                  {{ paymentMethodLabel(e.method) }}
-                  <div class="fs-12 text-gray-5">
-                    {{ e.online ? 'Online (PayMongo)' : 'Recorded by hand' }}<template v-if="e.reference"> · {{ e.reference }}</template>
-                  </div>
-                </td>
-                <td class="text-end">
-                  {{ peso(e.receivedCents) }}
-                  <div v-if="e.storeCents" class="fs-12 text-gray-5">{{ peso(e.storeCents) }} for the store</div>
-                </td>
-                <td class="text-end">
-                  {{ peso(e.subscriptionCents + e.chargeCents) }}
-                  <div v-if="e.source === 'subscription' && e.chargeCents" class="fs-12 text-gray-5">
-                    incl. {{ peso(e.chargeCents) }} service charge
-                  </div>
-                  <div v-else-if="e.source === 'sale'" class="fs-12 text-gray-5">service charge</div>
-                </td>
-                <td class="text-end text-danger">{{ e.processingFeeCents ? `−${peso(e.processingFeeCents)}` : peso(0) }}</td>
-                <td class="text-end fw-bold text-gray-9">{{ peso(e.netCents) }}</td>
-              </tr>
-            </tbody>
-            <tfoot v-if="entries && entries.count">
-              <tr class="fw-bold">
-                <td colspan="4">Total · {{ entries.count }} {{ entries.count === 1 ? 'entry' : 'entries' }}</td>
-                <td class="text-end"></td>
-                <td class="text-end">{{ peso(entries.totals.subscriptionsCents + entries.totals.chargesCents) }}</td>
-                <td class="text-end text-danger">
-                  {{ entries.totals.processingFeesCents ? `−${peso(entries.totals.processingFeesCents)}` : peso(0) }}
-                </td>
-                <td class="text-end text-gray-9">{{ peso(entries.totals.netCents) }}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-        <div v-if="entries && !entriesLoading && entries.count === 0" class="text-center text-gray-5 py-5">
-          <i class="ti ti-list-search fs-24 d-block mb-2"></i>No income entries for these filters.
-        </div>
-        <div v-if="entries?.hasMore" class="text-center py-3 border-top">
-          <button type="button" class="btn btn-sm btn-white border" :disabled="entriesLoading" @click="loadEntries(true)">
-            {{ entriesLoading ? 'Loading…' : `Show more (${entries.entries.length} of ${entries.count})` }}
-          </button>
-        </div>
-      </div>
-    </div>
   </template>
 
   <UsServiceChargeModal v-if="editingCharges && charges" :charges="charges" @close="editingCharges = false" @saved="onChargesSaved" />
+  <UsIncomeEntriesModal
+    v-if="entriesFor && income"
+    :year="income.year"
+    :stores="income.stores"
+    :month="entriesFor.month"
+    :store="entriesFor.store"
+    @close="entriesFor = null"
+  />
 </template>
 
 <style scoped>

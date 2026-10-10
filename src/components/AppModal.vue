@@ -4,7 +4,7 @@
 // Escape and clicking the backdrop also close it.
 import { onBeforeUnmount, onMounted } from 'vue'
 
-withDefaults(defineProps<{ title: string; size?: 'sm' | 'md' | 'lg' }>(), { size: 'md' })
+withDefaults(defineProps<{ title: string; size?: 'sm' | 'md' | 'lg' | 'xl' }>(), { size: 'md' })
 const emit = defineEmits<{ close: [] }>()
 
 function closeOnEscape(event: KeyboardEvent) {
