@@ -2,21 +2,31 @@
 // The POS "Pay" dialog. Cash shows quick amounts and the change; other methods take a
 // reference number. A named customer can pay part now or charge it all to their account;
 // a walk-in customer must pay in full. Online methods may add a service charge, collected on
-// top of the amount paid. The parent saves the sale and passes back errors.
+// top of the amount paid. Card, GCash and Maya can also be paid online now (through PayMongo,
+// when the store has it): the parent then saves the sale and waits for the online payment.
+// The parent saves the sale and passes back errors.
 import { computed, ref } from 'vue'
-import { PAYMENT_METHODS, paymentMethodLabel, type PaymentInput, type PaymentMethod } from '@/api/sales'
-import { saleChargeCents, type ServiceCharge } from '@/api/serviceCharge'
+import {
+  isCheckoutMethod,
+  MIN_CHECKOUT_CENTS,
+  PAYMENT_METHODS,
+  paymentMethodLabel,
+  type OnlinePaymentInput,
+  type PaymentInput,
+  type PaymentMethod,
+} from '@/api/sales'
+import { saleChargeCents, type OnlinePaymentCharge } from '@/api/serviceCharge'
 import AppModal from '@/components/AppModal.vue'
 import { centsToText, currencySymbol, formatMoney, parsePeso } from '@/utils/money'
 
 const props = defineProps<{
   totalCents: number
   customerName: string | null // null for a walk-in customer
-  charge: ServiceCharge | null // on payments by online methods
+  charge: OnlinePaymentCharge | null // on payments by online methods, and whether they can be paid online
   saving: boolean
   error: string
 }>()
-const emit = defineEmits<{ close: []; confirm: [payments: PaymentInput[]] }>()
+const emit = defineEmits<{ close: []; confirm: [payments: PaymentInput[], online: OnlinePaymentInput | null] }>()
 
 const METHOD_ICONS: Record<PaymentMethod, string> = {
   cash: 'cash',
@@ -32,9 +42,14 @@ const method = ref<PaymentMethod>('cash')
 const receivedText = ref('') // cash handed over
 const amountText = ref(centsToText(props.totalCents)) // other methods
 const reference = ref('')
+const payOnline = ref(true) // card, GCash, Maya: pay online now, or record a payment already made
 const localError = ref('')
 
 const canPayLater = computed(() => props.customerName !== null)
+
+/** The method can be paid online now (through PayMongo) */
+const canPayOnline = computed(() => !!props.charge?.checkout && isCheckoutMethod(method.value))
+const online = computed(() => canPayOnline.value && payOnline.value)
 
 /** Bills a customer is likely to hand over: the exact amount, then the next round amounts above it */
 const quickAmounts = computed(() => {
@@ -73,7 +88,7 @@ function confirm() {
   localError.value = ''
   const total = props.totalCents
   if (total === 0) {
-    emit('confirm', [])
+    emit('confirm', [], null)
     return
   }
 
@@ -88,7 +103,7 @@ function confirm() {
       return
     }
     const amount = Math.min(given, total) // less than the total leaves a balance on the customer's account
-    emit('confirm', [{ amountCents: amount, method: 'cash', tenderedCents: given, reference: null }])
+    emit('confirm', [{ amountCents: amount, method: 'cash', tenderedCents: given, reference: null }], null)
     return
   }
 
@@ -101,12 +116,21 @@ function confirm() {
     localError.value = 'The amount is more than the total.'
     return
   }
-  emit('confirm', [{ amountCents: amount, method: method.value, reference: reference.value.trim() || null }])
+  if (online.value && isCheckoutMethod(method.value)) {
+    const charge = saleChargeCents(props.charge, method.value, amount)
+    if (amount + charge < MIN_CHECKOUT_CENTS) {
+      localError.value = `Online payments must be at least ${formatMoney(MIN_CHECKOUT_CENTS)}.`
+      return
+    }
+    emit('confirm', [], { method: method.value, amountCents: amount })
+    return
+  }
+  emit('confirm', [{ amountCents: amount, method: method.value, reference: reference.value.trim() || null }], null)
 }
 
 function payLater() {
   localError.value = ''
-  emit('confirm', [])
+  emit('confirm', [], null)
 }
 </script>
 
@@ -169,6 +193,28 @@ function payLater() {
         </template>
 
         <template v-else>
+          <div v-if="canPayOnline" class="btn-group w-100 mb-3" role="radiogroup" aria-label="How it's paid">
+            <button
+              type="button"
+              role="radio"
+              class="btn"
+              :class="payOnline ? 'btn-primary' : 'btn-white border'"
+              :aria-checked="payOnline"
+              @click="payOnline = true"
+            >
+              <i class="ti ti-qrcode me-1"></i>Pay online now
+            </button>
+            <button
+              type="button"
+              role="radio"
+              class="btn"
+              :class="!payOnline ? 'btn-primary' : 'btn-white border'"
+              :aria-checked="!payOnline"
+              @click="payOnline = false"
+            >
+              <i class="ti ti-receipt me-1"></i>Already paid
+            </button>
+          </div>
           <div class="row g-2">
             <div v-if="canPayLater" class="col-sm-6">
               <label class="form-label" for="pos-amount">Amount paid</label>
@@ -177,7 +223,13 @@ function payLater() {
                 <input id="pos-amount" v-model="amountText" type="text" class="form-control" inputmode="decimal" />
               </div>
             </div>
-            <div :class="canPayLater ? 'col-sm-6' : 'col-12'">
+            <div v-if="online" :class="canPayLater ? 'col-sm-6' : 'col-12'">
+              <p class="fs-13 text-gray-5 mb-0" :class="{ 'pt-sm-4': canPayLater }">
+                The customer pays on PayMongo's page: they scan a QR code with their phone, or you open the
+                page here.
+              </p>
+            </div>
+            <div v-else :class="canPayLater ? 'col-sm-6' : 'col-12'">
               <label class="form-label" for="pos-reference">Reference no. <span class="text-gray-5 fw-normal">(optional)</span></label>
               <input
                 id="pos-reference"
@@ -199,7 +251,7 @@ function payLater() {
               <span>{{ formatMoney(serviceChargeCents) }}</span>
             </div>
             <div class="d-flex justify-content-between fw-bold border-top pt-1 mt-1">
-              <span>Total to collect</span>
+              <span>{{ online ? 'Total the customer pays' : 'Total to collect' }}</span>
               <span>{{ formatMoney(onlineAmountCents + serviceChargeCents) }}</span>
             </div>
           </div>
@@ -211,7 +263,8 @@ function payLater() {
           Charge to Account
         </button>
         <button type="submit" class="btn btn-success flex-grow-1" :disabled="saving">
-          <i class="ti ti-check me-1"></i>{{ saving ? 'Saving…' : 'Complete Sale' }}
+          <i class="ti me-1" :class="online ? 'ti-qrcode' : 'ti-check'"></i>
+          {{ saving ? 'Saving…' : online ? 'Pay Online' : 'Complete Sale' }}
         </button>
       </div>
     </form>

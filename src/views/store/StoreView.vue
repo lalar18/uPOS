@@ -2,8 +2,10 @@
 // Store information for the logged-in user's store. Roles with store.manage can edit; others see it read-only.
 import { computed, ref } from 'vue'
 import { parseDbDate } from '@/api/http'
-import { getStore, updateStore, type Store, type StoreInput } from '@/api/store'
-import { can, currentUser } from '@/auth'
+import { paymentMethodLabel } from '@/api/sales'
+import { getOnlinePayouts, getStore, updateStore, type PayoutSummary, type Store, type StoreInput } from '@/api/store'
+import { can, currentUser, isAdmin } from '@/auth'
+import { formatMoney } from '@/utils/money'
 
 const canEdit = computed(() => can('store.manage'))
 
@@ -71,6 +73,18 @@ function reset() {
   saveError.value = ''
   saveSuccess.value = ''
 }
+
+// Sales paid online go to the platform's PayMongo account, which pays them out to the store (admins only)
+const payouts = ref<PayoutSummary | null>(null)
+if (isAdmin()) {
+  getOnlinePayouts()
+    .then((result) => (payouts.value = result))
+    .catch(() => {})
+}
+const hasOnlineSales = computed(
+  () => !!payouts.value && (payouts.value.onlinePayments > 0 || payouts.value.payouts.length > 0),
+)
+const peso = (cents: number) => formatMoney(cents, 'PHP')
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 const formatDate = (value: string) => dateFormat.format(parseDbDate(value))
@@ -178,6 +192,58 @@ const formatDate = (value: string) => dateFormat.format(parseDbDate(value))
       </fieldset>
     </form>
   </div>
+
+  <!-- Online payments held by the platform until paid out -->
+  <div v-if="payouts && hasOnlineSales" class="card">
+    <div class="card-header">
+      <h5 class="card-title mb-0"><i class="ti ti-credit-card me-2"></i>Online Payments</h5>
+    </div>
+    <div class="card-body">
+      <p class="fs-14 text-gray-5">
+        Sales paid online (card, GCash, Maya through PayMongo) are collected by the platform and paid out to your store.
+        Service charges aren't included: they go to the platform.
+      </p>
+      <div class="row g-2 mb-3 text-center">
+        <div class="col-4">
+          <div class="stat">
+            <div class="fs-12 text-gray-5">Paid online</div>
+            <div class="fw-bold text-gray-9">{{ peso(payouts.collectedCents) }}</div>
+            <div class="fs-12 text-gray-5">{{ payouts.onlinePayments }} payment{{ payouts.onlinePayments === 1 ? '' : 's' }}</div>
+          </div>
+        </div>
+        <div class="col-4">
+          <div class="stat">
+            <div class="fs-12 text-gray-5">Paid out to you</div>
+            <div class="fw-bold text-gray-9">{{ peso(payouts.paidOutCents) }}</div>
+          </div>
+        </div>
+        <div class="col-4">
+          <div class="stat">
+            <div class="fs-12 text-gray-5">Still to be paid out</div>
+            <div class="fw-bold" :class="payouts.balanceCents > 0 ? 'text-primary' : 'text-success'">
+              {{ peso(payouts.balanceCents) }}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div v-if="payouts.refundsDue.length" class="alert alert-warning py-2 fs-14" role="alert">
+        {{ payouts.refundsDue.length }} online payment{{ payouts.refundsDue.length === 1 ? ' was' : 's were' }} made after
+        the sale was already paid ({{ payouts.refundsDue.map((r) => r.sale.reference).join(', ') }}). The platform will refund
+        the customer.
+      </div>
+      <h6 class="mb-2">Payouts</h6>
+      <div v-if="!payouts.payouts.length" class="text-gray-5 fs-14">No payouts yet.</div>
+      <div v-for="p in payouts.payouts" :key="p.id" class="payout-row">
+        <div class="min-w-0">
+          <div class="text-gray-9">{{ p.reference }} · {{ paymentMethodLabel(p.method) }}</div>
+          <div class="fs-12 text-gray-5 text-break">
+            {{ p.paidDate }}<template v-if="p.paymentReference"> · Ref {{ p.paymentReference }}</template>
+          </div>
+        </div>
+        <div class="fw-semibold text-nowrap">{{ peso(p.amountCents) }}</div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
@@ -187,6 +253,24 @@ const formatDate = (value: string) => dateFormat.format(parseDbDate(value))
 }
 
 fieldset {
+  min-width: 0;
+}
+
+.stat {
+  padding: 10px;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.payout-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid #e6eaed;
+}
+
+.min-w-0 {
   min-width: 0;
 }
 </style>

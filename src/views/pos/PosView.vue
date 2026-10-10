@@ -12,8 +12,18 @@ import {
   type Product,
   type ProductOption,
 } from '@/api/products'
-import { computeTotals, createSale, lineTotal, type PaymentInput, type Sale } from '@/api/sales'
-import { getOnlinePaymentCharge, type ServiceCharge } from '@/api/serviceCharge'
+import {
+  computeTotals,
+  createSale,
+  getSale,
+  lineTotal,
+  openSaleCheckout,
+  type OnlinePaymentInput,
+  type PaymentInput,
+  type Sale,
+  type SaleCheckout,
+} from '@/api/sales'
+import { getOnlinePaymentCharge, type OnlinePaymentCharge } from '@/api/serviceCharge'
 import { getSettingsOrDefaults, taxRateText } from '@/api/settings'
 import { getStore, type Store } from '@/api/store'
 import AppModal from '@/components/AppModal.vue'
@@ -22,6 +32,8 @@ import CustomerPicker from '@/components/CustomerPicker.vue'
 import { toIsoDate } from '@/utils/date'
 import { currencySymbol, formatMoney, newUid, parsePercentBp, parsePeso } from '@/utils/money'
 import { usePrintRoot } from '@/utils/print'
+import OnlineCheckoutModal from '../sales/OnlineCheckoutModal.vue'
+import PaymentFormModal from '../sales/PaymentFormModal.vue'
 import ReceiptDocument from '../sales/ReceiptDocument.vue'
 import PosPaymentModal from './PosPaymentModal.vue'
 
@@ -273,7 +285,7 @@ const payError = ref('')
 const cartError = ref('')
 
 // The service charge on online payments (refreshed on each payment, in case it changed)
-const onlineCharge = ref<ServiceCharge | null>(null)
+const onlineCharge = ref<OnlinePaymentCharge | null>(null)
 
 function openPayment() {
   cartError.value = cartProblem()
@@ -289,7 +301,7 @@ getStore()
   .then((result) => (store.value = result))
   .catch(() => {})
 
-async function completeSale(payments: PaymentInput[]) {
+async function completeSale(payments: PaymentInput[], online: OnlinePaymentInput | null) {
   saving.value = true
   payError.value = ''
   try {
@@ -308,18 +320,84 @@ async function completeSale(payments: PaymentInput[]) {
       taxRateBp: totals.value.taxRateBp,
       note: null,
       payments,
+      onlinePayment: online,
     })
     paying.value = false
     cartOpen.value = false
-    lastSale.value = sale
     clearCart()
     loadProducts() // stock has changed
+    if (online && sale.dueCents > 0) waitForOnlinePayment(sale, online, sale.checkoutError)
+    else lastSale.value = sale
   } catch (e) {
     payError.value = e instanceof Error ? e.message : 'Could not complete the sale'
     loadProducts() // prices or stock may have changed
   } finally {
     saving.value = false
   }
+}
+
+// --- Online payment (PayMongo) ---
+// The sale is saved first (so its stock is taken), then waits for the customer to pay online.
+// If they don't, it keeps its balance: try again, take the payment another way, or leave it.
+
+const onlineSale = ref<Sale | null>(null)
+const onlineCheckout = ref<SaleCheckout | null>(null)
+const onlineInput = ref<OnlinePaymentInput | null>(null)
+const onlineProblem = ref('') // why the sale isn't paid online, while it's left with a balance
+const retrying = ref(false)
+const payingOther = ref(false)
+
+function waitForOnlinePayment(sale: Sale, input: OnlinePaymentInput, problem?: string) {
+  onlineSale.value = sale
+  onlineInput.value = input
+  onlineCheckout.value = sale.onlineCheckout
+  onlineProblem.value = sale.onlineCheckout ? '' : (problem ?? 'The online payment could not be opened.')
+}
+
+function endOnlinePayment() {
+  onlineSale.value = null
+  onlineCheckout.value = null
+  onlineProblem.value = ''
+  payingOther.value = false
+}
+
+async function onlinePaid() {
+  const sale = onlineSale.value!
+  endOnlinePayment()
+  lastSale.value = await getSale(sale.id).catch(() => sale)
+}
+
+function onlineCancelled() {
+  onlineCheckout.value = null
+  onlineProblem.value = 'The online payment was cancelled.'
+}
+
+async function retryOnline() {
+  const sale = onlineSale.value!
+  retrying.value = true
+  try {
+    const latest = await getSale(sale.id)
+    onlineSale.value = latest
+    if (latest.dueCents <= 0) return onlinePaid()
+    const amountCents = Math.min(onlineInput.value!.amountCents, latest.dueCents)
+    onlineCheckout.value = await openSaleCheckout(sale.id, { ...onlineInput.value!, amountCents })
+    onlineProblem.value = ''
+  } catch (e) {
+    onlineProblem.value = e instanceof Error ? e.message : 'The online payment could not be opened.'
+  } finally {
+    retrying.value = false
+  }
+}
+
+function paidOtherWay(sale: Sale) {
+  endOnlinePayment()
+  if (sale.dueCents > 0) {
+    // Part paid: the rest stays on the sale's balance
+    onlineSale.value = sale
+    onlineProblem.value = `${formatMoney(sale.dueCents)} is still due on this sale.`
+    return
+  }
+  lastSale.value = sale
 }
 
 // --- Receipt ---
@@ -553,6 +631,40 @@ onBeforeUnmount(() => {
     @close="paying = false"
     @confirm="completeSale"
   />
+
+  <!-- Online payment of the sale just saved -->
+  <OnlineCheckoutModal
+    v-if="onlineSale && onlineCheckout"
+    :checkout="onlineCheckout"
+    :sale-reference="onlineSale.reference"
+    @paid="onlinePaid"
+    @cancelled="onlineCancelled"
+    @close="endOnlinePayment"
+  />
+  <PaymentFormModal
+    v-else-if="onlineSale && payingOther"
+    :sale="onlineSale"
+    @close="payingOther = false"
+    @saved="paidOtherWay"
+  />
+  <AppModal v-else-if="onlineSale" :title="`Not paid yet · ${onlineSale.reference}`" @close="endOnlinePayment">
+    <div class="modal-body">
+      <div class="alert alert-warning py-2" role="alert">{{ onlineProblem }}</div>
+      <p class="mb-0">
+        The sale is saved, with <strong>{{ formatMoney(onlineSale.dueCents) }}</strong> still due. Try the online payment
+        again, or take the payment another way. You can also leave it and record the payment later from the sale.
+      </p>
+    </div>
+    <div class="modal-footer flex-wrap">
+      <button type="button" class="btn btn-secondary" :disabled="retrying" @click="endOnlinePayment">Leave Unpaid</button>
+      <button type="button" class="btn btn-white border" :disabled="retrying" @click="payingOther = true">
+        Pay Another Way
+      </button>
+      <button v-if="onlineInput" type="button" class="btn btn-primary" :disabled="retrying" @click="retryOnline">
+        {{ retrying ? 'Opening…' : 'Try Online Again' }}
+      </button>
+    </div>
+  </AppModal>
 
   <!-- Receipt after a sale -->
   <AppModal v-if="lastSale" :title="`Sale complete · ${lastSale.reference}`" size="sm" @close="newSale">

@@ -1,16 +1,12 @@
-// Online payment of subscription renewals through PayMongo (https://developers.paymongo.com).
-//
-// A store admin's renewal (see subscription.ts) opens a PayMongo checkout session: PayMongo hosts
-// the payment page (GCash, Maya, cards, QR Ph, GrabPay) and sends the admin back to the
-// Subscription page afterwards. PayMongo then calls our webhook, which marks the renewal paid; the
-// subscription_renewals_paid trigger extends the store, as when a super admin confirms a payment.
-//
-//   POST /api/webhooks/paymongo   (PayMongo only; signed with the webhook's secret)
+// PayMongo (https://developers.paymongo.com): online payment of subscription renewals
+// (subscription.ts) and of sales (saleCheckouts.ts). Both open a PayMongo checkout session: PayMongo
+// hosts the payment page and calls our webhook (paymongoWebhook.ts) once it's paid.
 //
 // Set PAYMONGO_SECRET_KEY (sk_test_… / sk_live_…) to turn on online payment, and
 // PAYMONGO_WEBHOOK_SECRET (whsk_…, shown when the webhook is created) so payments are recorded.
 // Both are secrets: `npx wrangler secret put PAYMONGO_SECRET_KEY` (and .dev.vars locally).
-// Without them, renewals wait for a super admin to confirm the payment, as before.
+// Without them, renewals wait for a super admin to confirm the payment, as before, and sales
+// can only record payments taken some other way.
 
 export interface PaymongoEnv {
   PAYMONGO_SECRET_KEY?: string
@@ -19,12 +15,9 @@ export interface PaymongoEnv {
 
 const API_URL = 'https://api.paymongo.com/v1'
 
-/** Offered on the checkout page (each must be enabled on the PayMongo account in live mode) */
-const PAYMENT_METHOD_TYPES = ['gcash', 'paymaya', 'card', 'qrph', 'grab_pay']
-
 /** PayMongo's names for payment methods, as ours (worker/documents.ts PAYMENT_METHODS) */
-const METHOD_NAMES: Record<string, string> = { gcash: 'gcash', paymaya: 'maya', card: 'card' }
-const METHOD_LABELS: Record<string, string> = {
+export const METHOD_NAMES: Record<string, string> = { gcash: 'gcash', paymaya: 'maya', card: 'card' }
+export const METHOD_LABELS: Record<string, string> = {
   gcash: 'GCash',
   paymaya: 'Maya',
   card: 'card',
@@ -34,9 +27,9 @@ const METHOD_LABELS: Record<string, string> = {
 
 export const onlinePaymentEnabled = (env: PaymongoEnv) => !!env.PAYMONGO_SECRET_KEY
 
-async function callApi<T>(env: PaymongoEnv, path: string, body?: unknown): Promise<T> {
+async function callApi<T>(env: PaymongoEnv, method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
-    method: 'POST',
+    method,
     headers: {
       Authorization: `Basic ${btoa(`${env.PAYMONGO_SECRET_KEY}:`)}`,
       'Content-Type': 'application/json',
@@ -52,39 +45,33 @@ async function callApi<T>(env: PaymongoEnv, path: string, body?: unknown): Promi
 }
 
 export interface CheckoutInput {
-  renewalId: number
-  storeName: string
-  planName: string
-  pesos: number // whole pesos
-  feePesos: number // the renewal service charge (see serviceCharges.ts), a line item of its own
-  origin: string // the app's origin, for the return URLs
+  lineItems: { name: string; cents: number }[] // in PHP
+  paymentMethodTypes: string[] // PayMongo's names; each must be enabled on the account in live mode
+  description: string
+  referenceNumber: string
+  metadata: Record<string, string> // read back by the webhook
+  successUrl: string
+  cancelUrl: string
 }
 
-/** Opens a checkout session for a renewal; the admin pays at its URL. */
-export async function createCheckoutSession(
-  env: PaymongoEnv,
-  input: CheckoutInput,
-): Promise<{ id: string; url: string }> {
-  const back = `${input.origin}/subscription?payment=`
+/** Opens a checkout session; the customer pays at its URL. */
+export async function createCheckoutSession(env: PaymongoEnv, input: CheckoutInput): Promise<{ id: string; url: string }> {
   const { data } = await callApi<{ data: { id: string; attributes: { checkout_url: string } } }>(
     env,
+    'POST',
     '/checkout_sessions',
     {
       data: {
         attributes: {
-          line_items: [
-            { name: `${input.planName} plan, 1 month`, amount: input.pesos * 100, currency: 'PHP', quantity: 1 },
-            ...(input.feePesos > 0
-              ? [{ name: 'Service charge', amount: input.feePesos * 100, currency: 'PHP', quantity: 1 }]
-              : []),
-          ],
-          payment_method_types: PAYMENT_METHOD_TYPES,
-          description: `Subscription renewal for ${input.storeName}`,
-          reference_number: `RNW-${input.renewalId}`,
-          // The charge is read back from here when paid, as it may change before then
-          metadata: { renewal_id: String(input.renewalId), service_charge_cents: String(input.feePesos * 100) },
-          success_url: `${back}success`,
-          cancel_url: `${back}cancelled`,
+          line_items: input.lineItems
+            .filter((item) => item.cents > 0)
+            .map((item) => ({ name: item.name, amount: item.cents, currency: 'PHP', quantity: 1 })),
+          payment_method_types: input.paymentMethodTypes,
+          description: input.description,
+          reference_number: input.referenceNumber,
+          metadata: input.metadata,
+          success_url: input.successUrl,
+          cancel_url: input.cancelUrl,
           show_description: true,
           show_line_items: true,
         },
@@ -97,50 +84,44 @@ export async function createCheckoutSession(
 /** Closes a checkout session so it can't be paid any more (best effort: it may be paid or expired already). */
 export async function expireCheckoutSession(env: PaymongoEnv, id: string): Promise<void> {
   if (!onlinePaymentEnabled(env)) return
-  await callApi(env, `/checkout_sessions/${encodeURIComponent(id)}/expire`).catch((err) => console.warn(err))
+  await callApi(env, 'POST', `/checkout_sessions/${encodeURIComponent(id)}/expire`).catch((err) => console.warn(err))
 }
 
-function hexToBytes(hex: string): Uint8Array | null {
-  if (!/^(?:[0-9a-f]{2})+$/i.test(hex)) return null
-  return Uint8Array.from(hex.match(/../g)!, (byte) => parseInt(byte, 16))
-}
-
-/**
- * Checks the Paymongo-Signature header ("t=<timestamp>,te=<test sig>,li=<live sig>"): the
- * signature is the HMAC-SHA256 of "<timestamp>.<raw body>" with the webhook's secret.
- */
-async function verifySignature(secret: string, header: string, rawBody: string, livemode: boolean) {
-  const parts = Object.fromEntries(header.split(',').map((part) => part.trim().split('=', 2) as [string, string]))
-  const signature = hexToBytes(parts[livemode ? 'li' : 'te'] ?? '')
-  if (!parts.t || !signature) return false
-  const encoder = new TextEncoder()
-  const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, [
-    'verify',
-  ])
-  return crypto.subtle.verify('HMAC', key, signature, encoder.encode(`${parts.t}.${rawBody}`))
-}
-
-interface PaymongoPayment {
+export interface PaymongoPayment {
   id: string
   attributes: { amount: number; fee?: number; net_amount?: number; status: string; source?: { type?: string } }
 }
 
-interface CheckoutSessionEvent {
-  data?: {
-    attributes?: {
-      type?: string
-      livemode?: boolean
-      data?: {
-        id: string
-        attributes: {
-          metadata?: { renewal_id?: string; service_charge_cents?: string } | null
-          payment_method_used?: string | null
-          payments?: PaymongoPayment[]
-        }
-      }
-    }
+export interface CheckoutSession {
+  id: string
+  attributes: {
+    status?: string // 'active' | 'expired'
+    metadata?: Record<string, string | undefined> | null
+    payment_method_used?: string | null
+    payments?: PaymongoPayment[]
   }
 }
+
+/** A checkout session as PayMongo has it now (for when its webhook hasn't arrived) */
+export async function retrieveCheckoutSession(env: PaymongoEnv, id: string): Promise<CheckoutSession> {
+  const { data } = await callApi<{ data: CheckoutSession }>(env, 'GET', `/checkout_sessions/${encodeURIComponent(id)}`)
+  return data
+}
+
+/** What a session's paid payments came to, or null if nothing is paid yet */
+export function paidCheckout(session: CheckoutSession) {
+  const payments = (session.attributes.payments ?? []).filter((p) => p.attributes.status === 'paid')
+  if (!payments.length) return null
+  const method = session.attributes.payment_method_used ?? payments[0]!.attributes.source?.type ?? ''
+  return {
+    paymentId: payments[0]!.id,
+    cents: payments.reduce((sum, p) => sum + p.attributes.amount, 0),
+    method, // PayMongo's name
+    processingFeeCents: processingFee(payments),
+  }
+}
+
+export type PaidCheckout = NonNullable<ReturnType<typeof paidCheckout>>
 
 /** What PayMongo kept of the payments (its fee and taxes), in centavos, or null if it didn't say */
 function processingFee(payments: PaymongoPayment[]): number | null {
@@ -153,88 +134,22 @@ function processingFee(payments: PaymongoPayment[]): number | null {
   return Math.max(total, 0)
 }
 
-/** POST /api/webhooks/paymongo: records a paid checkout session against its renewal. */
-export async function handlePaymongoWebhook(db: D1Database, env: PaymongoEnv, request: Request): Promise<Response> {
-  if (!env.PAYMONGO_WEBHOOK_SECRET) return Response.json({ error: 'Webhook not configured' }, { status: 503 })
+function hexToBytes(hex: string): Uint8Array | null {
+  if (!/^(?:[0-9a-f]{2})+$/i.test(hex)) return null
+  return Uint8Array.from(hex.match(/../g)!, (byte) => parseInt(byte, 16))
+}
 
-  const rawBody = await request.text()
-  let event: CheckoutSessionEvent
-  try {
-    event = JSON.parse(rawBody)
-  } catch {
-    return Response.json({ error: 'Invalid body' }, { status: 400 })
-  }
-  const attributes = event.data?.attributes
-  const valid = await verifySignature(
-    env.PAYMONGO_WEBHOOK_SECRET,
-    request.headers.get('Paymongo-Signature') ?? '',
-    rawBody,
-    attributes?.livemode === true,
-  )
-  if (!valid) return Response.json({ error: 'Invalid signature' }, { status: 401 })
-
-  // Other events are acknowledged and ignored (the webhook only needs this one)
-  const session = attributes?.data
-  if (attributes?.type !== 'checkout_session.payment.paid' || !session) return Response.json({ ok: true })
-
-  const renewalId = Number(session.attributes.metadata?.renewal_id)
-  const payments = (session.attributes.payments ?? []).filter((p) => p.attributes.status === 'paid')
-  if (!Number.isSafeInteger(renewalId) || !payments.length) {
-    console.error('PayMongo: paid checkout session without a renewal or payment', session.id)
-    return Response.json({ ok: true })
-  }
-
-  const method = session.attributes.payment_method_used ?? payments[0].attributes.source?.type ?? ''
-  const cents = payments.reduce((sum, p) => sum + p.attributes.amount, 0)
-  const serviceCharge = Number(session.attributes.metadata?.service_charge_cents)
-  const values = [
-    Math.round(cents / 100),
-    METHOD_NAMES[method] ?? 'other',
-    payments[0].id,
-    `Paid online through PayMongo${METHOD_LABELS[method] ? ` (${METHOD_LABELS[method]})` : ''}`,
-    session.id,
-    Number.isSafeInteger(serviceCharge) && serviceCharge > 0 ? Math.min(serviceCharge, cents) : 0,
-    processingFee(payments),
-  ]
-  const markPaid = (id: number) =>
-    db
-      .prepare(
-        `UPDATE subscription_renewals
-         SET amount = ?, payment_method = ?, payment_reference = ?, note = ?, checkout_session_id = ?,
-           service_charge_cents = ?, processing_fee_cents = ?, status = 'paid'
-         WHERE id = ? AND status = 'pending'`,
-      )
-      .bind(...values, id)
-      .run()
-
-  if ((await markPaid(renewalId)).meta.changes) return Response.json({ ok: true })
-
-  // Not pending any more: either this event was already recorded (PayMongo retries), or the
-  // renewal was cancelled after it was paid. The store paid either way, so record it once.
-  const existing = await db
-    .prepare('SELECT store_id, plan_id, payment_reference FROM subscription_renewals WHERE id = ?')
-    .bind(renewalId)
-    .first<{ store_id: number; plan_id: string; payment_reference: string | null }>()
-  const recorded = await db
-    .prepare('SELECT 1 FROM subscription_renewals WHERE payment_reference = ?')
-    .bind(payments[0].id)
-    .first()
-  if (!existing || recorded) return Response.json({ ok: true })
-
-  // Goes through 'pending' so the same trigger extends the store
-  const row = await db
-    .prepare(
-      `INSERT INTO subscription_renewals (store_id, plan_id) VALUES (?, ?)
-       ON CONFLICT DO NOTHING RETURNING id`,
-    )
-    .bind(existing.store_id, existing.plan_id)
-    .first<{ id: number }>()
-  if (!row) {
-    // Another renewal is pending. Failing makes PayMongo retry (and flags it in its dashboard),
-    // so a super admin can settle the pending one and the payment still gets recorded.
-    console.error('PayMongo: payment for a cancelled renewal while another is pending', renewalId, payments[0].id)
-    return Response.json({ error: 'Store has another pending renewal' }, { status: 409 })
-  }
-  await markPaid(row.id)
-  return Response.json({ ok: true })
+/**
+ * Checks the Paymongo-Signature header ("t=<timestamp>,te=<test sig>,li=<live sig>"): the
+ * signature is the HMAC-SHA256 of "<timestamp>.<raw body>" with the webhook's secret.
+ */
+export async function verifySignature(secret: string, header: string, rawBody: string, livemode: boolean) {
+  const parts = Object.fromEntries(header.split(',').map((part) => part.trim().split('=', 2) as [string, string]))
+  const signature = hexToBytes(parts[livemode ? 'li' : 'te'] ?? '')
+  if (!parts.t || !signature) return false
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, [
+    'verify',
+  ])
+  return crypto.subtle.verify('HMAC', key, signature, encoder.encode(`${parts.t}.${rawBody}`))
 }

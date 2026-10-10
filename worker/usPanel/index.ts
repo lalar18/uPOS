@@ -5,6 +5,7 @@ import { error } from '../documents'
 import { listStoreRenewals, handleRenewals, recordStorePayment } from './billing'
 import { handleIncome } from './income'
 import { getOverview } from './overview'
+import { handlePayouts } from './payouts'
 import { handlePlans } from './plans'
 import { changePassword, getSuperAdmin, login, logout, publicSuperAdmin } from './session'
 import { handleStores } from './stores'
@@ -26,6 +27,12 @@ export async function handleUsPanel(db: D1Database, request: Request, url: URL):
   if (path === '/api/us-panel/me' && request.method === 'GET') return Response.json(publicSuperAdmin(admin))
   if (path === '/api/us-panel/me/password' && request.method === 'PUT') return changePassword(db, request, admin)
   if (path === '/api/us-panel/overview' && request.method === 'GET') return getOverview(db)
+
+  // Payouts of online sales (checked before the other store routes)
+  if (path === '/api/us-panel/payouts' || /^\/api\/us-panel\/stores\/\d+\/payouts$/.test(path)) {
+    const response = await handlePayouts(db, request, url, admin)
+    if (response) return response
+  }
 
   // A store's billing (checked before the other store routes)
   const billingMatch = path.match(/^\/api\/us-panel\/stores\/(\d+)\/(renewals|payments)$/)

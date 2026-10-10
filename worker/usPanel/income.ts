@@ -6,7 +6,8 @@
 //   PUT /api/us-panel/service-charges   { renewal: { kind, value }, sale: { kind, value, methods } } -> { renewal, sale }
 //
 // Money is in centavos. A renewal's subscription income is what was received less its service
-// charge; a sale's service charge was collected by the store from its customer.
+// charge. A sale's service charge was collected by the store from its customer, or, for a sale
+// paid online (saleCheckouts.ts), by PayMongo, which kept its fee out of the payment.
 
 import { error } from '../documents'
 import { getServiceCharges, ONLINE_METHODS, type ServiceCharge } from '../serviceCharges'
@@ -25,6 +26,7 @@ interface IncomeRow {
   processing_fees: number
   renewals: number
   sale_charges: number
+  sale_processing_fees: number
   sale_payments: number
 }
 
@@ -33,7 +35,7 @@ function incomeTotals(rows: Partial<IncomeRow>[]) {
   const subscriptionsCents = sum('subscriptions')
   const renewalChargesCents = sum('renewal_charges')
   const saleChargesCents = sum('sale_charges')
-  const processingFeesCents = sum('processing_fees')
+  const processingFeesCents = sum('processing_fees') + sum('sale_processing_fees')
   return {
     subscriptionsCents,
     renewalChargesCents,
@@ -60,8 +62,10 @@ async function getIncome(db: D1Database, url: URL): Promise<Response> {
        COUNT(*) AS renewals
      FROM subscription_renewals WHERE status = 'paid' AND ${between('paid_at')} GROUP BY key`
   const saleSql = (key: string) =>
-    `SELECT ${key} AS key, SUM(service_charge_cents) AS sale_charges, COUNT(*) AS sale_payments
-     FROM sale_payments WHERE service_charge_cents > 0 AND ${between('created_at')} GROUP BY key`
+    `SELECT ${key} AS key, SUM(service_charge_cents) AS sale_charges,
+       SUM(COALESCE(processing_fee_cents, 0)) AS sale_processing_fees, COUNT(*) AS sale_payments
+     FROM sale_payments WHERE (service_charge_cents > 0 OR checkout_id IS NOT NULL) AND ${between('created_at')}
+     GROUP BY key`
 
   const [renewalMonths, saleMonths, renewalStores, saleStores, first] = await db.batch<Partial<IncomeRow>>([
     db.prepare(renewalSql(`strftime('%m', paid_at, ${LOCAL})`)).bind(...range),

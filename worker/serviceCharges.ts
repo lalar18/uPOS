@@ -1,7 +1,8 @@
 // Service charges: the platform owner's fees on online payments (see migration 0023).
 // Super admins set them in the US Panel; stores only see the charge on the payment they're making.
 //
-//   GET /api/online-payment-charge -> { kind, value, methods }  (store users; the sale charge, for the payment dialogs)
+//   GET /api/online-payment-charge -> { kind, value, methods, checkout }  (store users; the sale charge, for the payment
+//                                     dialogs; checkout: whether sales can be paid online, see saleCheckouts.ts)
 
 import { PAYMENT_METHODS } from './documents'
 
@@ -68,7 +69,11 @@ export async function getServiceCharge(db: D1Database, id: keyof ServiceCharges)
 }
 
 /** GET /api/online-payment-charge: the sale charge, so the payment dialogs can show it. */
-export async function handleOnlinePaymentCharge(db: D1Database, request: Request): Promise<Response> {
+export async function handleOnlinePaymentCharge(
+  db: D1Database,
+  request: Request,
+  checkout: boolean,
+): Promise<Response> {
   if (request.method !== 'GET') return Response.json({ error: 'Method not allowed' }, { status: 405 })
-  return Response.json(await getServiceCharge(db, 'sale'))
+  return Response.json({ ...(await getServiceCharge(db, 'sale')), checkout })
 }

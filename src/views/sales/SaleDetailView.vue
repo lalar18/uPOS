@@ -90,9 +90,11 @@ async function print(mode: 'invoice' | 'receipt') {
 // --- Record payment ---
 
 const paying = ref(false)
+const waitingOnline = ref(false) // reopened the online payment still waiting for this sale
 
 function onPaid(updated: Sale) {
   paying.value = false
+  waitingOnline.value = false
   sale.value = updated
 }
 </script>
@@ -184,6 +186,15 @@ function onPaid(updated: Sale) {
       <div class="card mb-3">
         <div class="card-body">
           <h5 class="card-title mb-2">Payments</h5>
+          <div v-if="sale.onlineCheckout" class="alert alert-info py-2 fs-14 d-flex flex-wrap align-items-center gap-2">
+            <span class="flex-grow-1">
+              Waiting for an online payment of {{ formatMoney(sale.onlineCheckout.totalCents) }}
+              ({{ paymentMethodLabel(sale.onlineCheckout.method) }}).
+            </span>
+            <button v-if="canSell" type="button" class="btn btn-sm btn-white border" @click="waitingOnline = true">
+              <i class="ti ti-qrcode me-1"></i>Show QR
+            </button>
+          </div>
           <div v-if="sale.payments.length === 0" class="text-gray-5 fs-14">No payments yet.</div>
           <div v-for="payment in sale.payments" :key="payment.id" class="list-row">
             <div class="min-w-0">
@@ -250,6 +261,13 @@ function onPaid(updated: Sale) {
   </Teleport>
 
   <PaymentFormModal v-if="paying && sale" :sale="sale" @close="paying = false" @saved="onPaid" />
+  <PaymentFormModal
+    v-else-if="waitingOnline && sale"
+    :sale="sale"
+    :checkout="sale.onlineCheckout"
+    @close="waitingOnline = false"
+    @saved="onPaid"
+  />
 </template>
 
 <style scoped>

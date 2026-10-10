@@ -86,7 +86,48 @@ export interface Sale extends SaleSummary {
   items: SaleItem[]
   payments: SalePayment[]
   returns: { id: number; reference: string; returnDate: string; reason: string; totalCents: number; refundCents: number }[]
+  onlineCheckout: SaleCheckout | null // an online payment waiting to be paid
 }
+
+// --- Online payment through PayMongo (see worker/saleCheckouts.ts) ---
+
+/** Methods a sale can be paid online with (keep in step with CHECKOUT_METHODS in worker/saleCheckouts.ts) */
+export const CHECKOUT_METHODS = ['card', 'gcash', 'maya'] as const
+export type CheckoutMethod = (typeof CHECKOUT_METHODS)[number]
+export const isCheckoutMethod = (method: string): method is CheckoutMethod =>
+  (CHECKOUT_METHODS as readonly string[]).includes(method)
+
+/** PayMongo's smallest payment (keep in step with MIN_CHECKOUT_CENTS in worker/saleCheckouts.ts) */
+export const MIN_CHECKOUT_CENTS = 2000
+
+export interface SaleCheckout {
+  id: number
+  saleId: number
+  method: CheckoutMethod
+  amountCents: number // towards the sale
+  serviceChargeCents: number
+  totalCents: number // what the customer pays
+  status: 'pending' | 'paid' | 'cancelled' | 'refund_due'
+  checkoutUrl: string | null // while pending
+  createdAt: string
+  paidAt: string | null
+}
+
+export interface OnlinePaymentInput {
+  method: CheckoutMethod
+  amountCents: number
+}
+
+export const openSaleCheckout = (saleId: number, input: OnlinePaymentInput) =>
+  sendJson<SaleCheckout>('POST', `/api/sales/${saleId}/checkouts`, input)
+
+/** The checkout as it is now (the server asks PayMongo while it's pending) */
+export const getSaleCheckout = (saleId: number, id: number) =>
+  sendJson<SaleCheckout>('GET', `/api/sales/${saleId}/checkouts/${id}`)
+
+/** Cancels a waiting checkout; it comes back 'paid' if the customer paid just before */
+export const cancelSaleCheckout = (saleId: number, id: number) =>
+  sendJson<SaleCheckout>('DELETE', `/api/sales/${saleId}/checkouts/${id}`)
 
 export interface PaymentInput {
   amountCents: number
@@ -108,6 +149,7 @@ export interface SaleInput {
   taxRateBp: number
   note: string | null
   payments: PaymentInput[]
+  onlinePayment?: OnlinePaymentInput | null // opened as the sale is saved; comes back as onlineCheckout
 }
 
 export interface SaleQuery {
@@ -145,7 +187,9 @@ export async function getSale(id: number): Promise<Sale> {
   return readJson(await fetch(`/api/sales/${id}`))
 }
 
-export const createSale = (input: SaleInput) => sendJson<Sale>('POST', '/api/sales', input)
+/** checkoutError: the sale was saved, but its online payment couldn't be opened */
+export const createSale = (input: SaleInput) =>
+  sendJson<Sale & { checkoutError?: string }>('POST', '/api/sales', input)
 
 export const addSalePayment = (id: number, input: PaymentInput & { paidDate: string }) =>
   sendJson<Sale>('POST', `/api/sales/${id}/payments`, input)

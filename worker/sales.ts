@@ -8,9 +8,15 @@
 //            -> { items, total, sums: { totalCents, paidCents, dueCents } }
 //            payment: paid | partial | unpaid | due (any balance) | overdue (due before `today`)
 //            source: pos | manual; from/to/today: YYYY-MM-DD, from and to inclusive
-//   GET  /api/sales/:id                    -> sale with items, payments and returns
+//   GET  /api/sales/:id                    -> sale with items, payments, returns and onlineCheckout
 //   POST /api/sales     (SaleInput)        -> sale   (201; 200 when `uid` was already saved)
 //   POST /api/sales/:id/payments  { amountCents, method, reference, note, tenderedCents, paidDate } -> sale
+//   /api/sales/:id/checkouts...            online payment through PayMongo (see saleCheckouts.ts)
+//
+// A new sale can also be paid online: with `onlinePayment: { method, amountCents }`, its checkout
+// is opened once the sale is saved and comes back as `checkout` (or `checkoutError` if PayMongo
+// failed: the sale stays saved with a balance, and the cashier can try again or take another
+// payment). The amount counts as paid for the walk-in rule, as it's paid before the customer leaves.
 //
 // A sale takes its products out of stock (logged as "sale" stock adjustments) in the same
 // transaction that saves it. The stock log's CHECK (quantity_after >= 0) means a sale that
@@ -46,7 +52,17 @@ import {
   WALK_IN_CUSTOMER,
   type PaymentMethod,
 } from './documents'
+import type { PaymongoEnv } from './paymongo'
 import { can } from './permissions'
+import {
+  checkoutAvailable,
+  closeOutdatedCheckout,
+  handleSaleCheckouts,
+  MIN_CHECKOUT_CENTS,
+  openSaleCheckout,
+  pendingCheckout,
+  readOnlinePayment,
+} from './saleCheckouts'
 import { getServiceCharge, saleChargeCents } from './serviceCharges'
 import type { SessionUser } from './session'
 
@@ -229,6 +245,7 @@ export async function getSaleDetail(db: D1Database, storeId: number, id: number)
 
   return {
     ...publicSale(row),
+    onlineCheckout: await pendingCheckout(db, storeId, id), // an online payment waiting to be paid
     items: (items!.results as SaleItemRow[]).map(publicItem),
     payments: (payments!.results as PaymentRow[]).map(publicPayment),
     returns: (returns!.results as ReturnSummaryRow[]).map((r) => ({
@@ -360,7 +377,7 @@ async function findSaleByUid(db: D1Database, storeId: number, uid: string): Prom
   return row?.id ?? null
 }
 
-async function createSale(db: D1Database, request: Request, user: SessionUser): Promise<Response> {
+async function createSale(db: D1Database, env: PaymongoEnv, request: Request, user: SessionUser): Promise<Response> {
   const storeId = user.store_id
   const body = await request.json<Record<string, unknown>>().catch(() => null)
   if (!body || typeof body !== 'object') return error('Invalid request body', 400)
@@ -442,9 +459,21 @@ async function createSale(db: D1Database, request: Request, user: SessionUser): 
     if (typeof payment === 'string') return error(payment, 400)
     payments.push(payment)
   }
+  let online: Exclude<ReturnType<typeof readOnlinePayment>, string> | null = null
+  if (body.onlinePayment !== null && body.onlinePayment !== undefined) {
+    if (!checkoutAvailable(env, user)) return error('Online payment is not available', 400)
+    const input = readOnlinePayment(body.onlinePayment)
+    if (typeof input === 'string') return error(input, 400)
+    // Checked before saving, so the sale isn't saved with a payment PayMongo would refuse
+    const chargeCents = saleChargeCents(await getServiceCharge(db, 'sale'), input.method, input.amountCents)
+    if (input.amountCents + chargeCents < MIN_CHECKOUT_CENTS) {
+      return error(`Online payments must be at least ₱${(MIN_CHECKOUT_CENTS / 100).toFixed(2)}`, 400)
+    }
+    online = input
+  }
   const paidCents = payments.reduce((sum, p) => sum + p.amountCents, 0)
-  if (paidCents > totals.totalCents) return error('Payments are more than the sale total', 400)
-  if (customer.id === null && paidCents < totals.totalCents) {
+  if (paidCents + (online?.amountCents ?? 0) > totals.totalCents) return error('Payments are more than the sale total', 400)
+  if (customer.id === null && paidCents + (online?.amountCents ?? 0) < totals.totalCents) {
     return error(`${WALK_IN_CUSTOMER} sales must be paid in full. Choose a customer to sell on credit.`, 400)
   }
 
@@ -562,11 +591,28 @@ async function createSale(db: D1Database, request: Request, user: SessionUser): 
     throw e
   }
 
+  if (online) {
+    const checkout = await openSaleCheckout(db, env, user, id, online, new URL(request.url).origin)
+    const sale = await getSaleDetail(db, storeId, id)
+    if (!sale) return error('Sale not found', 404)
+    if (checkout instanceof Response) {
+      const { error: message } = await checkout.json<{ error: string }>()
+      return Response.json({ ...sale, checkoutError: message }, { status: 201 })
+    }
+    return Response.json({ ...sale, onlineCheckout: checkout }, { status: 201 })
+  }
+
   const sale = await getSaleDetail(db, storeId, id)
   return sale ? Response.json(sale, { status: 201 }) : error('Sale not found', 404)
 }
 
-async function addPayment(db: D1Database, request: Request, user: SessionUser, saleId: number): Promise<Response> {
+async function addPayment(
+  db: D1Database,
+  env: PaymongoEnv,
+  request: Request,
+  user: SessionUser,
+  saleId: number,
+): Promise<Response> {
   const storeId = user.store_id
   const body = await request.json<Record<string, unknown>>().catch(() => null)
   if (!body || typeof body !== 'object') return error('Invalid request body', 400)
@@ -619,6 +665,8 @@ async function addPayment(db: D1Database, request: Request, user: SessionUser, s
     if (constraintMessage(e)) return error('The payment is more than the balance due. Refresh and try again.', 409)
     throw e
   }
+  // An online payment still waiting for more than is now due can't be paid any more
+  await closeOutdatedCheckout(db, env, saleId)
 
   const detail = await getSaleDetail(db, storeId, saleId)
   return detail ? Response.json(detail, { status: 201 }) : error('Sale not found', 404)
@@ -627,6 +675,7 @@ async function addPayment(db: D1Database, request: Request, user: SessionUser, s
 /** Handles /api/sales routes, or returns null if the path isn't one of them. */
 export async function handleSales(
   db: D1Database,
+  env: PaymongoEnv,
   request: Request,
   url: URL,
   user: SessionUser,
@@ -634,19 +683,21 @@ export async function handleSales(
   const isCollection = url.pathname === '/api/sales'
   const itemMatch = url.pathname.match(/^\/api\/sales\/(\d+)$/)
   const paymentsMatch = url.pathname.match(/^\/api\/sales\/(\d+)\/payments$/)
-  if (!isCollection && !itemMatch && !paymentsMatch) return null
+  const checkoutsMatch = /^\/api\/sales\/\d+\/checkouts(\/\d+)?$/.test(url.pathname)
+  if (!isCollection && !itemMatch && !paymentsMatch && !checkoutsMatch) return null
 
   if (request.method !== 'GET' && !can(user, 'sales.create')) {
     return error("You don't have permission to make sales or record payments", 403)
   }
 
+  if (checkoutsMatch) return handleSaleCheckouts(db, env, request, url, user)
   if (isCollection && request.method === 'GET') return listSales(db, user.store_id, url)
-  if (isCollection && request.method === 'POST') return createSale(db, request, user)
+  if (isCollection && request.method === 'POST') return createSale(db, env, request, user)
   if (itemMatch && request.method === 'GET') {
     const sale = await getSaleDetail(db, user.store_id, Number(itemMatch[1]))
     return sale ? Response.json(sale) : error('Sale not found', 404)
   }
-  if (paymentsMatch && request.method === 'POST') return addPayment(db, request, user, Number(paymentsMatch[1]))
+  if (paymentsMatch && request.method === 'POST') return addPayment(db, env, request, user, Number(paymentsMatch[1]))
 
   return error('Method not allowed', 405)
 }

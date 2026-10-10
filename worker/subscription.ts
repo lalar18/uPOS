@@ -28,6 +28,9 @@ import {
 import { getServiceCharge, renewalChargePesos } from './serviceCharges'
 import type { SessionUser } from './session'
 
+/** Offered on a renewal's checkout page (PayMongo's names) */
+const RENEWAL_PAYMENT_METHODS = ['gcash', 'paymaya', 'card', 'qrph', 'grab_pay']
+
 export interface PlanRow {
   id: string
   name: string
@@ -212,13 +215,21 @@ async function openCheckout(
     .first<{ plan_name: string; monthly_price: number; checkout_session_id: string | null }>()
   if (!renewal || renewal.monthly_price <= 0) return null
 
+  const feeCents = renewalChargePesos(await getServiceCharge(db, 'renewal'), renewal.monthly_price) * 100
+  const back = `${origin}/subscription?payment=`
   const session = await createCheckoutSession(env, {
-    renewalId,
-    storeName: user.store_name,
-    planName: renewal.plan_name,
-    pesos: renewal.monthly_price,
-    feePesos: renewalChargePesos(await getServiceCharge(db, 'renewal'), renewal.monthly_price),
-    origin,
+    lineItems: [
+      { name: `${renewal.plan_name} plan, 1 month`, cents: renewal.monthly_price * 100 },
+      // The renewal service charge, a line item of its own
+      { name: 'Service charge', cents: feeCents },
+    ],
+    paymentMethodTypes: RENEWAL_PAYMENT_METHODS,
+    description: `Subscription renewal for ${user.store_name}`,
+    referenceNumber: `RNW-${renewalId}`,
+    // The charge is read back from here when paid, as it may change before then
+    metadata: { kind: 'renewal', renewal_id: String(renewalId), service_charge_cents: String(feeCents) },
+    successUrl: `${back}success`,
+    cancelUrl: `${back}cancelled`,
   })
   await db
     .prepare('UPDATE subscription_renewals SET checkout_session_id = ? WHERE id = ?')

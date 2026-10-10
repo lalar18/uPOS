@@ -13,6 +13,7 @@ const menu = [
   { label: 'Stores', to: '/us-panel/stores', icon: 'building-store' },
   { label: 'Billing', to: '/us-panel/billing', icon: 'receipt-2' },
   { label: 'Income', to: '/us-panel/income', icon: 'cash' },
+  { label: 'Payouts', to: '/us-panel/payouts', icon: 'send' },
   { label: 'Plans', to: '/us-panel/plans', icon: 'crown' },
   { label: 'Account', to: '/us-panel/account', icon: 'user-shield' },
 ]

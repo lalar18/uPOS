@@ -2,7 +2,7 @@
 import { readJson, sendJson } from './http'
 import type { ServiceCharge } from './serviceCharge'
 import type { Plan } from './subscription'
-import type { StoreInput } from './store'
+import type { PayoutSummary, StoreInput } from './store'
 
 const BASE = '/api/us-panel'
 
@@ -179,6 +179,37 @@ export const cancelRenewal = (id: number) => sendJson<Renewal>('POST', `${BASE}/
 
 export const recordStorePayment = (storeId: number, input: PaymentInput & { planId: string }) =>
   sendJson<Renewal>('POST', `${BASE}/stores/${storeId}/payments`, input)
+
+// --- Payouts of online sales ---
+
+export interface StoreBalance {
+  id: number
+  name: string
+  collectedCents: number
+  paidOutCents: number
+  balanceCents: number // owed to the store
+  refundsDue: number
+  lastPayoutDate: string | null
+}
+
+export interface PayoutInput {
+  amountCents: number
+  method: string
+  reference: string
+  note: string
+  paidDate: string // YYYY-MM-DD
+}
+
+export const listPayoutBalances = async (): Promise<{
+  stores: StoreBalance[]
+  totals: { collectedCents: number; paidOutCents: number; balanceCents: number; refundsDue: number }
+}> => readJson(await fetch(`${BASE}/payouts`))
+
+export const getStorePayouts = async (storeId: number): Promise<PayoutSummary> =>
+  readJson(await fetch(`${BASE}/stores/${storeId}/payouts`))
+
+export const recordPayout = (storeId: number, input: PayoutInput) =>
+  sendJson<PayoutSummary>('POST', `${BASE}/stores/${storeId}/payouts`, input)
 
 // --- Plans ---
 

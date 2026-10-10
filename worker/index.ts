@@ -5,10 +5,12 @@ import { handleDashboard, handleUserDashboard, userDashboardId } from './dashboa
 import { handleGoogle, type GoogleEnv } from './google'
 import { clearLoginFailures, loginKey, loginRetryAfter, recordLoginFailure, tooManyAttempts } from './loginThrottle'
 import { verifyPassword } from './password'
-import { handlePaymongoWebhook, type PaymongoEnv } from './paymongo'
+import type { PaymongoEnv } from './paymongo'
+import { handlePaymongoWebhook } from './paymongoWebhook'
 import { handleProducts } from './products'
 import { handleQuotations } from './quotations'
 import { handleSales } from './sales'
+import { checkoutAvailable } from './saleCheckouts'
 import { handleSalesReturns } from './salesReturns'
 import { handleStock } from './stock'
 import { handleStore } from './store'
@@ -27,6 +29,7 @@ import {
 import { handleOnlinePaymentCharge } from './serviceCharges'
 import { handleSubcategories } from './subcategories'
 import { handleSettings } from './settings'
+import { handleOnlinePayouts } from './storePayouts'
 import { handleSubscription, listPlans, subscriptionExpired } from './subscription'
 import { handleSuppliers } from './suppliers'
 import { handleUnits } from './units'
@@ -261,7 +264,7 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (url.pathname.startsWith('/api/sales')) {
     if (!user) return notLoggedIn()
-    const response = await handleSales(env.DB, request, url, user)
+    const response = await handleSales(env.DB, env, request, url, user)
     if (response) return response
   }
 
@@ -273,7 +276,12 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (url.pathname === '/api/online-payment-charge') {
     if (!user) return notLoggedIn()
-    return handleOnlinePaymentCharge(env.DB, request)
+    return handleOnlinePaymentCharge(env.DB, request, checkoutAvailable(env, user))
+  }
+
+  if (url.pathname === '/api/online-payouts') {
+    if (!user) return notLoggedIn()
+    return handleOnlinePayouts(env.DB, request, user)
   }
 
   if (url.pathname === '/api/settings') {

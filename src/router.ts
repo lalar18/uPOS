@@ -43,6 +43,12 @@ const router = createRouter({
     // Public site (with pricing); signed-out visitors to "/" land here. Its Portal button opens the login.
     { path: '/welcome', name: 'landing', component: LandingView },
     { path: '/login', name: 'login', component: LoginView, meta: { guestOnly: true } },
+    // Where PayMongo sends a customer after paying a sale online (public: usually their own phone)
+    {
+      path: '/payment-complete',
+      name: 'payment-complete',
+      component: () => import('./views/pay/PaymentCompleteView.vue'),
+    },
     // A new Google account names its store here (the Google sign-in sends it)
     {
       path: '/signup',
@@ -74,6 +80,7 @@ const router = createRouter({
         },
         { path: 'billing', name: 'us-billing', component: () => import('./views/usPanel/UsBillingView.vue') },
         { path: 'income', name: 'us-income', component: () => import('./views/usPanel/UsIncomeView.vue') },
+        { path: 'payouts', name: 'us-payouts', component: () => import('./views/usPanel/UsPayoutsView.vue') },
         { path: 'plans', name: 'us-plans', component: () => import('./views/usPanel/UsPlansView.vue') },
         { path: 'account', name: 'us-account', component: () => import('./views/usPanel/UsAccountView.vue') },
         { path: ':pathMatch(.*)*', redirect: { name: 'us-dashboard' } },

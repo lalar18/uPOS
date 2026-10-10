@@ -1,21 +1,31 @@
 <script setup lang="ts">
 // "Record payment" dialog for an invoice with a balance due. Online methods may add a service
-// charge, collected on top of the amount.
+// charge, collected on top of the amount. Card, GCash and Maya can also be paid online now
+// (through PayMongo, when the store has it): the dialog then waits for the customer to pay.
 import { computed, ref } from 'vue'
-import { getOnlinePaymentCharge, saleChargeCents, type ServiceCharge } from '@/api/serviceCharge'
+import { getOnlinePaymentCharge, saleChargeCents, type OnlinePaymentCharge } from '@/api/serviceCharge'
 import {
   addSalePayment,
+  getSale,
+  isCheckoutMethod,
+  MIN_CHECKOUT_CENTS,
+  openSaleCheckout,
   PAYMENT_METHODS,
   paymentMethodLabel,
   type PaymentMethod,
   type Sale,
+  type SaleCheckout,
   type SaleSummary,
 } from '@/api/sales'
 import AppModal from '@/components/AppModal.vue'
 import { toIsoDate } from '@/utils/date'
 import { centsToText, currencySymbol, formatMoney, parsePeso } from '@/utils/money'
+import OnlineCheckoutModal from './OnlineCheckoutModal.vue'
 
-const props = defineProps<{ sale: SaleSummary }>()
+const props = defineProps<{
+  sale: SaleSummary
+  checkout?: SaleCheckout | null // an online payment already waiting, to wait for again
+}>()
 const emit = defineEmits<{ close: []; saved: [sale: Sale] }>()
 
 const amount = ref(centsToText(props.sale.dueCents))
@@ -36,7 +46,7 @@ const changeCents = computed(() => {
   return given - paid
 })
 
-const charge = ref<ServiceCharge | null>(null)
+const charge = ref<OnlinePaymentCharge | null>(null)
 getOnlinePaymentCharge().then((result) => (charge.value = result))
 
 const serviceChargeCents = computed(() => {
@@ -45,10 +55,21 @@ const serviceChargeCents = computed(() => {
   return saleChargeCents(charge.value, method.value, paid)
 })
 
+const payOnline = ref(true) // card, GCash, Maya: pay online now, or record a payment already made
+const canPayOnline = computed(() => !!charge.value?.checkout && isCheckoutMethod(method.value))
+const online = computed(() => canPayOnline.value && payOnline.value)
+const checkout = ref<SaleCheckout | null>(props.checkout?.status === 'pending' ? props.checkout : null)
+
 function validate(): string {
   const cents = amountCents.value
   if (cents === null || Number.isNaN(cents) || cents <= 0) return 'Enter the amount paid, like 150.00.'
   if (cents > props.sale.dueCents) return `The balance due is only ${formatMoney(props.sale.dueCents)}.`
+  if (online.value) {
+    if (cents + serviceChargeCents.value < MIN_CHECKOUT_CENTS) {
+      return `Online payments must be at least ${formatMoney(MIN_CHECKOUT_CENTS)}.`
+    }
+    return ''
+  }
   if (method.value === 'cash' && receivedCents.value !== null) {
     if (Number.isNaN(receivedCents.value)) return 'Cash received must be an amount like 200.00.'
     if (receivedCents.value < cents) return 'Cash received is less than the amount paid.'
@@ -58,9 +79,37 @@ function validate(): string {
   return ''
 }
 
+async function startOnline() {
+  saving.value = true
+  try {
+    if (!isCheckoutMethod(method.value)) return
+    checkout.value = await openSaleCheckout(props.sale.id, { method: method.value, amountCents: amountCents.value! })
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not open the online payment'
+  } finally {
+    saving.value = false
+  }
+}
+
+/** The sale as it is now, for the page behind (after an online payment, or after giving up waiting) */
+async function finishOnline() {
+  checkout.value = null
+  try {
+    emit('saved', await getSale(props.sale.id))
+  } catch {
+    emit('close')
+  }
+}
+
+function onlineCancelled() {
+  checkout.value = null
+  error.value = 'The online payment was cancelled. Try again, or record a payment made another way.'
+}
+
 async function save() {
   error.value = validate()
   if (error.value) return
+  if (online.value) return startOnline()
   saving.value = true
   try {
     const sale = await addSalePayment(props.sale.id, {
@@ -81,7 +130,15 @@ async function save() {
 </script>
 
 <template>
-  <AppModal :title="`Record Payment · ${sale.reference}`" @close="emit('close')">
+  <OnlineCheckoutModal
+    v-if="checkout"
+    :checkout="checkout"
+    :sale-reference="sale.reference"
+    @paid="finishOnline"
+    @cancelled="onlineCancelled"
+    @close="finishOnline"
+  />
+  <AppModal v-else :title="`Record Payment · ${sale.reference}`" @close="emit('close')">
     <form novalidate @submit.prevent="save">
       <div class="modal-body">
         <div v-if="error" class="alert alert-danger py-2" role="alert">{{ error }}</div>
@@ -123,7 +180,34 @@ async function save() {
               Change: <strong class="text-gray-9">{{ formatMoney(changeCents) }}</strong>
             </div>
           </div>
-          <div v-else class="col-sm-6">
+          <div v-if="canPayOnline" class="col-12">
+            <div class="btn-group w-100" role="radiogroup" aria-label="How it's paid">
+              <button
+                type="button"
+                role="radio"
+                class="btn"
+                :class="payOnline ? 'btn-primary' : 'btn-white border'"
+                :aria-checked="payOnline"
+                @click="payOnline = true"
+              >
+                <i class="ti ti-qrcode me-1"></i>Pay online now
+              </button>
+              <button
+                type="button"
+                role="radio"
+                class="btn"
+                :class="!payOnline ? 'btn-primary' : 'btn-white border'"
+                :aria-checked="!payOnline"
+                @click="payOnline = false"
+              >
+                <i class="ti ti-receipt me-1"></i>Already paid
+              </button>
+            </div>
+            <div v-if="online" class="form-text">
+              The customer pays on PayMongo's page: they scan a QR code with their phone, or you open the page here.
+            </div>
+          </div>
+          <div v-if="method !== 'cash' && !online" class="col-sm-6">
             <label class="form-label" for="payment-reference">Reference no.</label>
             <input
               id="payment-reference"
@@ -134,7 +218,7 @@ async function save() {
               placeholder="e.g. GCash ref. no."
             />
           </div>
-          <div class="col-sm-6">
+          <div v-if="!online" class="col-sm-6">
             <label class="form-label" for="payment-date">Date <span class="text-danger">*</span></label>
             <input id="payment-date" v-model="paidDate" type="date" class="form-control" :max="toIsoDate()" />
           </div>
@@ -144,13 +228,13 @@ async function save() {
                 Service charge ({{ paymentMethodLabel(method) }}): <strong>{{ formatMoney(serviceChargeCents) }}</strong>
               </span>
               <span>
-                Total to collect: <strong class="text-gray-9">{{ formatMoney(amountCents! + serviceChargeCents) }}</strong>
+                {{ online ? 'The customer pays' : 'Total to collect' }}: <strong class="text-gray-9">{{ formatMoney(amountCents! + serviceChargeCents) }}</strong>
               </span>
             </div>
           </div>
         </div>
 
-        <div>
+        <div v-if="!online">
           <label class="form-label" for="payment-note">Note <span class="text-gray-5 fw-normal">(optional)</span></label>
           <textarea id="payment-note" v-model="note" class="form-control" rows="2" maxlength="500"></textarea>
         </div>
@@ -158,7 +242,7 @@ async function save() {
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" :disabled="saving" @click="emit('close')">Cancel</button>
         <button type="submit" class="btn btn-primary" :disabled="saving">
-          {{ saving ? 'Saving…' : 'Record Payment' }}
+          {{ saving ? 'Saving…' : online ? 'Pay Online' : 'Record Payment' }}
         </button>
       </div>
     </form>

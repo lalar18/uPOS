@@ -20,8 +20,12 @@ export function chargeCents(charge: ServiceCharge, amountCents: number): number 
 export const saleChargeCents = (charge: ServiceCharge | null, method: string, amountCents: number) =>
   charge?.methods.includes(method) ? chargeCents(charge, amountCents) : 0
 
+export interface OnlinePaymentCharge extends ServiceCharge {
+  checkout: boolean // whether sales can be paid online (through PayMongo) in this store
+}
+
 /** The charge on sale payments by online methods; null if it can't be loaded */
-export const getOnlinePaymentCharge = (): Promise<ServiceCharge | null> =>
+export const getOnlinePaymentCharge = (): Promise<OnlinePaymentCharge | null> =>
   fetch('/api/online-payment-charge')
-    .then((res) => readJson<ServiceCharge>(res))
+    .then((res) => readJson<OnlinePaymentCharge>(res))
     .catch(() => null)
