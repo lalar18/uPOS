@@ -1,16 +1,20 @@
 // The platform owner's income, for super admins (US Panel): subscription payments, the service
-// charges added to online payments, less what PayMongo kept. Also where the charges are set.
+// charges added to online payments and kept out of payouts, less what PayMongo kept. Also where
+// the charges are set.
 //
 //   GET /api/us-panel/income?year=YYYY  -> { year, firstYear, months, stores, sources, totals }   (months in Philippine time)
-//   GET /api/us-panel/income/entries?year=YYYY[&month=M][&store=ID][&source=subscription|sale][&offset=N]
+//   GET /api/us-panel/income/entries?year=YYYY[&month=M][&store=ID][&source=subscription|sale|payout][&offset=N]
 //                                       -> { entries, count, totals, hasMore }   (each payment the income came from)
-//   GET /api/us-panel/service-charges   -> { renewal, sale }
-//   PUT /api/us-panel/service-charges   { renewal: { kind, value }, sale: { kind, value, methods } } -> { renewal, sale }
+//   GET /api/us-panel/service-charges   -> { renewal, sale, payout }
+//   PUT /api/us-panel/service-charges   { renewal: { kind, value }, sale: { kind, value, methods }, payout: { kind, value } }
+//                                       -> { renewal, sale, payout }
 //
 // Money is in centavos. The platform's income is only:
 //   - subscriptions: renewals paid, online or recorded by a super admin, less their service charge
 //   - service charges on payments made online through PayMongo: renewals, and sales paid by a
 //     checkout (saleCheckouts.ts), whose money goes to the platform's PayMongo account
+//   - service charges kept out of the payouts of store withdrawals (storePayouts.ts), counted
+//     when the payout is recorded
 // less what PayMongo kept. A charge on a sale payment the store recorded by hand was collected by
 // the store, not the platform, so it isn't income. The sale amount itself is the store's (its wallet).
 
@@ -51,6 +55,8 @@ interface IncomeRow {
   sale_charges: number
   sale_processing_fees: number
   sale_payments: number
+  payout_charges: number
+  payouts: number
 }
 
 function incomeTotals(rows: Partial<IncomeRow>[]) {
@@ -58,15 +64,18 @@ function incomeTotals(rows: Partial<IncomeRow>[]) {
   const subscriptionsCents = sum('subscriptions')
   const renewalChargesCents = sum('renewal_charges')
   const saleChargesCents = sum('sale_charges')
+  const payoutChargesCents = sum('payout_charges')
   const processingFeesCents = sum('processing_fees') + sum('sale_processing_fees')
   return {
     subscriptionsCents,
     renewalChargesCents,
     saleChargesCents,
+    payoutChargesCents,
     processingFeesCents,
-    netCents: subscriptionsCents + renewalChargesCents + saleChargesCents - processingFeesCents,
+    netCents: subscriptionsCents + renewalChargesCents + saleChargesCents + payoutChargesCents - processingFeesCents,
     renewals: sum('renewals'),
     salePayments: sum('sale_payments'),
+    payouts: sum('payouts'), // payouts a service charge was kept out of
   }
 }
 
@@ -87,18 +96,37 @@ async function getIncome(db: D1Database, url: URL): Promise<Response> {
        SUM(COALESCE(sp.processing_fee_cents, 0)) AS sale_processing_fees, COUNT(*) AS sale_payments
      FROM sale_payments sp WHERE sp.checkout_id IS NOT NULL AND ${between('sp.created_at')}
      GROUP BY key`
+  // Service charges kept out of withdrawals, when their payout was recorded
+  const payoutSql = (key: string) =>
+    `SELECT ${key} AS key, SUM(po.service_charge_cents) AS payout_charges, COUNT(*) AS payouts
+     FROM store_payouts po WHERE po.service_charge_cents > 0 AND ${between('po.created_at')}
+     GROUP BY key`
 
-  const [renewalMonths, saleMonths, renewalStores, saleStores, first, plans, renewalMethods, saleMethods] =
-    await db.batch<Record<string, string | number | null>>([
+  const [
+    renewalMonths,
+    saleMonths,
+    payoutMonths,
+    renewalStores,
+    saleStores,
+    payoutStores,
+    first,
+    plans,
+    renewalMethods,
+    saleMethods,
+  ] = await db.batch<Record<string, string | number | null>>([
       db.prepare(renewalSql(`strftime('%m', sr.paid_at, ${LOCAL})`)).bind(...range),
       db.prepare(saleSql(`strftime('%m', sp.created_at, ${LOCAL})`)).bind(...range),
+      db.prepare(payoutSql(`strftime('%m', po.created_at, ${LOCAL})`)).bind(...range),
       db.prepare(renewalSql('sr.store_id')).bind(...range),
       db.prepare(saleSql('sp.store_id')).bind(...range),
+      db.prepare(payoutSql('po.store_id')).bind(...range),
       db.prepare(
         `SELECT MIN(year) AS key FROM (
            SELECT MIN(strftime('%Y', paid_at, ${LOCAL})) AS year FROM subscription_renewals WHERE status = 'paid'
            UNION ALL
-           SELECT MIN(strftime('%Y', created_at, ${LOCAL})) FROM sale_payments WHERE checkout_id IS NOT NULL)`,
+           SELECT MIN(strftime('%Y', created_at, ${LOCAL})) FROM sale_payments WHERE checkout_id IS NOT NULL
+           UNION ALL
+           SELECT MIN(strftime('%Y', created_at, ${LOCAL})) FROM store_payouts WHERE service_charge_cents > 0)`,
       ),
       // Subscriptions by plan, and how many were paid online
       db
@@ -160,8 +188,8 @@ async function getIncome(db: D1Database, url: URL): Promise<Response> {
     return byKey
   }
 
-  const months = merge(renewalMonths!.results, saleMonths!.results)
-  const stores = merge(renewalStores!.results, saleStores!.results)
+  const months = merge(renewalMonths!.results, saleMonths!.results, payoutMonths!.results)
+  const stores = merge(renewalStores!.results, saleStores!.results, payoutStores!.results)
   const storeNames = new Map<string, string>()
   if (stores.size) {
     const ids = [...stores.keys()].map(Number)
@@ -201,7 +229,7 @@ async function getIncome(db: D1Database, url: URL): Promise<Response> {
 }
 
 interface EntryRow {
-  source: 'subscription' | 'sale'
+  source: 'subscription' | 'sale' | 'payout'
   id: number
   store_id: number
   store_name: string | null
@@ -238,13 +266,14 @@ async function getIncomeEntries(db: D1Database, url: URL): Promise<Response> {
     where.push('e.store_id = ?')
     params.push(storeId)
   }
-  if (source === 'subscription' || source === 'sale') {
+  if (source === 'subscription' || source === 'sale' || source === 'payout') {
     where.push('e.source = ?')
     params.push(source)
   }
   const filter = where.length ? `WHERE ${where.join(' AND ')}` : ''
 
-  // received: what the customer or store paid; store: the part that's the store's (a sale's amount)
+  // received: what the customer or store paid (for a payout, what left the store's wallet);
+  // store: the part that's the store's (a sale's amount, or what a payout sent the store)
   const entriesSql = `
     SELECT 'subscription' AS source, sr.id, sr.store_id, sr.paid_at AS at, COALESCE(sr.payment_method, 'other') AS method,
       ${RENEWAL_ONLINE} AS online, COALESCE(p.name, sr.plan_id) AS plan_name, sr.months, NULL AS sale_id,
@@ -258,7 +287,12 @@ async function getIncomeEntries(db: D1Database, url: URL): Promise<Response> {
       COALESCE(c.payment_reference, sp.reference), sp.amount_cents + sp.service_charge_cents, sp.amount_cents,
       0, sp.service_charge_cents, COALESCE(sp.processing_fee_cents, 0)
     FROM sale_payments sp LEFT JOIN sale_checkouts c ON c.id = sp.checkout_id
-    WHERE sp.checkout_id IS NOT NULL AND ${between('sp.created_at')}`
+    WHERE sp.checkout_id IS NOT NULL AND ${between('sp.created_at')}
+    UNION ALL
+    SELECT 'payout', po.id, po.store_id, po.created_at, po.method, po.transfer_id IS NOT NULL, NULL, NULL, NULL,
+      po.reference, po.amount_cents, po.amount_cents - po.service_charge_cents, 0, po.service_charge_cents, 0
+    FROM store_payouts po
+    WHERE po.service_charge_cents > 0 AND ${between('po.created_at')}`
 
   const [page, sums] = await db.batch<Record<string, unknown>>([
     db
@@ -266,7 +300,7 @@ async function getIncomeEntries(db: D1Database, url: URL): Promise<Response> {
         `SELECT e.*, st.name AS store_name FROM (${entriesSql}) e LEFT JOIN stores st ON st.id = e.store_id
          ${filter} ORDER BY e.at DESC, e.source, e.id DESC LIMIT ? OFFSET ?`,
       )
-      .bind(...range, ...range, ...params, ENTRIES_PAGE + 1, offset),
+      .bind(...range, ...range, ...range, ...params, ENTRIES_PAGE + 1, offset),
     db
       .prepare(
         `SELECT COUNT(*) AS count, COALESCE(SUM(e.subscription_cents), 0) AS subscriptions,
@@ -274,7 +308,7 @@ async function getIncomeEntries(db: D1Database, url: URL): Promise<Response> {
            COALESCE(SUM(e.store_cents), 0) AS store
          FROM (${entriesSql}) e ${filter}`,
       )
-      .bind(...range, ...range, ...params),
+      .bind(...range, ...range, ...range, ...params),
   ])
 
   const rows = page!.results as unknown as EntryRow[]
@@ -291,6 +325,7 @@ async function getIncomeEntries(db: D1Database, url: URL): Promise<Response> {
       planName: row.plan_name,
       months: row.months,
       saleReference: row.sale_id === null ? null : `INV-${String(row.sale_id).padStart(5, '0')}`,
+      payoutReference: row.source === 'payout' ? `PO-${String(row.id).padStart(5, '0')}` : null,
       reference: row.reference,
       receivedCents: row.received_cents,
       storeCents: row.store_cents,
@@ -340,6 +375,8 @@ async function updateServiceCharges(db: D1Database, request: Request, admin: Sup
   if (typeof renewal === 'string') return error(renewal, 400)
   const sale = readCharge(body.sale, 'sale', true)
   if (typeof sale === 'string') return error(sale, 400)
+  const payout = readCharge(body.payout, 'withdrawal', false)
+  if (typeof payout === 'string') return error(payout, 400)
 
   const save = (id: string, charge: ServiceCharge) =>
     db
@@ -349,7 +386,7 @@ async function updateServiceCharges(db: D1Database, request: Request, admin: Sup
            updated_by = excluded.updated_by, updated_at = datetime('now')`,
       )
       .bind(id, charge.kind, charge.value, JSON.stringify(charge.methods), admin.id)
-  await db.batch([save('renewal', renewal), save('sale', sale)])
+  await db.batch([save('renewal', renewal), save('sale', sale), save('payout', payout)])
   return Response.json(await getServiceCharges(db))
 }
 

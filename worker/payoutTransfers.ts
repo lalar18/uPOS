@@ -9,6 +9,9 @@
 // sent. Once PayMongo says it succeeded, it's recorded as the withdrawal's payout; if it failed, the
 // withdrawal waits to be sent again (or rejected).
 //
+// A transfer sends the withdrawal less its service charge (migration 0031); the payout it records
+// is the whole withdrawal, out of the wallet, with the charge the platform kept.
+//
 // PayMongo tells us a transfer's status changed by calling the transfer's callback URL and our
 // webhook. Neither is trusted for the status itself: each only names transfers, which are then
 // looked up from PayMongo. Pending transfers are also checked every 10 minutes (the Worker's cron)
@@ -178,14 +181,15 @@ async function applyTransfer(db: D1Database, row: TransferRow, transfer: Transfe
       .bind(row.id),
     db
       .prepare(
-        `INSERT INTO store_payouts (store_id, amount_cents, method, reference, note, paid_date, created_by, withdrawal_id,
-           transfer_id)
-         SELECT store_id, amount_cents, CASE bank_code WHEN ?2 THEN 'gcash' ELSE 'bank_transfer' END,
-           COALESCE(provider_reference_number, transfer_id, reference_number),
-           'Sent through PayMongo (' || CASE provider WHEN 'instapay' THEN 'InstaPay' ELSE 'PESONet' END || '), ref '
-             || reference_number,
-           date('now', '+8 hours'), created_by, withdrawal_id, id
-         FROM payout_transfers WHERE id = ?1 AND status = 'succeeded'
+        `INSERT INTO store_payouts (store_id, amount_cents, service_charge_cents, method, reference, note, paid_date,
+           created_by, withdrawal_id, transfer_id)
+         SELECT t.store_id, w.amount_cents, w.service_charge_cents, CASE t.bank_code WHEN ?2 THEN 'gcash' ELSE 'bank_transfer' END,
+           COALESCE(t.provider_reference_number, t.transfer_id, t.reference_number),
+           'Sent through PayMongo (' || CASE t.provider WHEN 'instapay' THEN 'InstaPay' ELSE 'PESONet' END || '), ref '
+             || t.reference_number,
+           date('now', '+8 hours'), t.created_by, t.withdrawal_id, t.id
+         FROM payout_transfers t JOIN wallet_withdrawals w ON w.id = t.withdrawal_id
+         WHERE t.id = ?1 AND t.status = 'succeeded'
          ON CONFLICT DO NOTHING`,
       )
       .bind(row.id, GCASH_BIC),
@@ -306,6 +310,7 @@ interface WithdrawalToSend {
   id: number
   store_id: number
   amount_cents: number
+  service_charge_cents: number
   destination: 'gcash' | 'bank'
   bank_code: string | null
   status: string
@@ -326,13 +331,17 @@ export async function sendWithdrawalTransfer(
 ): Promise<number | Response> {
   if (!transfersEnabled(env)) return error('PayMongo is not set up, so withdrawals can only be marked as sent', 400)
   const w = await db
-    .prepare('SELECT id, store_id, amount_cents, destination, bank_code, status FROM wallet_withdrawals WHERE id = ?')
+    .prepare(
+      'SELECT id, store_id, amount_cents, service_charge_cents, destination, bank_code, status FROM wallet_withdrawals WHERE id = ?',
+    )
     .bind(id)
     .first<WithdrawalToSend>()
   if (!w) return error('Withdrawal not found', 404)
   if (w.status !== 'pending') return error('This withdrawal is no longer pending', 409)
 
-  const provider: TransferProvider = w.amount_cents <= INSTAPAY_MAX_CENTS ? 'instapay' : 'pesonet'
+  // What's sent: the withdrawal less its service charge
+  const sendCents = w.amount_cents - w.service_charge_cents
+  const provider: TransferProvider = sendCents <= INSTAPAY_MAX_CENTS ? 'instapay' : 'pesonet'
   const code = w.destination === 'gcash' ? GCASH_BIC : cleanText(bankCode) || w.bank_code
   if (!code) return error("Choose the store's bank", 400)
   let bank
@@ -357,7 +366,7 @@ export async function sendWithdrawalTransfer(
     .prepare(
       `INSERT INTO payout_transfers (store_id, withdrawal_id, amount_cents, provider, bank_code, bank_name, account_name,
          account_number, callback_url, reference_number, created_by, created_by_name)
-       SELECT w.store_id, w.id, w.amount_cents, ?2, ?3, ?4, w.account_name, w.account_number, ?5,
+       SELECT w.store_id, w.id, w.amount_cents - w.service_charge_cents, ?2, ?3, ?4, w.account_name, w.account_number, ?5,
          'WD' || printf('%05d', w.id) || 'T' || ((SELECT COUNT(*) FROM payout_transfers WHERE withdrawal_id = w.id) + 1),
          ?6, ?7
        FROM wallet_withdrawals w

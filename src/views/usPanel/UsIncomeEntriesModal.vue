@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Each payment the platform's income came from in a year (see UsIncomeView.vue): subscriptions,
-// and the service charges on sales paid online. Filtered by month, store and source; opened for
+// the service charges on sales paid online, and those kept out of store payouts. Filtered by month, store and source; opened for
 // a month or a store from the Income page, or for the whole year.
 import { ref, watch } from 'vue'
 import { paymentMethodLabel } from '@/api/sales'
@@ -53,8 +53,15 @@ const peso = (cents: number) => formatMoney(cents, 'PHP')
 
 const monthNames = Array.from({ length: 12 }, (_, i) => new Date(2000, i, 1).toLocaleDateString('en-US', { month: 'long' }))
 
+const SOURCE_BADGE: Record<IncomeSource, { label: string; class: string }> = {
+  subscription: { label: 'Subscription', class: 'bg-primary-transparent text-primary' },
+  sale: { label: 'Sale service charge', class: 'bg-info-transparent text-info' },
+  payout: { label: 'Withdrawal service charge', class: 'bg-success-transparent text-success' },
+}
+
 function entryDetail(entry: IncomeEntry): string {
   if (entry.source === 'sale') return `${entry.saleReference} · sale paid online`
+  if (entry.source === 'payout') return `${entry.payoutReference} · withdrawal`
   const months = entry.months ? ` · ${entry.months} month${entry.months === 1 ? '' : 's'}` : ''
   return `${entry.planName ?? 'Plan'}${months}`
 }
@@ -76,6 +83,7 @@ function entryDetail(entry: IncomeEntry): string {
           <option :value="null">All sources</option>
           <option value="subscription">Subscriptions</option>
           <option value="sale">Sales paid online</option>
+          <option value="payout">Withdrawals</option>
         </select>
       </div>
 
@@ -105,27 +113,27 @@ function entryDetail(entry: IncomeEntry): string {
                 <div class="fs-12 text-gray-5">{{ storeCode(e.storeId) }}</div>
               </td>
               <td data-label="Source">
-                <span class="badge" :class="e.source === 'sale' ? 'bg-info-transparent text-info' : 'bg-primary-transparent text-primary'">
-                  {{ e.source === 'sale' ? 'Sale service charge' : 'Subscription' }}
-                </span>
+                <span class="badge" :class="SOURCE_BADGE[e.source].class">{{ SOURCE_BADGE[e.source].label }}</span>
                 <div class="fs-12 text-gray-5">{{ entryDetail(e) }}</div>
               </td>
               <td data-label="Paid with">
                 {{ paymentMethodLabel(e.method) }}
                 <div class="fs-12 text-gray-5">
-                  {{ e.online ? 'Online (PayMongo)' : 'Recorded by hand' }}<template v-if="e.reference"> · {{ e.reference }}</template>
+                  {{ e.source === 'payout' ? (e.online ? 'Sent through PayMongo' : 'Sent by hand') : e.online ? 'Online (PayMongo)' : 'Recorded by hand' }}<template v-if="e.reference"> · {{ e.reference }}</template>
                 </div>
               </td>
               <td class="text-end" data-label="Received">
                 {{ peso(e.receivedCents) }}
-                <div v-if="e.storeCents" class="fs-12 text-gray-5">{{ peso(e.storeCents) }} for the store</div>
+                <div v-if="e.storeCents" class="fs-12 text-gray-5">
+                  {{ peso(e.storeCents) }} {{ e.source === 'payout' ? 'sent to' : 'for' }} the store
+                </div>
               </td>
               <td class="text-end" data-label="Income">
                 {{ peso(e.subscriptionCents + e.chargeCents) }}
                 <div v-if="e.source === 'subscription' && e.chargeCents" class="fs-12 text-gray-5">
                   incl. {{ peso(e.chargeCents) }} service charge
                 </div>
-                <div v-else-if="e.source === 'sale'" class="fs-12 text-gray-5">service charge</div>
+                <div v-else-if="e.source !== 'subscription'" class="fs-12 text-gray-5">service charge</div>
               </td>
               <td class="text-end text-danger" data-label="PayMongo fee">{{ e.processingFeeCents ? `−${peso(e.processingFeeCents)}` : peso(0) }}</td>
               <td class="text-end fw-bold text-gray-9" data-label="Net income">{{ peso(e.netCents) }}</td>

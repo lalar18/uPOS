@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // Asks to withdraw from the store's wallet to a GCash number or a bank account. The platform
 // sends the money (through PayMongo, to a bank from its list) and the request shows as sent; until
-// then the amount is held.
-import { ref } from 'vue'
-import { getWithdrawalBanks, requestWithdrawal, type Bank, type Wallet, type WithdrawalDestination } from '@/api/store'
+// then the amount is held. Any service charge is kept out of the amount, so the dialog shows what
+// the store will receive before it asks.
+import { computed, ref } from 'vue'
+import { chargeRateLabel, payoutChargeCents } from '@/api/serviceCharge'
+import { getWallet, getWithdrawalBanks, requestWithdrawal, type Bank, type Wallet, type WithdrawalDestination } from '@/api/store'
 import AppModal from '@/components/AppModal.vue'
 import { centsToText, formatMoney, parsePeso } from '@/utils/money'
 
@@ -33,6 +35,17 @@ const error = ref('')
 const saving = ref(false)
 
 const peso = (cents: number) => formatMoney(cents, 'PHP')
+
+// The service charge rate (reloaded if it changed while the dialog was open)
+const rate = ref(props.wallet.withdrawalCharge)
+const hasCharge = computed(() => rate.value.value > 0)
+/** The amount typed in, or null while it isn't a valid one */
+const amountCents = computed(() => {
+  const cents = parsePeso(amount.value)
+  return cents === null || Number.isNaN(cents) || cents <= 0 ? null : cents
+})
+const charge = computed(() => (amountCents.value ? payoutChargeCents(rate.value, amountCents.value) : 0))
+const receive = computed(() => (amountCents.value ?? 0) - charge.value)
 
 function pick(value: WithdrawalDestination) {
   if (value === destination.value) return
@@ -69,10 +82,15 @@ async function save() {
       accountName: accountName.value,
       accountNumber: accountNumber.value,
       note: note.value,
+      serviceChargeCents: payoutChargeCents(rate.value, cents),
     })
     emit('saved', wallet)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Could not send the withdrawal request'
+    // The rate may have changed: show the current one, so asking again sends what's on screen
+    getWallet()
+      .then((current) => (rate.value = current.withdrawalCharge))
+      .catch(() => {})
   } finally {
     saving.value = false
   }
@@ -93,6 +111,25 @@ async function save() {
         <div class="mb-3">
           <label class="form-label" for="withdraw-amount">Amount (₱) <span class="text-danger">*</span></label>
           <input id="withdraw-amount" v-model="amount" type="text" inputmode="decimal" class="form-control" />
+        </div>
+
+        <!-- What the store gets once the service charge is kept out -->
+        <div class="breakdown mb-3" aria-live="polite">
+          <div class="d-flex justify-content-between gap-2">
+            <span class="text-gray-5">Withdrawal amount</span>
+            <span>{{ peso(amountCents ?? 0) }}</span>
+          </div>
+          <div class="d-flex justify-content-between gap-2">
+            <span class="text-gray-5">
+              Service charge
+              <span v-if="hasCharge" class="fs-12">({{ chargeRateLabel(rate) }})</span>
+            </span>
+            <span :class="{ 'text-danger': charge }">{{ charge ? `−${peso(charge)}` : peso(0) }}</span>
+          </div>
+          <div class="d-flex justify-content-between gap-2 total">
+            <span class="fw-semibold text-gray-9">You'll receive</span>
+            <span class="fw-bold text-gray-9">{{ peso(receive) }}</span>
+          </div>
         </div>
 
         <label class="form-label">Send to <span class="text-danger">*</span></label>
@@ -164,7 +201,7 @@ async function save() {
         </div>
         <p class="fs-12 text-gray-5 mt-3 mb-0">
           Check the name and number: they must match the account exactly, or the transfer fails. The amount is held
-          until it's sent.
+          until it's sent<template v-if="hasCharge">, and the service charge is kept out of it</template>.
         </p>
       </div>
       <div class="modal-footer">
@@ -180,5 +217,22 @@ async function save() {
   padding: 10px 12px;
   border-radius: 8px;
   background: #f9fafb;
+}
+
+.breakdown {
+  padding: 10px 12px;
+  border: 1px solid #e6eaed;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.breakdown > div + div {
+  margin-top: 4px;
+}
+
+.breakdown .total {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #c7ccd1;
 }
 </style>

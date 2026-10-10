@@ -1,5 +1,5 @@
-// Service charges on online payments (see worker/serviceCharges.ts). Stores see the charge only
-// on the payment being made; super admins set it in the US Panel.
+// Service charges on online payments and withdrawals (see worker/serviceCharges.ts). Stores see the
+// charge only on the payment or withdrawal being made; super admins set it in the US Panel.
 import { formatMoney } from '@/utils/money'
 import { readJson } from './http'
 
@@ -16,6 +16,13 @@ export function chargeCents(charge: ServiceCharge, amountCents: number): number 
   if (charge.value <= 0 || amountCents <= 0) return 0
   return charge.kind === 'fixed' ? charge.value : Math.round((amountCents * charge.value) / 10_000)
 }
+
+/**
+ * The charge kept out of a withdrawal of `amountCents`, never all of it so something is sent
+ * (keep in step with payoutChargeCents in worker/serviceCharges.ts)
+ */
+export const payoutChargeCents = (charge: Pick<ServiceCharge, 'kind' | 'value'>, amountCents: number) =>
+  Math.min(chargeCents({ ...charge, methods: [] }, amountCents), Math.max(amountCents - 1, 0))
 
 /** The rate as set, for showing beside a charge: "2.5%" or "₱15.00 flat" */
 export const chargeRateLabel = (charge: Pick<ServiceCharge, 'kind' | 'value'>) =>

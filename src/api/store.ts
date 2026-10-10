@@ -1,4 +1,5 @@
 import { readJson, sendJson } from './http'
+import type { ChargeKind } from './serviceCharge'
 
 export interface Store {
   id: number
@@ -43,7 +44,9 @@ export const storeCode = (id: number) => `STR-${String(id).padStart(5, '0')}`
 export interface StorePayout {
   id: number
   reference: string // "PO-00007"
-  amountCents: number
+  amountCents: number // out of the wallet
+  serviceChargeCents: number // kept by the platform
+  receivedCents: number // what the store got (amount less the service charge)
   method: string
   paymentReference: string | null
   note: string | null
@@ -92,7 +95,10 @@ export type WithdrawalStatus = 'pending' | 'sent' | 'rejected' | 'cancelled'
 export interface WalletWithdrawal {
   id: number
   reference: string // "WD-00003"
-  amountCents: number
+  amountCents: number // out of the wallet
+  serviceChargeCents: number // kept by the platform
+  serviceChargeRate: { kind: ChargeKind; value: number } | null // the rate when it was requested (null on older ones)
+  receiveCents: number // what's sent to the store (amount less the service charge)
   destination: WithdrawalDestination
   bankCode: string | null // from PayMongo's list of banks (null if typed in)
   bankName: string | null // bank only
@@ -122,6 +128,7 @@ export interface Wallet {
   pendingWithdrawal: WalletWithdrawal | null
   transfers: PayoutTransfer[] // through PayMongo, newest first
   transfersEnabled: boolean // withdrawals can be sent through PayMongo
+  withdrawalCharge: { kind: ChargeKind; value: number } // the service charge on a new withdrawal
   // Paid online after the sale was already settled: the customer is owed a refund
   refundsDue: {
     id: number
@@ -141,6 +148,7 @@ export interface WithdrawalInput {
   accountName: string
   accountNumber: string
   note: string
+  serviceChargeCents: number // the charge the store was shown; refused if the rate changed since
 }
 
 /** A bank or e-wallet withdrawals can be sent to */

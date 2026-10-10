@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The platform owner's income for a year: subscriptions, the service charges added to payments
-// made online through PayMongo, less what PayMongo kept. Broken down by source, plan, payment
+// made online through PayMongo and kept out of store withdrawals, less what PayMongo kept. Broken down by source, plan, payment
 // method, month and store, down to each payment it came from. Also where the charges are set.
 import { computed, ref, watch } from 'vue'
 import { paymentMethodLabel } from '@/api/sales'
@@ -64,7 +64,8 @@ const breakdown = computed(() => {
     byHand: { count: t.renewals - onlineRenewals, cents: t.subscriptionsCents - onlineSubscriptions },
     renewalCharges: { count: renewalCharged, cents: t.renewalChargesCents },
     saleCharges: { count: t.salePayments, cents: t.saleChargesCents },
-    grossCents: t.subscriptionsCents + t.renewalChargesCents + t.saleChargesCents,
+    payoutCharges: { count: t.payouts, cents: t.payoutChargesCents },
+    grossCents: t.subscriptionsCents + t.renewalChargesCents + t.saleChargesCents + t.payoutChargesCents,
     heldForStoresCents: i.sources.methods.reduce((n, m) => n + m.storeCents, 0),
   }
 })
@@ -78,9 +79,9 @@ const years = computed(() => {
 
 const peso = (cents: number) => formatMoney(cents, 'PHP')
 
-function describeCharge(charge: ServiceCharge): string {
+function describeCharge(charge: ServiceCharge, per = 'payment'): string {
   if (charge.value <= 0) return 'Off'
-  return charge.kind === 'fixed' ? `${peso(charge.value)} per payment` : `${formatPercentBp(charge.value)} of the payment`
+  return charge.kind === 'fixed' ? `${peso(charge.value)} per ${per}` : `${formatPercentBp(charge.value)} of the ${per}`
 }
 
 const summaryCards = computed(() => {
@@ -90,10 +91,10 @@ const summaryCards = computed(() => {
     { label: 'Subscriptions', value: t.subscriptionsCents, icon: 'crown', color: 'primary', note: `${t.renewals} renewal${t.renewals === 1 ? '' : 's'} paid` },
     {
       label: 'Service charges',
-      value: t.renewalChargesCents + t.saleChargesCents,
+      value: t.renewalChargesCents + t.saleChargesCents + t.payoutChargesCents,
       icon: 'receipt-tax',
       color: 'info',
-      note: `Online only · ${peso(t.renewalChargesCents)} renewals · ${peso(t.saleChargesCents)} sales`,
+      note: `${peso(t.renewalChargesCents)} renewals · ${peso(t.saleChargesCents)} sales · ${peso(t.payoutChargesCents)} withdrawals`,
     },
     { label: 'PayMongo fees', value: -t.processingFeesCents, icon: 'building-bank', color: 'danger', note: 'Kept by PayMongo' },
     { label: 'Net income', value: t.netCents, icon: 'cash', color: 'success', note: `For ${income.value!.year}` },
@@ -121,7 +122,7 @@ function onChargesSaved(saved: ServiceCharges) {
   <div class="page-header flex-wrap gap-2">
     <div class="page-title">
       <h4>Income</h4>
-      <h6>Subscriptions and service charges on online payments, less PayMongo fees</h6>
+      <h6>Subscriptions and service charges on online payments and withdrawals, less PayMongo fees</h6>
     </div>
     <div class="page-actions d-flex align-items-center gap-2">
       <select v-model.number="year" class="form-select" aria-label="Year">
@@ -153,6 +154,10 @@ function onChargesSaved(saved: ServiceCharges) {
           <div v-if="charges.sale.value > 0" class="fs-12 text-gray-5">
             {{ charges.sale.methods.map(paymentMethodLabel).join(', ') || 'No methods chosen' }}
           </div>
+        </div>
+        <div>
+          <div class="fs-12 text-gray-5">Store withdrawals</div>
+          <div class="fw-medium text-gray-9">{{ describeCharge(charges.payout, 'withdrawal') }}</div>
         </div>
       </div>
       <button type="button" class="btn btn-sm btn-outline-primary" @click="editingCharges = true">
@@ -205,8 +210,8 @@ function onChargesSaved(saved: ServiceCharges) {
               <td class="text-end">{{ peso(breakdown.byHand.cents) }}</td>
             </tr>
             <tr class="group">
-              <th colspan="2">Service charges on online payments</th>
-              <th class="text-end">{{ peso(breakdown.renewalCharges.cents + breakdown.saleCharges.cents) }}</th>
+              <th colspan="2">Service charges</th>
+              <th class="text-end">{{ peso(breakdown.renewalCharges.cents + breakdown.saleCharges.cents + breakdown.payoutCharges.cents) }}</th>
             </tr>
             <tr>
               <td class="ps-4">On renewals paid online</td>
@@ -217,6 +222,11 @@ function onChargesSaved(saved: ServiceCharges) {
               <td class="ps-4">On store sales paid online</td>
               <td class="text-end text-gray-5 fs-13">{{ plural(breakdown.saleCharges.count, 'payment') }}</td>
               <td class="text-end">{{ peso(breakdown.saleCharges.cents) }}</td>
+            </tr>
+            <tr>
+              <td class="ps-4">Kept out of store withdrawals</td>
+              <td class="text-end text-gray-5 fs-13">{{ plural(breakdown.payoutCharges.count, 'payout') }}</td>
+              <td class="text-end">{{ peso(breakdown.payoutCharges.cents) }}</td>
             </tr>
             <tr class="group">
               <th colspan="2">Total received</th>
@@ -330,6 +340,7 @@ function onChargesSaved(saved: ServiceCharges) {
                 <th class="text-end">Subscriptions</th>
                 <th class="text-end">Renewal charges</th>
                 <th class="text-end">Sale charges</th>
+                <th class="text-end">Withdrawal charges</th>
                 <th class="text-end">PayMongo fees</th>
                 <th class="text-end">Net income</th>
                 <th></th>
@@ -347,6 +358,10 @@ function onChargesSaved(saved: ServiceCharges) {
                   {{ peso(m.saleChargesCents) }}
                   <div class="fs-12 text-gray-5">{{ m.salePayments }} payment{{ m.salePayments === 1 ? '' : 's' }}</div>
                 </td>
+                <td class="text-end" data-label="Withdrawal charges">
+                  {{ peso(m.payoutChargesCents) }}
+                  <div class="fs-12 text-gray-5">{{ plural(m.payouts, 'payout') }}</div>
+                </td>
                 <td class="text-end text-danger" data-label="PayMongo fees">{{ m.processingFeesCents ? `−${peso(m.processingFeesCents)}` : peso(0) }}</td>
                 <td class="text-end fw-bold text-gray-9" data-label="Net income">{{ peso(m.netCents) }}</td>
                 <td class="text-end stack-corner">
@@ -360,6 +375,7 @@ function onChargesSaved(saved: ServiceCharges) {
                 <td class="text-end" data-label="Subscriptions">{{ peso(income.totals.subscriptionsCents) }}</td>
                 <td class="text-end" data-label="Renewal charges">{{ peso(income.totals.renewalChargesCents) }}</td>
                 <td class="text-end" data-label="Sale charges">{{ peso(income.totals.saleChargesCents) }}</td>
+                <td class="text-end" data-label="Withdrawal charges">{{ peso(income.totals.payoutChargesCents) }}</td>
                 <td class="text-end text-danger" data-label="PayMongo fees">
                   {{ income.totals.processingFeesCents ? `−${peso(income.totals.processingFeesCents)}` : peso(0) }}
                 </td>
@@ -384,6 +400,7 @@ function onChargesSaved(saved: ServiceCharges) {
                 <th class="text-end">Subscriptions</th>
                 <th class="text-end">Renewal charges</th>
                 <th class="text-end">Sale charges</th>
+                <th class="text-end">Withdrawal charges</th>
                 <th class="text-end">PayMongo fees</th>
                 <th class="text-end">Net income</th>
                 <th></th>
@@ -398,6 +415,7 @@ function onChargesSaved(saved: ServiceCharges) {
                 <td class="text-end" data-label="Subscriptions">{{ peso(s.subscriptionsCents) }}</td>
                 <td class="text-end" data-label="Renewal charges">{{ peso(s.renewalChargesCents) }}</td>
                 <td class="text-end" data-label="Sale charges">{{ peso(s.saleChargesCents) }}</td>
+                <td class="text-end" data-label="Withdrawal charges">{{ peso(s.payoutChargesCents) }}</td>
                 <td class="text-end text-danger" data-label="PayMongo fees">{{ s.processingFeesCents ? `−${peso(s.processingFeesCents)}` : peso(0) }}</td>
                 <td class="text-end fw-bold text-gray-9" data-label="Net income">{{ peso(s.netCents) }}</td>
                 <td class="text-end stack-corner">

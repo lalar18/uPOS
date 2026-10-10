@@ -69,7 +69,7 @@ export const legalDocs: Record<LegalDocId, LegalDoc> = {
         heading: '5. Online payments from your customers',
         paragraphs: [
           'If your store accepts online payments (such as GCash, Maya, card or QR Ph) through the Service, those payments are processed by PayMongo and collected into our PayMongo account on your behalf. A service charge, shown to your customer before they pay, may be added on top of the sale amount; it is not part of your sale and is not paid out to you.',
-          'The amount of your sales paid online is held in your store\'s wallet until you withdraw it. Withdrawals are sent to the GCash number or bank account you give us. You are responsible for giving correct payout details; we are not liable for money sent to details you entered incorrectly. We may hold or refuse a withdrawal that we reasonably believe is linked to fraud, a chargeback or a breach of these Terms.',
+          'The amount of your sales paid online is held in your store\'s wallet until you withdraw it. Withdrawals are sent to the GCash number or bank account you give us. A service charge may be kept out of each withdrawal; it is shown, with the amount you will receive, before you ask for the withdrawal. You are responsible for giving correct payout details; we are not liable for money sent to details you entered incorrectly. We may hold or refuse a withdrawal that we reasonably believe is linked to fraud, a chargeback or a breach of these Terms.',
           'You remain the seller of the goods you sell. You are responsible for your products, prices, receipts, taxes, customer service, and returns and refunds to your customers.',
         ],
       },

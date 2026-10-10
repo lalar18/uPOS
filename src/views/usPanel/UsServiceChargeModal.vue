@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Sets the service charges: on renewals paid online, and on store sale payments by online methods.
-// Each is a fixed amount or a percentage of the payment.
+// Sets the service charges: on renewals paid online, on store sale payments by online methods, and
+// on store withdrawals (kept out of the amount sent). Each is a fixed amount or a percentage.
 import { ref } from 'vue'
 import { PAYMENT_METHODS, paymentMethodLabel } from '@/api/sales'
 import type { ChargeKind, ServiceCharge } from '@/api/serviceCharge'
@@ -29,6 +29,7 @@ const toForm = (charge: ServiceCharge): ChargeForm => ({
 
 const renewal = ref(toForm(props.charges.renewal))
 const sale = ref(toForm(props.charges.sale))
+const payout = ref(toForm(props.charges.payout))
 const error = ref('')
 const saving = ref(false)
 
@@ -52,10 +53,19 @@ async function save() {
   if (saleCharge.value > 0 && saleCharge.methods.length === 0) {
     return void (error.value = 'Choose the payment methods the sale charge applies to.')
   }
+  const payoutCharge = readForm(payout.value, 'withdrawal')
+  if (typeof payoutCharge === 'string') return void (error.value = payoutCharge)
 
   saving.value = true
   try {
-    emit('saved', await updateServiceCharges({ renewal: { ...renewalCharge, methods: [] }, sale: saleCharge }))
+    emit(
+      'saved',
+      await updateServiceCharges({
+        renewal: { ...renewalCharge, methods: [] },
+        sale: saleCharge,
+        payout: { ...payoutCharge, methods: [] },
+      }),
+    )
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Could not save the service charges'
   } finally {
@@ -73,6 +83,7 @@ async function save() {
         <template v-for="section in [
           { key: 'renewal', form: renewal, title: 'Subscription renewals', hint: 'Added to a renewal paid online through PayMongo. Rounded to whole pesos.' },
           { key: 'sale', form: sale, title: 'Store sale payments', hint: 'Added on top of a sale payment made with one of the methods below. The cashier collects it from the customer.' },
+          { key: 'payout', form: payout, title: 'Store withdrawals', hint: 'Kept out of each withdrawal from a store\'s wallet; the store receives the rest. Shown to the store before it asks.' },
         ]" :key="section.key">
           <h6 class="mb-1">{{ section.title }}</h6>
           <p class="fs-13 text-gray-5 mb-2">{{ section.hint }}</p>
@@ -104,12 +115,12 @@ async function save() {
               <span class="form-check-label">{{ paymentMethodLabel(m) }}</span>
             </label>
           </div>
-          <hr v-if="section.key === 'renewal'" class="my-3" />
+          <hr v-if="section.key !== 'payout'" class="my-3" />
         </template>
 
         <p class="fs-13 text-gray-5 mt-3 mb-0">
-          Leave a charge at 0 to turn it off. Stores see the charge only on the payment they're making, never their
-          totals.
+          Leave a charge at 0 to turn it off. Stores see the charge only on the payment or withdrawal they're making,
+          never their totals.
         </p>
       </div>
       <div class="modal-footer">

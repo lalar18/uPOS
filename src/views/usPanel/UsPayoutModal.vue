@@ -5,6 +5,7 @@
 import { computed, ref } from 'vue'
 import { parseDbDate } from '@/api/http'
 import { PAYMENT_METHODS, paymentMethodLabel } from '@/api/sales'
+import { chargeRateLabel } from '@/api/serviceCharge'
 import {
   describeDestination,
   TRANSFER_STATUS,
@@ -76,7 +77,7 @@ async function checkStatus() {
     const result = await getStorePayouts(props.store.id)
     const w = result.withdrawals.find((x) => x.id === id)
     if (w?.status === 'sent') {
-      emit('saved', `${peso(w.amountCents)} sent to ${props.store.name} through PayMongo (${w.transfer?.reference}).`)
+      emit('saved', `${peso(w.receiveCents)} sent to ${props.store.name} through PayMongo (${w.transfer?.reference}).`)
       return
     }
     show(result)
@@ -98,7 +99,7 @@ async function sendThroughPaymongo(id: number) {
     const w = result.withdrawals.find((x) => x.id === id)
     const transfer = w?.transfer
     if (w?.status === 'sent') {
-      emit('saved', `${peso(w.amountCents)} sent to ${props.store.name} through PayMongo (${transfer?.reference}).`)
+      emit('saved', `${peso(w.receiveCents)} sent to ${props.store.name} through PayMongo (${transfer?.reference}).`)
     } else if (transfer?.status === 'pending') {
       emit(
         'saved',
@@ -156,7 +157,7 @@ async function save() {
     if (!checkDate()) return
     await run(
       () => sendWithdrawal(request.id, { reference: reference.value, note: note.value, paidDate: paidDate.value }),
-      `${peso(request.amountCents)} marked as sent to ${props.store.name}.`,
+      `${peso(request.receiveCents)} marked as sent to ${props.store.name}.`,
       'Could not record the withdrawal',
     )
     return
@@ -241,9 +242,22 @@ async function copy(value: string) {
           <template v-if="pending">
             <h6 class="mb-2">Withdrawal request {{ pending.reference }}</h6>
             <div class="request mb-3">
+              <template v-if="pending.serviceChargeCents">
+                <div class="d-flex justify-content-between gap-2">
+                  <span class="text-gray-5">Withdrawal amount</span>
+                  <span class="fw-medium">{{ peso(pending.amountCents) }}</span>
+                </div>
+                <div class="d-flex justify-content-between gap-2">
+                  <span class="text-gray-5">
+                    Service charge
+                    <span v-if="pending.serviceChargeRate" class="fs-12">({{ chargeRateLabel(pending.serviceChargeRate) }})</span>
+                  </span>
+                  <span class="fw-medium text-success">{{ peso(pending.serviceChargeCents) }}</span>
+                </div>
+              </template>
               <div class="d-flex justify-content-between gap-2 mb-2">
-                <span class="text-gray-5">Amount</span>
-                <span class="fs-18 fw-bold text-gray-9">{{ peso(pending.amountCents) }}</span>
+                <span class="text-gray-5">{{ pending.serviceChargeCents ? 'Amount to send' : 'Amount' }}</span>
+                <span class="fs-18 fw-bold text-gray-9">{{ peso(pending.receiveCents) }}</span>
               </div>
               <div class="d-flex justify-content-between gap-2">
                 <span class="text-gray-5">Send to</span>
@@ -337,8 +351,11 @@ async function copy(value: string) {
                   </select>
                 </div>
                 <p class="fs-14 text-gray-5 mb-0">
-                  {{ peso(pending.amountCents) }} goes from the platform's PayMongo Wallet to the account above by
-                  {{ pending.amountCents > INSTAPAY_MAX_CENTS ? 'PESONet (next banking cycle)' : 'InstaPay (usually instant)' }}.
+                  {{ peso(pending.receiveCents) }} goes from the platform's PayMongo Wallet to the account above by
+                  {{ pending.receiveCents > INSTAPAY_MAX_CENTS ? 'PESONet (next banking cycle)' : 'InstaPay (usually instant)' }}.
+                  <template v-if="pending.serviceChargeCents">
+                    The {{ peso(pending.serviceChargeCents) }} service charge stays with the platform.
+                  </template>
                   PayMongo charges the platform its transfer fee. The payout is recorded with its reference numbers once PayMongo
                   confirms it.
                 </p>
@@ -348,6 +365,10 @@ async function copy(value: string) {
                 <textarea id="payout-reject-reason" v-model="rejectReason" rows="2" maxlength="500" class="form-control"></textarea>
               </div>
               <div v-else class="row g-3 mb-3">
+                <p v-if="pending.serviceChargeCents" class="col-12 fs-14 text-gray-5 mb-0">
+                  Send the store {{ peso(pending.receiveCents) }}: the withdrawal less its
+                  {{ peso(pending.serviceChargeCents) }} service charge.
+                </p>
                 <div class="col-sm-6">
                   <label class="form-label" for="payout-reference">Transfer reference no.</label>
                   <input id="payout-reference" v-model="reference" type="text" maxlength="50" class="form-control" />
@@ -412,7 +433,12 @@ async function copy(value: string) {
                   </div>
                   <div v-if="w.rejectReason" class="fs-12 text-danger text-break">{{ w.rejectReason }}</div>
                 </div>
-                <div class="fw-semibold text-nowrap">{{ peso(w.amountCents) }}</div>
+                <div class="text-end text-nowrap">
+                  <div class="fw-semibold">{{ peso(w.amountCents) }}</div>
+                  <div v-if="w.serviceChargeCents" class="fs-12 text-gray-5">
+                    {{ peso(w.serviceChargeCents) }} charge · send {{ peso(w.receiveCents) }}
+                  </div>
+                </div>
               </div>
             </div>
             <div class="col-lg-6">
@@ -429,7 +455,12 @@ async function copy(value: string) {
                   </div>
                   <div v-if="p.note" class="fs-12 text-gray-5 text-break">{{ p.note }}</div>
                 </div>
-                <div class="fw-semibold text-nowrap">{{ peso(p.amountCents) }}</div>
+                <div class="text-end text-nowrap">
+                  <div class="fw-semibold">{{ peso(p.amountCents) }}</div>
+                  <div v-if="p.serviceChargeCents" class="fs-12 text-gray-5">
+                    {{ peso(p.serviceChargeCents) }} charge · sent {{ peso(p.receivedCents) }}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -470,7 +501,7 @@ async function copy(value: string) {
         >
           <template v-if="saving">{{ mode === 'paymongo' ? 'Sending…' : 'Saving…' }}</template>
           <template v-else>
-            {{ mode === 'paymongo' ? `Send ${peso(pending.amountCents)}` : mode === 'reject' ? 'Reject Request' : 'Mark as Sent' }}
+            {{ mode === 'paymongo' ? `Send ${peso(pending.receiveCents)}` : mode === 'reject' ? 'Reject Request' : 'Mark as Sent' }}
           </template>
         </button>
         <button v-else-if="summary && summary.availableCents > 0" type="submit" class="btn btn-primary" :disabled="saving">

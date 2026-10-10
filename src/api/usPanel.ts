@@ -191,7 +191,13 @@ export interface StoreBalance {
   refundsDue: number
   lastPayoutDate: string | null
   // The withdrawal the store asked for, waiting to be sent (sending: through PayMongo right now)
-  pendingWithdrawal: { id: number; amountCents: number; createdAt: string; sending: boolean } | null
+  pendingWithdrawal: {
+    id: number
+    amountCents: number
+    serviceChargeCents: number // kept out of it; the store receives the rest
+    createdAt: string
+    sending: boolean
+  } | null
 }
 
 /** The money sent: its reference, date and note */
@@ -260,10 +266,12 @@ export interface IncomeTotals {
   subscriptionsCents: number // renewals received, less their service charges
   renewalChargesCents: number // service charges on renewals paid online
   saleChargesCents: number // service charges on sale payments made online through PayMongo
+  payoutChargesCents: number // service charges kept out of store withdrawals
   processingFeesCents: number // kept by PayMongo
   netCents: number // subscriptions + service charges - PayMongo fees
   renewals: number
   salePayments: number
+  payouts: number // payouts a service charge was kept out of
 }
 
 export interface Income {
@@ -298,7 +306,7 @@ export interface IncomeSources {
   }[]
 }
 
-export type IncomeSource = 'subscription' | 'sale'
+export type IncomeSource = 'subscription' | 'sale' | 'payout'
 
 /** One payment the income came from */
 export interface IncomeEntry {
@@ -312,9 +320,10 @@ export interface IncomeEntry {
   planName: string | null // subscriptions
   months: number | null
   saleReference: string | null // sales: "INV-00042"
+  payoutReference: string | null // payouts: "PO-00007"
   reference: string | null // payment reference
-  receivedCents: number
-  storeCents: number // the store's part (a sale's amount), not income
+  receivedCents: number // for a payout: what left the store's wallet
+  storeCents: number // the store's part (a sale's amount, or what a payout sent), not income
   subscriptionCents: number
   chargeCents: number
   processingFeeCents: number
@@ -348,6 +357,7 @@ export async function getIncomeEntries(filter: IncomeEntryFilter): Promise<Incom
 export interface ServiceCharges {
   renewal: ServiceCharge
   sale: ServiceCharge
+  payout: ServiceCharge // kept out of store withdrawals
 }
 
 export const getIncome = async (year: number): Promise<Income> => readJson(await fetch(`${BASE}/income?year=${year}`))

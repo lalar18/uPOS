@@ -29,6 +29,7 @@ interface StoreBalanceRow {
   last_payout: string | null
   pending_id: number | null
   pending_cents: number | null
+  pending_charge_cents: number | null
   pending_at: string | null
   pending_sending: number | null
 }
@@ -40,7 +41,8 @@ async function listBalances(db: D1Database, env: PaymongoEnv): Promise<Response>
       `SELECT st.id, st.name,
          COALESCE(c.collected, 0) AS collected, COALESCE(p.paid_out, 0) AS paid_out,
          (SELECT COUNT(*) FROM sale_checkouts WHERE store_id = st.id AND status = 'refund_due') AS refunds_due,
-         p.last_payout, w.id AS pending_id, w.amount_cents AS pending_cents, w.created_at AS pending_at,
+         p.last_payout, w.id AS pending_id, w.amount_cents AS pending_cents,
+         w.service_charge_cents AS pending_charge_cents, w.created_at AS pending_at,
          EXISTS (SELECT 1 FROM payout_transfers WHERE withdrawal_id = w.id AND status = 'pending') AS pending_sending
        FROM stores st
        LEFT JOIN (SELECT store_id, SUM(amount_cents) AS collected FROM sale_payments
@@ -64,7 +66,13 @@ async function listBalances(db: D1Database, env: PaymongoEnv): Promise<Response>
     lastPayoutDate: r.last_payout,
     // The withdrawal the store asked for, waiting to be sent
     pendingWithdrawal: r.pending_id
-      ? { id: r.pending_id, amountCents: r.pending_cents!, createdAt: r.pending_at!, sending: !!r.pending_sending }
+      ? {
+          id: r.pending_id,
+          amountCents: r.pending_cents!,
+          serviceChargeCents: r.pending_charge_cents!,
+          createdAt: r.pending_at!,
+          sending: !!r.pending_sending,
+        }
       : null,
   }))
   const sum = (field: 'collectedCents' | 'paidOutCents' | 'balanceCents' | 'refundsDue') =>
@@ -122,7 +130,10 @@ async function recordPayout(db: D1Database, env: PaymongoEnv, request: Request, 
   return Response.json(await getWallet(db, env, storeId), { status: 201 })
 }
 
-/** Records the money sent for a pending withdrawal as a payout, and marks the request sent. */
+/**
+ * Records the money sent for a pending withdrawal as a payout, and marks the request sent. The
+ * super admin sent the withdrawal less its service charge, which the payout records as kept.
+ */
 async function sendWithdrawal(db: D1Database, env: PaymongoEnv, request: Request, id: number, admin: SuperAdmin): Promise<Response> {
   const body = await request.json<Record<string, unknown>>().catch(() => null)
   if (!body || typeof body !== 'object') return error('Invalid request body', 400)
@@ -143,8 +154,9 @@ async function sendWithdrawal(db: D1Database, env: PaymongoEnv, request: Request
   const [inserted] = await db.batch([
     db
       .prepare(
-        `INSERT INTO store_payouts (store_id, amount_cents, method, reference, note, paid_date, created_by, withdrawal_id)
-         SELECT w.store_id, w.amount_cents, CASE w.destination WHEN 'gcash' THEN 'gcash' ELSE 'bank_transfer' END,
+        `INSERT INTO store_payouts (store_id, amount_cents, service_charge_cents, method, reference, note, paid_date,
+           created_by, withdrawal_id)
+         SELECT w.store_id, w.amount_cents, w.service_charge_cents, CASE w.destination WHEN 'gcash' THEN 'gcash' ELSE 'bank_transfer' END,
            ?2, ?3, ?4, ?5, w.id
          FROM wallet_withdrawals w
          WHERE w.id = ?1 AND w.status = 'pending' AND w.amount_cents <= ${WALLET_BALANCE_SQL.replaceAll('?1', 'w.store_id')}

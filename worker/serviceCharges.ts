@@ -1,5 +1,6 @@
-// Service charges: the platform owner's fees on online payments (see migration 0023).
-// Super admins set them in the US Panel; stores only see the charge on the payment they're making.
+// Service charges: the platform owner's fees on online payments and on withdrawals (see migrations
+// 0023 and 0031). Super admins set them in the US Panel; stores only see the charge on the payment
+// or withdrawal they're making.
 //
 //   GET /api/online-payment-charge -> { kind, value, methods, checkout }  (store users; the sale charge, for the payment
 //                                     dialogs; checkout: whether sales can be paid online, see saleCheckouts.ts)
@@ -17,6 +18,7 @@ export interface ServiceCharge {
 export interface ServiceCharges {
   renewal: ServiceCharge
   sale: ServiceCharge
+  payout: ServiceCharge // kept out of a store's withdrawal (storePayouts.ts)
 }
 
 /** Methods a sale charge can apply to: every one but cash */
@@ -34,12 +36,19 @@ export function chargeCents(charge: ServiceCharge, amountCents: number): number 
 export const renewalChargePesos = (charge: ServiceCharge, pesos: number) =>
   Math.round(chargeCents(charge, pesos * 100) / 100)
 
+/**
+ * The charge kept out of a withdrawal of `amountCents`, never all of it so something is sent
+ * (keep in step with payoutChargeCents in src/api/serviceCharge.ts)
+ */
+export const payoutChargeCents = (charge: ServiceCharge, amountCents: number) =>
+  Math.min(chargeCents(charge, amountCents), Math.max(amountCents - 1, 0))
+
 /** The charge on a sale payment by `method` */
 export const saleChargeCents = (charge: ServiceCharge, method: string, amountCents: number) =>
   charge.methods.includes(method) ? chargeCents(charge, amountCents) : 0
 
 interface ChargeRow {
-  id: 'renewal' | 'sale'
+  id: keyof ServiceCharges
   kind: ChargeKind
   value: number
   methods: string
@@ -58,7 +67,7 @@ const fromRow = (row: ChargeRow): ServiceCharge => ({ kind: row.kind, value: row
 
 export async function getServiceCharges(db: D1Database): Promise<ServiceCharges> {
   const { results } = await db.prepare('SELECT id, kind, value, methods FROM service_charges').all<ChargeRow>()
-  const charges: ServiceCharges = { renewal: NO_CHARGE, sale: NO_CHARGE }
+  const charges: ServiceCharges = { renewal: NO_CHARGE, sale: NO_CHARGE, payout: NO_CHARGE }
   for (const row of results) charges[row.id] = fromRow(row)
   return charges
 }

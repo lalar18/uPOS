@@ -5,9 +5,14 @@
 // sends it through PayMongo (payoutTransfers.ts) or by hand and marks it sent, which records the
 // payout (usPanel/payouts.ts). See migrations 0025 and 0030.
 //
+// A withdrawal may carry a service charge (set in the US Panel, migration 0031), fixed when it's
+// requested: the whole amount leaves the wallet, the platform keeps the charge, and the store
+// receives the rest. The payout records the same split.
+//
 //   GET    /api/wallet                    -> Wallet   (store admins only)
 //   GET    /api/wallet/banks              -> { banks: { code, name }[] | null }  (null: type the bank name)
-//   POST   /api/wallet/withdrawals        { amountCents, destination, bankCode, bankName, accountName, accountNumber, note } -> Wallet (201)
+//   POST   /api/wallet/withdrawals        { amountCents, destination, bankCode, bankName, accountName, accountNumber, note,
+//                                           serviceChargeCents? (the charge the store was shown) } -> Wallet (201)
 //   DELETE /api/wallet/withdrawals/:id    -> Wallet   (cancels a pending request)
 
 import { cleanNote, cleanText, error, formatReference, isCents } from './documents'
@@ -22,6 +27,7 @@ import {
   type PublicTransfer,
   type TransferRow,
 } from './payoutTransfers'
+import { getServiceCharge, payoutChargeCents, type ChargeKind } from './serviceCharges'
 import type { SessionUser } from './session'
 
 const MAX_SHOWN = 20
@@ -37,6 +43,7 @@ export const PENDING_WITHDRAWAL_SQL = `(SELECT COALESCE(SUM(amount_cents), 0) FR
 interface PayoutRow {
   id: number
   amount_cents: number
+  service_charge_cents: number
   method: string
   reference: string | null
   note: string | null
@@ -51,7 +58,9 @@ interface PayoutRow {
 const publicPayout = (row: PayoutRow) => ({
   id: row.id,
   reference: formatReference('PO', row.id),
-  amountCents: row.amount_cents,
+  amountCents: row.amount_cents, // out of the wallet
+  serviceChargeCents: row.service_charge_cents, // kept by the platform
+  receivedCents: row.amount_cents - row.service_charge_cents, // what the store got
   method: row.method,
   paymentReference: row.reference,
   note: row.note,
@@ -67,6 +76,9 @@ const publicPayout = (row: PayoutRow) => ({
 interface WithdrawalRow {
   id: number
   amount_cents: number
+  service_charge_cents: number
+  service_charge_kind: ChargeKind | null // the rate when it was requested (null on older ones)
+  service_charge_value: number | null
   destination: 'gcash' | 'bank'
   bank_code: string | null
   bank_name: string | null
@@ -81,7 +93,8 @@ interface WithdrawalRow {
   reviewed_at: string | null
 }
 
-const WITHDRAWAL_COLUMNS = `w.id, w.amount_cents, w.destination, w.bank_code, w.bank_name, w.account_name, w.account_number,
+const WITHDRAWAL_COLUMNS = `w.id, w.amount_cents, w.service_charge_cents, w.service_charge_kind, w.service_charge_value,
+  w.destination, w.bank_code, w.bank_name, w.account_name, w.account_number,
   w.note, w.status, (SELECT id FROM store_payouts WHERE withdrawal_id = w.id) AS payout_id, w.reject_reason,
   w.requested_by_name, w.created_at, w.reviewed_at`
 
@@ -90,7 +103,13 @@ const publicWithdrawal = (row: WithdrawalRow, transfers: PublicTransfer[]) => {
   return {
     id: row.id,
     reference: formatReference('WD', row.id),
-    amountCents: row.amount_cents,
+    amountCents: row.amount_cents, // out of the wallet
+    serviceChargeCents: row.service_charge_cents, // kept by the platform
+    serviceChargeRate:
+      row.service_charge_kind && row.service_charge_value !== null
+        ? { kind: row.service_charge_kind, value: row.service_charge_value }
+        : null,
+    receiveCents: row.amount_cents - row.service_charge_cents, // what's sent to the store
     destination: row.destination,
     bankCode: row.bank_code, // from PayMongo's list (null if typed in)
     bankName: row.bank_name,
@@ -115,6 +134,7 @@ const publicWithdrawal = (row: WithdrawalRow, transfers: PublicTransfer[]) => {
  */
 export async function getWallet(db: D1Database, env: PaymongoEnv, storeId: number) {
   await refreshPendingTransfers(db, env, storeId)
+  const charge = await getServiceCharge(db, 'payout')
   const [totals, payouts, withdrawals, refunds, transfers] = await db.batch<unknown>([
     db
       .prepare(
@@ -128,7 +148,7 @@ export async function getWallet(db: D1Database, env: PaymongoEnv, storeId: numbe
       .bind(storeId),
     db
       .prepare(
-        `SELECT p.id, p.amount_cents, p.method, p.reference, p.note, p.paid_date, sa.full_name AS created_by_name,
+        `SELECT p.id, p.amount_cents, p.service_charge_cents, p.method, p.reference, p.note, p.paid_date, sa.full_name AS created_by_name,
            p.created_at, t.reference_number AS transfer_reference, t.transfer_id, t.provider AS transfer_provider
          FROM store_payouts p
          LEFT JOIN super_admins sa ON sa.id = p.created_by
@@ -170,6 +190,7 @@ export async function getWallet(db: D1Database, env: PaymongoEnv, storeId: numbe
     pendingWithdrawal: requests.find((w) => w.status === 'pending') ?? null,
     transfers: sent, // through PayMongo, newest first, whatever happened to them
     transfersEnabled: transfersEnabled(env), // withdrawals can be sent through PayMongo
+    withdrawalCharge: { kind: charge.kind, value: charge.value }, // the service charge on a new withdrawal
     // Online payments made after the sale was already settled: the customer is owed a refund
     refundsDue: (
       refunds!.results as {
@@ -241,12 +262,24 @@ async function requestWithdrawal(db: D1Database, env: PaymongoEnv, request: Requ
   const note = cleanNote(body.note)
   if (note === undefined) return error('Note is too long', 400)
 
+  // The service charge kept out of it, at today's rate. The store saw a charge before asking: if
+  // the rate changed since, it's told the new one instead of getting less than it was shown.
+  const charge = await getServiceCharge(db, 'payout')
+  const chargeCents = payoutChargeCents(charge, body.amountCents)
+  if (isCents(body.serviceChargeCents) && body.serviceChargeCents !== chargeCents) {
+    return error(
+      `The service charge on this withdrawal is now ₱${(chargeCents / 100).toFixed(2)}. Check the amount you'll receive, then ask again.`,
+      409,
+    )
+  }
+
   // Inserted only while it fits the balance; the pending index allows one request at a time
   const result = await db
     .prepare(
       `INSERT INTO wallet_withdrawals (store_id, amount_cents, destination, bank_code, bank_name, account_name,
-         account_number, note, requested_by, requested_by_name)
-       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10
+         account_number, note, requested_by, requested_by_name, service_charge_cents, service_charge_kind,
+         service_charge_value)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13
        WHERE ?2 <= ${WALLET_BALANCE_SQL}
        ON CONFLICT DO NOTHING`,
     )
@@ -261,6 +294,9 @@ async function requestWithdrawal(db: D1Database, env: PaymongoEnv, request: Requ
       note,
       user.id,
       user.full_name,
+      chargeCents,
+      charge.kind,
+      charge.value,
     )
     .run()
   if (!result.meta.changes) {

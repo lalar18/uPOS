@@ -5,6 +5,7 @@
 import { computed, ref } from 'vue'
 import { parseDbDate } from '@/api/http'
 import { paymentMethodLabel } from '@/api/sales'
+import { chargeRateLabel } from '@/api/serviceCharge'
 import {
   cancelWithdrawal,
   describeDestination,
@@ -45,7 +46,9 @@ const formatDate = (value: string) => dateFormat.format(parseDbDate(value))
 function onRequested(value: Wallet) {
   wallet.value = value
   withdrawing.value = false
-  notice.value = `Withdrawal of ${peso(value.pendingWithdrawalCents)} requested. You'll see it here once it's sent.`
+  const pending = value.pendingWithdrawal
+  const receive = pending?.serviceChargeCents ? ` (you'll receive ${peso(pending.receiveCents)})` : ''
+  notice.value = `Withdrawal of ${peso(value.pendingWithdrawalCents)}${receive} requested. You'll see it here once it's sent.`
 }
 
 async function cancelPending() {
@@ -89,6 +92,9 @@ async function cancelPending() {
         <p class="fs-14 text-gray-5">
           Sales your customers pay online (card, GCash, Maya, QR Ph) go to your wallet. Service charges aren't included. Withdraw
           to your GCash or bank account any time.
+          <template v-if="wallet.withdrawalCharge.value > 0">
+            A {{ chargeRateLabel(wallet.withdrawalCharge) }} service charge is kept out of each withdrawal.
+          </template>
         </p>
 
         <div class="row g-2 mb-3 text-center">
@@ -131,6 +137,10 @@ async function cancelPending() {
             {{ peso(wallet.pendingWithdrawal.amountCents) }} to {{ describeDestination(wallet.pendingWithdrawal) }}
             ({{ wallet.pendingWithdrawal.accountName }}), requested {{ formatDate(wallet.pendingWithdrawal.createdAt) }},
             {{ wallet.pendingWithdrawal.sending ? 'is being sent to you now.' : 'is waiting to be sent.' }}
+            <div v-if="wallet.pendingWithdrawal.serviceChargeCents" class="fs-12">
+              You'll receive {{ peso(wallet.pendingWithdrawal.receiveCents) }} after the
+              {{ peso(wallet.pendingWithdrawal.serviceChargeCents) }} service charge.
+            </div>
             <div v-if="wallet.pendingWithdrawal.sending && wallet.pendingWithdrawal.transfer" class="fs-12">
               Ref {{ wallet.pendingWithdrawal.transfer.reference }}
             </div>
@@ -174,7 +184,12 @@ async function cancelPending() {
                 </div>
                 <div v-if="w.rejectReason" class="fs-12 text-danger text-break">{{ w.rejectReason }}</div>
               </div>
-              <div class="fw-semibold text-nowrap">{{ peso(w.amountCents) }}</div>
+              <div class="text-end text-nowrap">
+                <div class="fw-semibold">{{ peso(w.amountCents) }}</div>
+                <div v-if="w.serviceChargeCents" class="fs-12 text-gray-5">
+                  −{{ peso(w.serviceChargeCents) }} charge · get {{ peso(w.receiveCents) }}
+                </div>
+              </div>
             </div>
           </div>
           <div class="col-lg-6">
@@ -190,7 +205,12 @@ async function cancelPending() {
                   {{ transferProviderLabel(p.transfer.provider) }} through PayMongo · {{ p.transfer.reference }}
                 </div>
               </div>
-              <div class="fw-semibold text-nowrap">{{ peso(p.amountCents) }}</div>
+              <div class="text-end text-nowrap">
+                <div class="fw-semibold">{{ peso(p.receivedCents) }}</div>
+                <div v-if="p.serviceChargeCents" class="fs-12 text-gray-5">
+                  of {{ peso(p.amountCents) }} · −{{ peso(p.serviceChargeCents) }} charge
+                </div>
+              </div>
             </div>
           </div>
         </div>
