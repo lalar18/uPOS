@@ -29,7 +29,7 @@ import {
 import { handleOnlinePaymentCharge } from './serviceCharges'
 import { handleSubcategories } from './subcategories'
 import { handleSettings } from './settings'
-import { handleOnlinePayouts } from './storePayouts'
+import { handleWallet } from './storePayouts'
 import { handleSubscription, listPlans, subscriptionExpired } from './subscription'
 import { handleSuppliers } from './suppliers'
 import { handleUnits } from './units'
@@ -279,9 +279,10 @@ async function route(request: Request, env: Env): Promise<Response> {
     return handleOnlinePaymentCharge(env.DB, request, checkoutAvailable(env, user))
   }
 
-  if (url.pathname === '/api/online-payouts') {
+  if (url.pathname.startsWith('/api/wallet')) {
     if (!user) return notLoggedIn()
-    return handleOnlinePayouts(env.DB, request, user)
+    const response = await handleWallet(env.DB, request, url, user)
+    if (response) return response
   }
 
   if (url.pathname === '/api/settings') {

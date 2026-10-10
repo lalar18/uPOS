@@ -37,7 +37,7 @@ export const updateStore = (input: StoreInput) => sendJson<Store>('PUT', '/api/s
 /** The store's code, e.g. "STR-00001": quote it to the system provider (it's the store's id). */
 export const storeCode = (id: number) => `STR-${String(id).padStart(5, '0')}`
 
-// --- Online payouts (see worker/storePayouts.ts) ---
+// --- Wallet: online sales held by the platform until withdrawn (see worker/storePayouts.ts) ---
 
 /** A payout of online sales from the platform to a store */
 export interface StorePayout {
@@ -52,13 +52,38 @@ export interface StorePayout {
   createdAt: string
 }
 
-/** Sales paid online go to the platform's PayMongo account, which pays them out to the store */
-export interface PayoutSummary {
+export type WithdrawalDestination = 'gcash' | 'bank'
+export type WithdrawalStatus = 'pending' | 'sent' | 'rejected' | 'cancelled'
+
+/** A store's request to withdraw from its wallet to a GCash number or bank account */
+export interface WalletWithdrawal {
+  id: number
+  reference: string // "WD-00003"
+  amountCents: number
+  destination: WithdrawalDestination
+  bankName: string | null // bank only
+  accountName: string
+  accountNumber: string
+  note: string | null
+  status: WithdrawalStatus
+  payout: { id: number; reference: string } | null // once sent
+  rejectReason: string | null
+  requestedBy: string
+  createdAt: string
+  reviewedAt: string | null
+}
+
+/** Sales paid online go to the platform's PayMongo account, which holds them for the store */
+export interface Wallet {
   collectedCents: number // sale amounts paid online (without service charges)
   onlinePayments: number
   paidOutCents: number
-  balanceCents: number // still owed to the store
+  balanceCents: number // held for the store
+  pendingWithdrawalCents: number
+  availableCents: number // can be withdrawn now
   payouts: StorePayout[] // newest first
+  withdrawals: WalletWithdrawal[] // newest first
+  pendingWithdrawal: WalletWithdrawal | null
   // Paid online after the sale was already settled: the customer is owed a refund
   refundsDue: {
     id: number
@@ -70,5 +95,31 @@ export interface PayoutSummary {
   }[]
 }
 
-/** Store admins only */
-export const getOnlinePayouts = async (): Promise<PayoutSummary> => readJson(await fetch('/api/online-payouts'))
+export interface WithdrawalInput {
+  amountCents: number
+  destination: WithdrawalDestination
+  bankName: string
+  accountName: string
+  accountNumber: string
+  note: string
+}
+
+export const WITHDRAWAL_STATUS: Record<WithdrawalStatus, { label: string; class: string }> = {
+  pending: { label: 'Pending', class: 'bg-warning' },
+  sent: { label: 'Sent', class: 'bg-success' },
+  rejected: { label: 'Rejected', class: 'bg-danger' },
+  cancelled: { label: 'Cancelled', class: 'bg-secondary' },
+}
+
+/** "GCash 0917 123 4567" or "BDO · 001234567890" */
+export const describeDestination = (w: Pick<WalletWithdrawal, 'destination' | 'bankName' | 'accountNumber'>) =>
+  w.destination === 'gcash'
+    ? `GCash ${w.accountNumber.replace(/^(\d{4})(\d{3})(\d{4})$/, '$1 $2 $3')}`
+    : `${w.bankName} · ${w.accountNumber}`
+
+// Store admins only
+export const getWallet = async (): Promise<Wallet> => readJson(await fetch('/api/wallet'))
+
+export const requestWithdrawal = (input: WithdrawalInput) => sendJson<Wallet>('POST', '/api/wallet/withdrawals', input)
+
+export const cancelWithdrawal = (id: number) => sendJson<Wallet>('DELETE', `/api/wallet/withdrawals/${id}`)

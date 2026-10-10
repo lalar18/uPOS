@@ -1,8 +1,7 @@
 <script setup lang="ts">
-// Payouts of online sales: sales paid online go into the platform's PayMongo account, so the
-// platform owes each store its sale amounts until they're paid out and recorded here.
+// Payouts of online sales: sales paid online go into the platform's PayMongo account and sit in
+// each store's wallet until the store asks to withdraw them; requests are sent and recorded here.
 import { computed, ref } from 'vue'
-import type { PayoutSummary } from '@/api/store'
 import { storeCode } from '@/api/store'
 import { listPayoutBalances, type StoreBalance } from '@/api/usPanel'
 import { formatMoney } from '@/utils/money'
@@ -36,12 +35,13 @@ const summaryCards = computed(() => {
     { label: 'Sales paid online', value: peso(t.collectedCents), icon: 'credit-card', color: 'primary' },
     { label: 'Paid out', value: peso(t.paidOutCents), icon: 'send', color: 'success' },
     { label: 'Owed to stores', value: peso(t.balanceCents), icon: 'building-store', color: 'danger' },
-    { label: 'Refunds to make', value: String(t.refundsDue), icon: 'receipt-refund', color: 'warning' },
+    { label: 'Withdrawals to send', value: String(t.pendingWithdrawals), icon: 'cash-banknote', color: 'warning' },
+    { label: 'Refunds to make', value: String(t.refundsDue), icon: 'receipt-refund', color: 'secondary' },
   ]
 })
 
-function onSaved(summary: PayoutSummary) {
-  notice.value = `Payout recorded for ${selected.value?.name}. ${peso(summary.balanceCents)} is still owed.`
+function onSaved(message: string) {
+  notice.value = message
   selected.value = null
   load()
 }
@@ -51,7 +51,7 @@ function onSaved(summary: PayoutSummary) {
   <div class="page-header flex-wrap gap-2">
     <div class="page-title">
       <h4>Payouts</h4>
-      <h6>Sales paid online through PayMongo, owed to each store</h6>
+      <h6>Sales paid online through PayMongo, held in each store's wallet</h6>
     </div>
     <div class="page-actions">
       <button type="button" class="btn btn-white border" title="Refresh" :disabled="loading" @click="load">
@@ -68,7 +68,7 @@ function onSaved(summary: PayoutSummary) {
 
   <template v-if="data">
     <div class="row g-3 mb-4" :class="{ 'is-loading': loading }">
-      <div v-for="card in summaryCards" :key="card.label" class="col-sm-6 col-xl-3">
+      <div v-for="card in summaryCards" :key="card.label" class="col-sm-6 col-xl">
         <div class="card h-100 mb-0">
           <div class="card-body d-flex align-items-center gap-3">
             <span class="avatar avatar-lg rounded-circle flex-shrink-0" :class="`bg-${card.color}-transparent text-${card.color}`">
@@ -102,7 +102,10 @@ function onSaved(summary: PayoutSummary) {
                 <td>
                   <RouterLink :to="{ name: 'us-store', params: { id: s.id } }" class="fw-medium text-gray-9">{{ s.name }}</RouterLink>
                   <div class="fs-12 text-gray-5">{{ storeCode(s.id) }}</div>
-                  <span v-if="s.refundsDue" class="badge bg-warning">{{ s.refundsDue }} to refund</span>
+                  <span v-if="s.pendingWithdrawal" class="badge bg-warning me-1">
+                    Withdraw {{ peso(s.pendingWithdrawal.amountCents) }}
+                  </span>
+                  <span v-if="s.refundsDue" class="badge bg-secondary">{{ s.refundsDue }} to refund</span>
                 </td>
                 <td class="text-end">{{ peso(s.collectedCents) }}</td>
                 <td class="text-end">{{ peso(s.paidOutCents) }}</td>
@@ -111,8 +114,13 @@ function onSaved(summary: PayoutSummary) {
                 </td>
                 <td>{{ s.lastPayoutDate ?? '—' }}</td>
                 <td class="text-end">
-                  <button type="button" class="btn btn-sm" :class="s.balanceCents > 0 ? 'btn-primary' : 'btn-white border'" @click="selected = s">
-                    {{ s.balanceCents > 0 ? 'Pay Out' : 'History' }}
+                  <button
+                    type="button"
+                    class="btn btn-sm text-nowrap"
+                    :class="s.pendingWithdrawal ? 'btn-primary' : 'btn-white border'"
+                    @click="selected = s"
+                  >
+                    {{ s.pendingWithdrawal ? 'Send' : s.balanceCents > 0 ? 'Pay Out' : 'History' }}
                   </button>
                 </td>
               </tr>

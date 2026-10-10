@@ -29,7 +29,11 @@ export async function handleUsPanel(db: D1Database, request: Request, url: URL):
   if (path === '/api/us-panel/overview' && request.method === 'GET') return getOverview(db)
 
   // Payouts of online sales (checked before the other store routes)
-  if (path === '/api/us-panel/payouts' || /^\/api\/us-panel\/stores\/\d+\/payouts$/.test(path)) {
+  if (
+    path === '/api/us-panel/payouts' ||
+    /^\/api\/us-panel\/stores\/\d+\/payouts$/.test(path) ||
+    /^\/api\/us-panel\/withdrawals\/\d+\/(send|reject)$/.test(path)
+  ) {
     const response = await handlePayouts(db, request, url, admin)
     if (response) return response
   }

@@ -2,7 +2,7 @@
 import { readJson, sendJson } from './http'
 import type { ServiceCharge } from './serviceCharge'
 import type { Plan } from './subscription'
-import type { PayoutSummary, StoreInput } from './store'
+import type { StoreInput, Wallet } from './store'
 
 const BASE = '/api/us-panel'
 
@@ -190,26 +190,45 @@ export interface StoreBalance {
   balanceCents: number // owed to the store
   refundsDue: number
   lastPayoutDate: string | null
+  // The withdrawal the store asked for, waiting to be sent
+  pendingWithdrawal: { id: number; amountCents: number; createdAt: string } | null
 }
 
-export interface PayoutInput {
-  amountCents: number
-  method: string
+/** The money sent: its reference, date and note */
+export interface SentInput {
   reference: string
   note: string
   paidDate: string // YYYY-MM-DD
 }
 
+export interface PayoutInput extends SentInput {
+  amountCents: number
+  method: string
+}
+
 export const listPayoutBalances = async (): Promise<{
   stores: StoreBalance[]
-  totals: { collectedCents: number; paidOutCents: number; balanceCents: number; refundsDue: number }
+  totals: {
+    collectedCents: number
+    paidOutCents: number
+    balanceCents: number
+    refundsDue: number
+    pendingWithdrawals: number
+  }
 }> => readJson(await fetch(`${BASE}/payouts`))
 
-export const getStorePayouts = async (storeId: number): Promise<PayoutSummary> =>
+/** Records the money sent for a store's withdrawal request */
+export const sendWithdrawal = (id: number, input: SentInput) =>
+  sendJson<Wallet>('POST', `${BASE}/withdrawals/${id}/send`, input)
+
+export const rejectWithdrawal = (id: number, reason: string) =>
+  sendJson<Wallet>('POST', `${BASE}/withdrawals/${id}/reject`, { reason })
+
+export const getStorePayouts = async (storeId: number): Promise<Wallet> =>
   readJson(await fetch(`${BASE}/stores/${storeId}/payouts`))
 
 export const recordPayout = (storeId: number, input: PayoutInput) =>
-  sendJson<PayoutSummary>('POST', `${BASE}/stores/${storeId}/payouts`, input)
+  sendJson<Wallet>('POST', `${BASE}/stores/${storeId}/payouts`, input)
 
 // --- Plans ---
 
