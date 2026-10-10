@@ -1,11 +1,21 @@
 <script setup lang="ts">
-// The platform owner's income for a year: subscriptions, the service charges added to online
-// payments, less what PayMongo kept; by month and by store. Also where the charges are set.
+// The platform owner's income for a year: subscriptions, the service charges added to payments
+// made online through PayMongo, less what PayMongo kept. Broken down by source, plan, payment
+// method, month and store, down to each payment it came from. Also where the charges are set.
 import { computed, ref, watch } from 'vue'
 import { paymentMethodLabel } from '@/api/sales'
 import type { ServiceCharge } from '@/api/serviceCharge'
 import { storeCode } from '@/api/store'
-import { getIncome, getServiceCharges, type Income, type ServiceCharges } from '@/api/usPanel'
+import { formatDate } from '@/api/subscription'
+import {
+  getIncome,
+  getIncomeEntries,
+  getServiceCharges,
+  type Income,
+  type IncomeEntries,
+  type IncomeSource,
+  type ServiceCharges,
+} from '@/api/usPanel'
 import { formatMoney, formatPercentBp } from '@/utils/money'
 import UsServiceChargeModal from './UsServiceChargeModal.vue'
 
@@ -38,6 +48,89 @@ async function load() {
 watch(year, load)
 load()
 
+// --- Income entries: each payment the income came from ---
+
+const entryMonth = ref<number | null>(null)
+const entryStore = ref<number | null>(null)
+const entrySource = ref<IncomeSource | null>(null)
+const entries = ref<IncomeEntries | null>(null)
+const entriesLoading = ref(false)
+const entriesError = ref('')
+let latestEntries = 0
+
+async function loadEntries(more = false) {
+  const requestId = ++latestEntries
+  entriesLoading.value = true
+  entriesError.value = ''
+  try {
+    const result = await getIncomeEntries({
+      year: year.value,
+      month: entryMonth.value,
+      store: entryStore.value,
+      source: entrySource.value,
+      offset: more ? (entries.value?.entries.length ?? 0) : 0,
+    })
+    if (requestId !== latestEntries) return
+    entries.value = more && entries.value ? { ...result, entries: [...entries.value.entries, ...result.entries] } : result
+  } catch (e) {
+    if (requestId === latestEntries) entriesError.value = e instanceof Error ? e.message : 'Could not load the income entries'
+  } finally {
+    if (requestId === latestEntries) entriesLoading.value = false
+  }
+}
+watch(year, () => {
+  entryMonth.value = null
+  entryStore.value = null
+})
+watch([year, entryMonth, entryStore, entrySource], () => loadEntries())
+loadEntries()
+
+function refresh() {
+  load()
+  loadEntries()
+}
+
+const entriesCard = ref<HTMLElement | null>(null)
+
+/** Shows the entries of a month or a store (from the tables above) */
+function showEntries(filter: { month?: string; store?: number }) {
+  entryMonth.value = filter.month ? Number(filter.month.slice(5, 7)) : null
+  entryStore.value = filter.store ?? null
+  entrySource.value = null
+  entriesCard.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+const monthNames = Array.from({ length: 12 }, (_, i) =>
+  new Date(2000, i, 1).toLocaleDateString('en-US', { month: 'long' }),
+)
+
+function entryDetail(entry: IncomeEntries['entries'][number]): string {
+  if (entry.source === 'sale') return `${entry.saleReference} · sale paid online`
+  const months = entry.months ? ` · ${entry.months} month${entry.months === 1 ? '' : 's'}` : ''
+  return `${entry.planName ?? 'Plan'}${months}`
+}
+
+// --- Where the income came from ---
+
+const breakdown = computed(() => {
+  const i = income.value
+  if (!i) return null
+  const t = i.totals
+  const onlineRenewals = i.sources.plans.reduce((n, p) => n + p.online, 0)
+  const onlineSubscriptions = i.sources.plans.reduce((n, p) => n + p.onlineCents, 0)
+  const renewalCharged = i.sources.methods.reduce((n, m) => n + m.renewals, 0)
+  return {
+    online: { count: onlineRenewals, cents: onlineSubscriptions },
+    byHand: { count: t.renewals - onlineRenewals, cents: t.subscriptionsCents - onlineSubscriptions },
+    renewalCharges: { count: renewalCharged, cents: t.renewalChargesCents },
+    saleCharges: { count: t.salePayments, cents: t.saleChargesCents },
+    grossCents: t.subscriptionsCents + t.renewalChargesCents + t.saleChargesCents,
+    heldForStoresCents: i.sources.methods.reduce((n, m) => n + m.storeCents, 0),
+  }
+})
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
 const years = computed(() => {
   const first = Math.min(income.value?.firstYear ?? thisYear, thisYear)
   return Array.from({ length: thisYear - first + 1 }, (_, i) => thisYear - i)
@@ -60,7 +153,7 @@ const summaryCards = computed(() => {
       value: t.renewalChargesCents + t.saleChargesCents,
       icon: 'receipt-tax',
       color: 'info',
-      note: `${peso(t.renewalChargesCents)} renewals · ${peso(t.saleChargesCents)} sales`,
+      note: `Online only · ${peso(t.renewalChargesCents)} renewals · ${peso(t.saleChargesCents)} sales`,
     },
     { label: 'PayMongo fees', value: -t.processingFeesCents, icon: 'building-bank', color: 'danger', note: 'Kept by PayMongo' },
     { label: 'Net income', value: t.netCents, icon: 'cash', color: 'success', note: `For ${income.value!.year}` },
@@ -88,13 +181,19 @@ function onChargesSaved(saved: ServiceCharges) {
   <div class="page-header flex-wrap gap-2">
     <div class="page-title">
       <h4>Income</h4>
-      <h6>Subscriptions and service charges, less PayMongo fees</h6>
+      <h6>Subscriptions and service charges on online payments, less PayMongo fees</h6>
     </div>
     <div class="page-actions d-flex align-items-center gap-2">
       <select v-model.number="year" class="form-select" aria-label="Year">
         <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
       </select>
-      <button type="button" class="btn btn-white border" title="Refresh" :disabled="loading" @click="load">
+      <button
+        type="button"
+        class="btn btn-white border"
+        title="Refresh"
+        :disabled="loading"
+        @click="refresh"
+      >
         <i class="ti ti-refresh"></i>
       </button>
     </div>
@@ -146,6 +245,142 @@ function onChargesSaved(saved: ServiceCharges) {
       </div>
     </div>
 
+    <!-- Where it came from -->
+    <div v-if="breakdown" class="card" :class="{ 'is-loading': loading }">
+      <div class="card-header">
+        <h5 class="card-title mb-0">Where the income came from</h5>
+      </div>
+      <div class="card-body p-0">
+        <table class="table statement mb-0">
+          <tbody>
+            <tr class="group">
+              <th colspan="2">Subscriptions</th>
+              <th class="text-end">{{ peso(income.totals.subscriptionsCents) }}</th>
+            </tr>
+            <tr>
+              <td class="ps-4">Renewals paid online (PayMongo)</td>
+              <td class="text-end text-gray-5 fs-13">{{ plural(breakdown.online.count, 'renewal') }}</td>
+              <td class="text-end">{{ peso(breakdown.online.cents) }}</td>
+            </tr>
+            <tr>
+              <td class="ps-4">Renewals recorded by a super admin (cash, bank transfer, …)</td>
+              <td class="text-end text-gray-5 fs-13">{{ plural(breakdown.byHand.count, 'renewal') }}</td>
+              <td class="text-end">{{ peso(breakdown.byHand.cents) }}</td>
+            </tr>
+            <tr class="group">
+              <th colspan="2">Service charges on online payments</th>
+              <th class="text-end">{{ peso(breakdown.renewalCharges.cents + breakdown.saleCharges.cents) }}</th>
+            </tr>
+            <tr>
+              <td class="ps-4">On renewals paid online</td>
+              <td class="text-end text-gray-5 fs-13">{{ plural(breakdown.renewalCharges.count, 'payment') }}</td>
+              <td class="text-end">{{ peso(breakdown.renewalCharges.cents) }}</td>
+            </tr>
+            <tr>
+              <td class="ps-4">On store sales paid online</td>
+              <td class="text-end text-gray-5 fs-13">{{ plural(breakdown.saleCharges.count, 'payment') }}</td>
+              <td class="text-end">{{ peso(breakdown.saleCharges.cents) }}</td>
+            </tr>
+            <tr class="group">
+              <th colspan="2">Total received</th>
+              <th class="text-end">{{ peso(breakdown.grossCents) }}</th>
+            </tr>
+            <tr>
+              <td class="ps-4">Less PayMongo fees</td>
+              <td></td>
+              <td class="text-end text-danger">
+                {{ income.totals.processingFeesCents ? `−${peso(income.totals.processingFeesCents)}` : peso(0) }}
+              </td>
+            </tr>
+            <tr class="net">
+              <th colspan="2">Net income</th>
+              <th class="text-end">{{ peso(income.totals.netCents) }}</th>
+            </tr>
+          </tbody>
+        </table>
+        <p class="fs-12 text-gray-5 px-3 py-2 mb-0 border-top">
+          Not income: {{ peso(breakdown.heldForStoresCents) }} of sales paid online belongs to the stores (held in their
+          wallets until paid out). Service charges stores add to payments they record by hand are kept by the stores, so
+          they aren't counted here.
+        </p>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+      <!-- By plan -->
+      <div class="col-lg-6">
+        <div class="card h-100 mb-0">
+          <div class="card-header"><h5 class="card-title mb-0">Subscriptions by plan</h5></div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table mb-0" :class="{ 'is-loading': loading }">
+                <thead class="thead-light">
+                  <tr>
+                    <th>Plan</th>
+                    <th class="text-end">Renewals</th>
+                    <th class="text-end">Income</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="p in income.sources.plans" :key="p.id">
+                    <td class="fw-medium text-gray-9">{{ p.name }}</td>
+                    <td class="text-end">
+                      {{ p.renewals }}
+                      <div class="fs-12 text-gray-5">{{ p.online }} online · {{ plural(p.months, 'month') }}</div>
+                    </td>
+                    <td class="text-end">{{ peso(p.cents) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-if="income.sources.plans.length === 0" class="text-center text-gray-5 py-4 fs-14">
+              No subscriptions paid in {{ income.year }}.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- By payment method -->
+      <div class="col-lg-6">
+        <div class="card h-100 mb-0">
+          <div class="card-header"><h5 class="card-title mb-0">Online payments by method</h5></div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table mb-0" :class="{ 'is-loading': loading }">
+                <thead class="thead-light">
+                  <tr>
+                    <th>Method</th>
+                    <th class="text-end">Service charges</th>
+                    <th class="text-end">PayMongo fees</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="m in income.sources.methods" :key="m.method">
+                    <td>
+                      <span class="fw-medium text-gray-9">{{ paymentMethodLabel(m.method) }}</span>
+                      <div class="fs-12 text-gray-5">
+                        {{ plural(m.renewals, 'renewal') }} · {{ plural(m.salePayments, 'sale payment') }}
+                      </div>
+                    </td>
+                    <td class="text-end">
+                      {{ peso(m.renewalChargesCents + m.saleChargesCents) }}
+                      <div class="fs-12 text-gray-5">
+                        {{ peso(m.renewalChargesCents) }} renewals · {{ peso(m.saleChargesCents) }} sales
+                      </div>
+                    </td>
+                    <td class="text-end text-danger">{{ m.processingFeesCents ? `−${peso(m.processingFeesCents)}` : peso(0) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-if="income.sources.methods.length === 0" class="text-center text-gray-5 py-4 fs-14">
+              No online payments in {{ income.year }}.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- By month -->
     <div class="card">
       <div class="card-header"><h5 class="card-title mb-0">By month</h5></div>
@@ -160,6 +395,7 @@ function onChargesSaved(saved: ServiceCharges) {
                 <th class="text-end">Sale charges</th>
                 <th class="text-end">PayMongo fees</th>
                 <th class="text-end">Net income</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -176,6 +412,9 @@ function onChargesSaved(saved: ServiceCharges) {
                 </td>
                 <td class="text-end text-danger">{{ m.processingFeesCents ? `−${peso(m.processingFeesCents)}` : peso(0) }}</td>
                 <td class="text-end fw-bold text-gray-9">{{ peso(m.netCents) }}</td>
+                <td class="text-end">
+                  <button type="button" class="btn btn-sm btn-link p-0" @click="showEntries({ month: m.month })">Entries</button>
+                </td>
               </tr>
             </tbody>
             <tfoot>
@@ -188,6 +427,7 @@ function onChargesSaved(saved: ServiceCharges) {
                   {{ income.totals.processingFeesCents ? `−${peso(income.totals.processingFeesCents)}` : peso(0) }}
                 </td>
                 <td class="text-end text-gray-9">{{ peso(income.totals.netCents) }}</td>
+                <td></td>
               </tr>
             </tfoot>
           </table>
@@ -209,6 +449,7 @@ function onChargesSaved(saved: ServiceCharges) {
                 <th class="text-end">Sale charges</th>
                 <th class="text-end">PayMongo fees</th>
                 <th class="text-end">Net income</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -222,6 +463,9 @@ function onChargesSaved(saved: ServiceCharges) {
                 <td class="text-end">{{ peso(s.saleChargesCents) }}</td>
                 <td class="text-end text-danger">{{ s.processingFeesCents ? `−${peso(s.processingFeesCents)}` : peso(0) }}</td>
                 <td class="text-end fw-bold text-gray-9">{{ peso(s.netCents) }}</td>
+                <td class="text-end">
+                  <button type="button" class="btn btn-sm btn-link p-0" @click="showEntries({ store: s.id })">Entries</button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -231,7 +475,120 @@ function onChargesSaved(saved: ServiceCharges) {
         </div>
       </div>
     </div>
+
+    <!-- Each payment the income came from -->
+    <div ref="entriesCard" class="card">
+      <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <h5 class="card-title mb-0">Income entries</h5>
+        <div class="d-flex flex-wrap gap-2">
+          <select v-model="entryMonth" class="form-select form-select-sm w-auto" aria-label="Month">
+            <option :value="null">All of {{ income.year }}</option>
+            <option v-for="(name, i) in monthNames" :key="name" :value="i + 1">{{ name }}</option>
+          </select>
+          <select v-model="entryStore" class="form-select form-select-sm w-auto" aria-label="Store">
+            <option :value="null">All stores</option>
+            <option v-for="s in income.stores" :key="s.id" :value="s.id">{{ s.name }}</option>
+          </select>
+          <select v-model="entrySource" class="form-select form-select-sm w-auto" aria-label="Source">
+            <option :value="null">All sources</option>
+            <option value="subscription">Subscriptions</option>
+            <option value="sale">Sales paid online</option>
+          </select>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div v-if="entriesError" class="alert alert-danger py-2 m-3" role="alert">{{ entriesError }}</div>
+        <div class="table-responsive">
+          <table class="table mb-0" :class="{ 'is-loading': entriesLoading }">
+            <thead class="thead-light">
+              <tr>
+                <th>Date</th>
+                <th>Store</th>
+                <th>Source</th>
+                <th>Paid with</th>
+                <th class="text-end">Received</th>
+                <th class="text-end">Income</th>
+                <th class="text-end">PayMongo fee</th>
+                <th class="text-end">Net income</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="e in entries?.entries ?? []" :key="`${e.source}-${e.id}`">
+                <td class="text-nowrap">{{ formatDate(e.at) }}</td>
+                <td>
+                  <RouterLink :to="{ name: 'us-store', params: { id: e.storeId } }" class="text-gray-9">{{ e.storeName }}</RouterLink>
+                  <div class="fs-12 text-gray-5">{{ storeCode(e.storeId) }}</div>
+                </td>
+                <td>
+                  <span class="badge" :class="e.source === 'sale' ? 'bg-info-transparent text-info' : 'bg-primary-transparent text-primary'">
+                    {{ e.source === 'sale' ? 'Sale service charge' : 'Subscription' }}
+                  </span>
+                  <div class="fs-12 text-gray-5">{{ entryDetail(e) }}</div>
+                </td>
+                <td>
+                  {{ paymentMethodLabel(e.method) }}
+                  <div class="fs-12 text-gray-5">
+                    {{ e.online ? 'Online (PayMongo)' : 'Recorded by hand' }}<template v-if="e.reference"> · {{ e.reference }}</template>
+                  </div>
+                </td>
+                <td class="text-end">
+                  {{ peso(e.receivedCents) }}
+                  <div v-if="e.storeCents" class="fs-12 text-gray-5">{{ peso(e.storeCents) }} for the store</div>
+                </td>
+                <td class="text-end">
+                  {{ peso(e.subscriptionCents + e.chargeCents) }}
+                  <div v-if="e.source === 'subscription' && e.chargeCents" class="fs-12 text-gray-5">
+                    incl. {{ peso(e.chargeCents) }} service charge
+                  </div>
+                  <div v-else-if="e.source === 'sale'" class="fs-12 text-gray-5">service charge</div>
+                </td>
+                <td class="text-end text-danger">{{ e.processingFeeCents ? `−${peso(e.processingFeeCents)}` : peso(0) }}</td>
+                <td class="text-end fw-bold text-gray-9">{{ peso(e.netCents) }}</td>
+              </tr>
+            </tbody>
+            <tfoot v-if="entries && entries.count">
+              <tr class="fw-bold">
+                <td colspan="4">Total · {{ entries.count }} {{ entries.count === 1 ? 'entry' : 'entries' }}</td>
+                <td class="text-end"></td>
+                <td class="text-end">{{ peso(entries.totals.subscriptionsCents + entries.totals.chargesCents) }}</td>
+                <td class="text-end text-danger">
+                  {{ entries.totals.processingFeesCents ? `−${peso(entries.totals.processingFeesCents)}` : peso(0) }}
+                </td>
+                <td class="text-end text-gray-9">{{ peso(entries.totals.netCents) }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <div v-if="entries && !entriesLoading && entries.count === 0" class="text-center text-gray-5 py-5">
+          <i class="ti ti-list-search fs-24 d-block mb-2"></i>No income entries for these filters.
+        </div>
+        <div v-if="entries?.hasMore" class="text-center py-3 border-top">
+          <button type="button" class="btn btn-sm btn-white border" :disabled="entriesLoading" @click="loadEntries(true)">
+            {{ entriesLoading ? 'Loading…' : `Show more (${entries.entries.length} of ${entries.count})` }}
+          </button>
+        </div>
+      </div>
+    </div>
   </template>
 
   <UsServiceChargeModal v-if="editingCharges && charges" :charges="charges" @close="editingCharges = false" @saved="onChargesSaved" />
 </template>
+
+<style scoped>
+.statement th,
+.statement td {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.statement .group th {
+  background: #f9fafb;
+  color: #212b36;
+}
+
+.statement .net th {
+  border-top: 2px solid #dbe0e6;
+  color: #212b36;
+  font-size: 16px;
+}
+</style>

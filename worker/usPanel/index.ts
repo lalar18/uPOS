@@ -59,7 +59,7 @@ export async function handleUsPanel(db: D1Database, request: Request, url: URL):
     const response = await handleRenewals(db, request, url, admin)
     if (response) return response
   }
-  if (path === '/api/us-panel/income' || path === '/api/us-panel/service-charges') {
+  if (path === '/api/us-panel/income' || path === '/api/us-panel/income/entries' || path === '/api/us-panel/service-charges') {
     const response = await handleIncome(db, request, url, admin)
     if (response) return response
   }

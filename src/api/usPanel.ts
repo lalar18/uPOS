@@ -248,7 +248,7 @@ export const updatePlan = (id: string, input: PlanInput) => sendJson<PanelPlan>(
 export interface IncomeTotals {
   subscriptionsCents: number // renewals received, less their service charges
   renewalChargesCents: number // service charges on renewals paid online
-  saleChargesCents: number // service charges stores collected on online sale payments
+  saleChargesCents: number // service charges on sale payments made online through PayMongo
   processingFeesCents: number // kept by PayMongo
   netCents: number // subscriptions + service charges - PayMongo fees
   renewals: number
@@ -260,7 +260,78 @@ export interface Income {
   firstYear: number // earliest year with income
   months: (IncomeTotals & { month: string })[] // "2026-01" .. "2026-12", in Philippine time
   stores: (IncomeTotals & { id: number; name: string })[] // highest net first
+  sources: IncomeSources
   totals: IncomeTotals
+}
+
+/** Where the year's income came from */
+export interface IncomeSources {
+  plans: {
+    id: string
+    name: string
+    renewals: number
+    months: number
+    cents: number // subscription income
+    online: number // renewals paid online
+    onlineCents: number
+  }[]
+  /** Payments made online through PayMongo, by method */
+  methods: {
+    method: string
+    renewals: number
+    renewalChargesCents: number
+    salePayments: number
+    saleChargesCents: number
+    processingFeesCents: number
+    storeCents: number // sale amounts held for the stores (not income)
+  }[]
+}
+
+export type IncomeSource = 'subscription' | 'sale'
+
+/** One payment the income came from */
+export interface IncomeEntry {
+  source: IncomeSource
+  id: number
+  storeId: number
+  storeName: string
+  at: string
+  method: string
+  online: boolean // paid through PayMongo
+  planName: string | null // subscriptions
+  months: number | null
+  saleReference: string | null // sales: "INV-00042"
+  reference: string | null // payment reference
+  receivedCents: number
+  storeCents: number // the store's part (a sale's amount), not income
+  subscriptionCents: number
+  chargeCents: number
+  processingFeeCents: number
+  netCents: number
+}
+
+export interface IncomeEntries {
+  entries: IncomeEntry[]
+  count: number
+  totals: { subscriptionsCents: number; chargesCents: number; processingFeesCents: number; storeCents: number; netCents: number }
+  hasMore: boolean
+}
+
+export interface IncomeEntryFilter {
+  year: number
+  month?: number | null // 1-12
+  store?: number | null
+  source?: IncomeSource | null
+  offset?: number
+}
+
+export async function getIncomeEntries(filter: IncomeEntryFilter): Promise<IncomeEntries> {
+  const params = new URLSearchParams({ year: String(filter.year) })
+  if (filter.month) params.set('month', String(filter.month))
+  if (filter.store) params.set('store', String(filter.store))
+  if (filter.source) params.set('source', filter.source)
+  if (filter.offset) params.set('offset', String(filter.offset))
+  return readJson(await fetch(`${BASE}/income/entries?${params}`))
 }
 
 export interface ServiceCharges {
