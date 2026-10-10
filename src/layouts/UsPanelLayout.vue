@@ -274,5 +274,114 @@ async function handleLogout() {
     flex: 1;
     min-width: 0;
   }
+
+  .us-panel .page-actions {
+    width: 100%;
+  }
+
+  .us-panel .page-actions .btn-primary {
+    flex: 1;
+  }
+}
+
+/*
+ * .table.us-stack: on phones each row becomes a card and each cell a "label · value" line.
+ * The label comes from the cell's data-label; a cell without one spans the card (the
+ * row's title or its buttons), and a .stack-corner cell sits in the card's top-right corner.
+ * Not scoped to .us-panel because modals are teleported out of it.
+ */
+@media (max-width: 767.98px) {
+  .table.us-stack thead {
+    display: none;
+  }
+
+  .table.us-stack,
+  .table.us-stack tbody,
+  .table.us-stack tfoot,
+  .table.us-stack tr,
+  .table.us-stack td,
+  .table.us-stack th {
+    display: block;
+    width: 100%;
+  }
+
+  .table.us-stack tr {
+    position: relative;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e6eaed;
+  }
+
+  .table.us-stack tbody tr:last-child {
+    border-bottom: 0;
+  }
+
+  .table.us-stack tfoot tr {
+    border-top: 2px solid #dbe0e6;
+    border-bottom: 0;
+    background: #f9fafb;
+  }
+
+  .table.us-stack td,
+  .table.us-stack th {
+    padding: 3px 0;
+    border: 0;
+    background: transparent;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .table.us-stack td:empty {
+    display: none;
+  }
+
+  .table.us-stack td[data-label] {
+    position: relative;
+    padding-left: 42%;
+    text-align: right;
+  }
+
+  .table.us-stack td[data-label]::before {
+    content: attr(data-label);
+    position: absolute;
+    top: 3px;
+    left: 0;
+    width: 40%;
+    color: #a6aaaf;
+    font-size: 12px;
+    font-weight: 400;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .table.us-stack td:not([data-label]):first-child {
+    padding-right: 72px; /* room for a .stack-corner */
+    margin-bottom: 4px;
+  }
+
+  .table.us-stack td.stack-corner {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    width: auto;
+    padding: 0;
+  }
+
+  .table.us-stack td.stack-actions {
+    padding-top: 8px;
+    text-align: left;
+  }
+
+  .table.us-stack td.stack-actions .btn {
+    flex: 1;
+  }
+
+  .table.us-stack td.stack-actions > .btn {
+    width: 100%;
+  }
+
+  .table.us-stack td.stack-actions > div {
+    display: flex !important;
+    width: 100%;
+  }
 }
 </style>

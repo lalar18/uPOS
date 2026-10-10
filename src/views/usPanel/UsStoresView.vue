@@ -139,7 +139,7 @@ function onCreated(store: StoreDetail) {
       <div v-if="loadError" class="alert alert-danger m-3 py-2" role="alert">{{ loadError }}</div>
 
       <div class="table-responsive">
-        <table class="table mb-0" :class="{ 'is-loading': loading }">
+        <table class="table us-stack mb-0" :class="{ 'is-loading': loading }">
           <thead class="thead-light">
             <tr>
               <th>Store</th>
@@ -161,8 +161,8 @@ function onCreated(store: StoreDetail) {
                   {{ storeCode(store.id) }}<template v-if="store.email || store.phone"> · {{ store.email ?? store.phone }}</template>
                 </div>
               </td>
-              <td>{{ store.plan.name }}</td>
-              <td>
+              <td data-label="Plan">{{ store.plan.name }}</td>
+              <td data-label="Expires">
                 <template v-if="store.expiresAt">
                   {{ formatDate(store.expiresAt) }}
                   <div class="fs-12" :class="store.expired ? 'text-danger' : 'text-gray-5'">
@@ -171,15 +171,15 @@ function onCreated(store: StoreDetail) {
                 </template>
                 <template v-else>—</template>
               </td>
-              <td>{{ store.users }}</td>
-              <td>{{ store.products.toLocaleString('en-US') }}</td>
-              <td>
+              <td data-label="Users">{{ store.users }}</td>
+              <td data-label="Products">{{ store.products.toLocaleString('en-US') }}</td>
+              <td data-label="Status">
                 <span class="badge" :class="storeStatus(store).class">{{ storeStatus(store).label }}</span>
                 <span v-if="store.pendingRenewal" class="badge bg-warning-transparent text-warning ms-1">
                   Renewal waiting
                 </span>
               </td>
-              <td class="text-end">
+              <td class="text-end stack-corner">
                 <div class="row-actions">
                   <RouterLink :to="{ name: 'us-store', params: { id: store.id } }" title="Open">
                     <i class="ti ti-chevron-right"></i>

@@ -146,7 +146,7 @@ function onPaid(renewal: Renewal) {
               <i class="ti ti-circle-check fs-24 d-block mb-2"></i>No renewals waiting.
             </div>
             <div v-else class="table-responsive">
-              <table class="table mb-0">
+              <table class="table us-stack mb-0">
                 <thead class="thead-light">
                   <tr>
                     <th>Store</th>
@@ -162,9 +162,9 @@ function onPaid(renewal: Renewal) {
                         {{ renewal.store.name }}
                       </RouterLink>
                     </td>
-                    <td>{{ renewal.plan.name }} · {{ formatPrice(renewal.plan.monthlyPrice) }}</td>
-                    <td>{{ formatDate(renewal.createdAt) }}</td>
-                    <td class="text-end">
+                    <td data-label="Plan">{{ renewal.plan.name }} · {{ formatPrice(renewal.plan.monthlyPrice) }}</td>
+                    <td data-label="Requested">{{ formatDate(renewal.createdAt) }}</td>
+                    <td class="text-end stack-actions">
                       <button type="button" class="btn btn-sm btn-primary" @click="paying = renewal">
                         Confirm payment
                       </button>
@@ -220,7 +220,7 @@ function onPaid(renewal: Renewal) {
             <RouterLink :to="{ name: 'us-plans' }" class="fs-14">Manage plans</RouterLink>
           </div>
           <div class="table-responsive">
-            <table class="table mb-0">
+            <table class="table us-stack mb-0">
               <thead class="thead-light">
                 <tr>
                   <th>Plan</th>
@@ -237,10 +237,10 @@ function onPaid(renewal: Renewal) {
                       {{ plan.name }}
                     </RouterLink>
                   </td>
-                  <td>{{ formatPrice(plan.monthlyPrice) }}/mo</td>
-                  <td>{{ plan.stores }}</td>
-                  <td>{{ plan.active }}</td>
-                  <td>{{ formatPrice(plan.active * plan.monthlyPrice) }}</td>
+                  <td data-label="Price">{{ formatPrice(plan.monthlyPrice) }}/mo</td>
+                  <td data-label="Stores">{{ plan.stores }}</td>
+                  <td data-label="Active">{{ plan.active }}</td>
+                  <td data-label="Monthly from active">{{ formatPrice(plan.active * plan.monthlyPrice) }}</td>
                 </tr>
               </tbody>
             </table>

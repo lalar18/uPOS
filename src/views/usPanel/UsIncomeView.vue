@@ -250,7 +250,7 @@ function onChargesSaved(saved: ServiceCharges) {
           <div class="card-header"><h5 class="card-title mb-0">Subscriptions by plan</h5></div>
           <div class="card-body p-0">
             <div class="table-responsive">
-              <table class="table mb-0" :class="{ 'is-loading': loading }">
+              <table class="table us-stack mb-0" :class="{ 'is-loading': loading }">
                 <thead class="thead-light">
                   <tr>
                     <th>Plan</th>
@@ -261,11 +261,11 @@ function onChargesSaved(saved: ServiceCharges) {
                 <tbody>
                   <tr v-for="p in income.sources.plans" :key="p.id">
                     <td class="fw-medium text-gray-9">{{ p.name }}</td>
-                    <td class="text-end">
+                    <td class="text-end" data-label="Renewals">
                       {{ p.renewals }}
                       <div class="fs-12 text-gray-5">{{ p.online }} online · {{ plural(p.months, 'month') }}</div>
                     </td>
-                    <td class="text-end">{{ peso(p.cents) }}</td>
+                    <td class="text-end" data-label="Income">{{ peso(p.cents) }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -283,7 +283,7 @@ function onChargesSaved(saved: ServiceCharges) {
           <div class="card-header"><h5 class="card-title mb-0">Online payments by method</h5></div>
           <div class="card-body p-0">
             <div class="table-responsive">
-              <table class="table mb-0" :class="{ 'is-loading': loading }">
+              <table class="table us-stack mb-0" :class="{ 'is-loading': loading }">
                 <thead class="thead-light">
                   <tr>
                     <th>Method</th>
@@ -299,13 +299,13 @@ function onChargesSaved(saved: ServiceCharges) {
                         {{ plural(m.renewals, 'renewal') }} · {{ plural(m.salePayments, 'sale payment') }}
                       </div>
                     </td>
-                    <td class="text-end">
+                    <td class="text-end" data-label="Service charges">
                       {{ peso(m.renewalChargesCents + m.saleChargesCents) }}
                       <div class="fs-12 text-gray-5">
                         {{ peso(m.renewalChargesCents) }} renewals · {{ peso(m.saleChargesCents) }} sales
                       </div>
                     </td>
-                    <td class="text-end text-danger">{{ m.processingFeesCents ? `−${peso(m.processingFeesCents)}` : peso(0) }}</td>
+                    <td class="text-end text-danger" data-label="PayMongo fees">{{ m.processingFeesCents ? `−${peso(m.processingFeesCents)}` : peso(0) }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -323,7 +323,7 @@ function onChargesSaved(saved: ServiceCharges) {
       <div class="card-header"><h5 class="card-title mb-0">By month</h5></div>
       <div class="card-body p-0">
         <div class="table-responsive">
-          <table class="table mb-0" :class="{ 'is-loading': loading }">
+          <table class="table us-stack mb-0" :class="{ 'is-loading': loading }">
             <thead class="thead-light">
               <tr>
                 <th>Month</th>
@@ -337,19 +337,19 @@ function onChargesSaved(saved: ServiceCharges) {
             </thead>
             <tbody>
               <tr v-for="m in shownMonths" :key="m.month">
-                <td>{{ monthLabel(m.month) }}</td>
-                <td class="text-end">
+                <td class="fw-medium text-gray-9">{{ monthLabel(m.month) }}</td>
+                <td class="text-end" data-label="Subscriptions">
                   {{ peso(m.subscriptionsCents) }}
                   <div class="fs-12 text-gray-5">{{ m.renewals }} renewal{{ m.renewals === 1 ? '' : 's' }}</div>
                 </td>
-                <td class="text-end">{{ peso(m.renewalChargesCents) }}</td>
-                <td class="text-end">
+                <td class="text-end" data-label="Renewal charges">{{ peso(m.renewalChargesCents) }}</td>
+                <td class="text-end" data-label="Sale charges">
                   {{ peso(m.saleChargesCents) }}
                   <div class="fs-12 text-gray-5">{{ m.salePayments }} payment{{ m.salePayments === 1 ? '' : 's' }}</div>
                 </td>
-                <td class="text-end text-danger">{{ m.processingFeesCents ? `−${peso(m.processingFeesCents)}` : peso(0) }}</td>
-                <td class="text-end fw-bold text-gray-9">{{ peso(m.netCents) }}</td>
-                <td class="text-end">
+                <td class="text-end text-danger" data-label="PayMongo fees">{{ m.processingFeesCents ? `−${peso(m.processingFeesCents)}` : peso(0) }}</td>
+                <td class="text-end fw-bold text-gray-9" data-label="Net income">{{ peso(m.netCents) }}</td>
+                <td class="text-end stack-corner">
                   <button type="button" class="btn btn-sm btn-link p-0" @click="showEntries({ month: m.month })">Entries</button>
                 </td>
               </tr>
@@ -357,13 +357,13 @@ function onChargesSaved(saved: ServiceCharges) {
             <tfoot>
               <tr class="fw-bold">
                 <td>Total</td>
-                <td class="text-end">{{ peso(income.totals.subscriptionsCents) }}</td>
-                <td class="text-end">{{ peso(income.totals.renewalChargesCents) }}</td>
-                <td class="text-end">{{ peso(income.totals.saleChargesCents) }}</td>
-                <td class="text-end text-danger">
+                <td class="text-end" data-label="Subscriptions">{{ peso(income.totals.subscriptionsCents) }}</td>
+                <td class="text-end" data-label="Renewal charges">{{ peso(income.totals.renewalChargesCents) }}</td>
+                <td class="text-end" data-label="Sale charges">{{ peso(income.totals.saleChargesCents) }}</td>
+                <td class="text-end text-danger" data-label="PayMongo fees">
                   {{ income.totals.processingFeesCents ? `−${peso(income.totals.processingFeesCents)}` : peso(0) }}
                 </td>
-                <td class="text-end text-gray-9">{{ peso(income.totals.netCents) }}</td>
+                <td class="text-end text-gray-9" data-label="Net income">{{ peso(income.totals.netCents) }}</td>
                 <td></td>
               </tr>
             </tfoot>
@@ -377,7 +377,7 @@ function onChargesSaved(saved: ServiceCharges) {
       <div class="card-header"><h5 class="card-title mb-0">By store</h5></div>
       <div class="card-body p-0">
         <div class="table-responsive">
-          <table class="table mb-0" :class="{ 'is-loading': loading }">
+          <table class="table us-stack mb-0" :class="{ 'is-loading': loading }">
             <thead class="thead-light">
               <tr>
                 <th>Store</th>
@@ -395,12 +395,12 @@ function onChargesSaved(saved: ServiceCharges) {
                   <RouterLink :to="{ name: 'us-store', params: { id: s.id } }" class="fw-medium text-gray-9">{{ s.name }}</RouterLink>
                   <div class="fs-12 text-gray-5">{{ storeCode(s.id) }}</div>
                 </td>
-                <td class="text-end">{{ peso(s.subscriptionsCents) }}</td>
-                <td class="text-end">{{ peso(s.renewalChargesCents) }}</td>
-                <td class="text-end">{{ peso(s.saleChargesCents) }}</td>
-                <td class="text-end text-danger">{{ s.processingFeesCents ? `−${peso(s.processingFeesCents)}` : peso(0) }}</td>
-                <td class="text-end fw-bold text-gray-9">{{ peso(s.netCents) }}</td>
-                <td class="text-end">
+                <td class="text-end" data-label="Subscriptions">{{ peso(s.subscriptionsCents) }}</td>
+                <td class="text-end" data-label="Renewal charges">{{ peso(s.renewalChargesCents) }}</td>
+                <td class="text-end" data-label="Sale charges">{{ peso(s.saleChargesCents) }}</td>
+                <td class="text-end text-danger" data-label="PayMongo fees">{{ s.processingFeesCents ? `−${peso(s.processingFeesCents)}` : peso(0) }}</td>
+                <td class="text-end fw-bold text-gray-9" data-label="Net income">{{ peso(s.netCents) }}</td>
+                <td class="text-end stack-corner">
                   <button type="button" class="btn btn-sm btn-link p-0" @click="showEntries({ store: s.id })">Entries</button>
                 </td>
               </tr>
@@ -430,6 +430,16 @@ function onChargesSaved(saved: ServiceCharges) {
 .statement td {
   padding-top: 8px;
   padding-bottom: 8px;
+}
+
+/* Long line names wrap instead of widening the page on phones */
+.table.statement td,
+.table.statement th {
+  white-space: normal;
+}
+
+.table.statement .text-end {
+  white-space: nowrap;
 }
 
 .statement .group th {

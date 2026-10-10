@@ -295,6 +295,17 @@ async function copy(value: string) {
   background: #f9fafb;
 }
 
+@media (max-width: 575.98px) {
+  .stat {
+    padding: 8px 4px;
+  }
+
+  .stat .fw-bold {
+    font-size: 13px;
+    overflow-wrap: anywhere;
+  }
+}
+
 .request {
   padding: 12px;
   border: 1px solid #e6eaed;

@@ -126,7 +126,7 @@ function onCancelled() {
       <div v-if="loadError" class="alert alert-danger m-3 py-2" role="alert">{{ loadError }}</div>
 
       <div class="table-responsive">
-        <table class="table mb-0" :class="{ 'is-loading': loading }">
+        <table class="table us-stack mb-0" :class="{ 'is-loading': loading }">
           <thead class="thead-light">
             <tr>
               <th>Store</th>
@@ -148,22 +148,22 @@ function onCancelled() {
                 </RouterLink>
                 <div class="fs-12 text-gray-5">{{ storeCode(renewal.store.id) }}</div>
               </td>
-              <td>
+              <td data-label="Plan">
                 {{ renewal.plan.name }}
                 <span class="text-gray-5">· {{ renewal.months }} mo</span>
               </td>
-              <td>
+              <td data-label="Requested">
                 {{ formatDate(renewal.createdAt) }}
                 <div class="fs-12 text-gray-5">{{ renewal.requestedBy ?? 'Recorded in US Panel' }}</div>
               </td>
-              <td>{{ renewal.paidAt ? formatDate(renewal.paidAt) : '—' }}</td>
-              <td>
+              <td data-label="Paid">{{ renewal.paidAt ? formatDate(renewal.paidAt) : '—' }}</td>
+              <td data-label="Period">
                 <template v-if="renewal.periodStart && renewal.periodEnd">
                   {{ formatDate(renewal.periodStart) }} – {{ formatDate(renewal.periodEnd) }}
                 </template>
                 <template v-else>—</template>
               </td>
-              <td>
+              <td data-label="Amount">
                 <template v-if="renewal.amount !== null">
                   {{ formatPrice(renewal.amount) }}
                   <div v-if="renewal.serviceChargeCents" class="fs-12 text-gray-5">
@@ -175,7 +175,7 @@ function onCancelled() {
                 </template>
                 <span v-else class="text-gray-5">{{ formatPrice(renewal.plan.monthlyPrice) }}/mo due</span>
               </td>
-              <td>
+              <td data-label="Payment">
                 <template v-if="renewal.paymentMethod">
                   {{ paymentMethodLabel(renewal.paymentMethod) }}
                   <div v-if="renewal.reference" class="fs-12 text-gray-5">Ref {{ renewal.reference }}</div>
@@ -183,10 +183,10 @@ function onCancelled() {
                 <template v-else>—</template>
                 <div v-if="renewal.confirmedBy" class="fs-12 text-gray-5">by {{ renewal.confirmedBy }}</div>
               </td>
-              <td>
+              <td data-label="Status">
                 <span class="badge" :class="renewalBadge(renewal.status).class">{{ renewalBadge(renewal.status).label }}</span>
               </td>
-              <td class="text-end">
+              <td class="text-end stack-actions">
                 <div v-if="renewal.status === 'pending'" class="d-inline-flex gap-2">
                   <button type="button" class="btn btn-sm btn-white border" @click="cancelling = renewal">Cancel</button>
                   <button type="button" class="btn btn-sm btn-primary" @click="paying = renewal">Confirm payment</button>

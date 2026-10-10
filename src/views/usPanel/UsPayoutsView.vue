@@ -86,7 +86,7 @@ function onSaved(message: string) {
     <div class="card">
       <div class="card-body p-0">
         <div class="table-responsive">
-          <table class="table mb-0" :class="{ 'is-loading': loading }">
+          <table class="table us-stack mb-0" :class="{ 'is-loading': loading }">
             <thead class="thead-light">
               <tr>
                 <th>Store</th>
@@ -107,13 +107,13 @@ function onSaved(message: string) {
                   </span>
                   <span v-if="s.refundsDue" class="badge bg-secondary">{{ s.refundsDue }} to refund</span>
                 </td>
-                <td class="text-end">{{ peso(s.collectedCents) }}</td>
-                <td class="text-end">{{ peso(s.paidOutCents) }}</td>
-                <td class="text-end fw-bold" :class="s.balanceCents > 0 ? 'text-danger' : 'text-gray-9'">
+                <td class="text-end" data-label="Paid online">{{ peso(s.collectedCents) }}</td>
+                <td class="text-end" data-label="Paid out">{{ peso(s.paidOutCents) }}</td>
+                <td class="text-end fw-bold" data-label="Owed" :class="s.balanceCents > 0 ? 'text-danger' : 'text-gray-9'">
                   {{ peso(s.balanceCents) }}
                 </td>
-                <td>{{ s.lastPayoutDate ?? '—' }}</td>
-                <td class="text-end">
+                <td data-label="Last payout">{{ s.lastPayoutDate ?? '—' }}</td>
+                <td class="text-end stack-actions">
                   <button
                     type="button"
                     class="btn btn-sm text-nowrap"

@@ -82,7 +82,7 @@ function entryDetail(entry: IncomeEntry): string {
       <div v-if="loadError" class="alert alert-danger py-2" role="alert">{{ loadError }}</div>
 
       <div class="entries table-responsive border rounded">
-        <table class="table mb-0" :class="{ 'is-loading': loading }">
+        <table class="table us-stack mb-0" :class="{ 'is-loading': loading }">
           <thead class="thead-light">
             <tr>
               <th>Date</th>
@@ -97,48 +97,48 @@ function entryDetail(entry: IncomeEntry): string {
           </thead>
           <tbody>
             <tr v-for="e in entries?.entries ?? []" :key="`${e.source}-${e.id}`">
-              <td class="text-nowrap">{{ formatDate(e.at) }}</td>
-              <td>
+              <td class="text-nowrap fw-medium text-gray-9">{{ formatDate(e.at) }}</td>
+              <td data-label="Store">
                 <RouterLink :to="{ name: 'us-store', params: { id: e.storeId } }" class="text-gray-9" @click="emit('close')">
                   {{ e.storeName }}
                 </RouterLink>
                 <div class="fs-12 text-gray-5">{{ storeCode(e.storeId) }}</div>
               </td>
-              <td>
+              <td data-label="Source">
                 <span class="badge" :class="e.source === 'sale' ? 'bg-info-transparent text-info' : 'bg-primary-transparent text-primary'">
                   {{ e.source === 'sale' ? 'Sale service charge' : 'Subscription' }}
                 </span>
                 <div class="fs-12 text-gray-5">{{ entryDetail(e) }}</div>
               </td>
-              <td>
+              <td data-label="Paid with">
                 {{ paymentMethodLabel(e.method) }}
                 <div class="fs-12 text-gray-5">
                   {{ e.online ? 'Online (PayMongo)' : 'Recorded by hand' }}<template v-if="e.reference"> · {{ e.reference }}</template>
                 </div>
               </td>
-              <td class="text-end">
+              <td class="text-end" data-label="Received">
                 {{ peso(e.receivedCents) }}
                 <div v-if="e.storeCents" class="fs-12 text-gray-5">{{ peso(e.storeCents) }} for the store</div>
               </td>
-              <td class="text-end">
+              <td class="text-end" data-label="Income">
                 {{ peso(e.subscriptionCents + e.chargeCents) }}
                 <div v-if="e.source === 'subscription' && e.chargeCents" class="fs-12 text-gray-5">
                   incl. {{ peso(e.chargeCents) }} service charge
                 </div>
                 <div v-else-if="e.source === 'sale'" class="fs-12 text-gray-5">service charge</div>
               </td>
-              <td class="text-end text-danger">{{ e.processingFeeCents ? `−${peso(e.processingFeeCents)}` : peso(0) }}</td>
-              <td class="text-end fw-bold text-gray-9">{{ peso(e.netCents) }}</td>
+              <td class="text-end text-danger" data-label="PayMongo fee">{{ e.processingFeeCents ? `−${peso(e.processingFeeCents)}` : peso(0) }}</td>
+              <td class="text-end fw-bold text-gray-9" data-label="Net income">{{ peso(e.netCents) }}</td>
             </tr>
           </tbody>
           <tfoot v-if="entries && entries.count">
             <tr class="fw-bold">
               <td colspan="5">Total · {{ entries.count }} {{ entries.count === 1 ? 'entry' : 'entries' }}</td>
-              <td class="text-end">{{ peso(entries.totals.subscriptionsCents + entries.totals.chargesCents) }}</td>
-              <td class="text-end text-danger">
+              <td class="text-end" data-label="Income">{{ peso(entries.totals.subscriptionsCents + entries.totals.chargesCents) }}</td>
+              <td class="text-end text-danger" data-label="PayMongo fees">
                 {{ entries.totals.processingFeesCents ? `−${peso(entries.totals.processingFeesCents)}` : peso(0) }}
               </td>
-              <td class="text-end text-gray-9">{{ peso(entries.totals.netCents) }}</td>
+              <td class="text-end text-gray-9" data-label="Net income">{{ peso(entries.totals.netCents) }}</td>
             </tr>
           </tfoot>
         </table>
@@ -174,5 +174,13 @@ function entryDetail(entry: IncomeEntry): string {
   position: sticky;
   bottom: 0;
   background: #fff;
+}
+
+/* Rows are cards on phones (.us-stack), so the totals row stays in place */
+@media (max-width: 767.98px) {
+  .entries tfoot td {
+    position: static;
+    background: transparent;
+  }
 }
 </style>

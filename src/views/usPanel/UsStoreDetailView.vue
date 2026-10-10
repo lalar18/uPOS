@@ -337,7 +337,7 @@ function onConfirmed() {
             </button>
           </div>
           <div class="table-responsive">
-            <table class="table mb-0">
+            <table class="table us-stack mb-0">
               <thead class="thead-light">
                 <tr>
                   <th>User</th>
@@ -353,16 +353,16 @@ function onConfirmed() {
                     <div class="fw-medium text-gray-9">{{ user.fullName }}</div>
                     <div class="fs-12 text-gray-5">{{ user.email }}</div>
                   </td>
-                  <td>
+                  <td data-label="Role">
                     <span class="badge" :class="user.role.isAdmin ? 'bg-primary' : 'bg-secondary'">{{ user.role.name }}</span>
                   </td>
-                  <td>{{ formatDate(user.createdAt) }}</td>
-                  <td>
+                  <td data-label="Added">{{ formatDate(user.createdAt) }}</td>
+                  <td data-label="Status">
                     <span class="badge" :class="user.active ? 'bg-success' : 'bg-danger'">
                       {{ user.active ? 'Active' : 'Inactive' }}
                     </span>
                   </td>
-                  <td class="text-end">
+                  <td class="text-end stack-corner">
                     <div class="row-actions">
                       <button type="button" title="Reset password" @click="resetting = user">
                         <i class="ti ti-key"></i>
@@ -391,7 +391,7 @@ function onConfirmed() {
         <div class="card">
           <div class="card-header"><h5 class="card-title mb-0">Billing history</h5></div>
           <div class="table-responsive">
-            <table class="table mb-0">
+            <table class="table us-stack mb-0">
               <thead class="thead-light">
                 <tr>
                   <th>Date</th>
@@ -404,19 +404,19 @@ function onConfirmed() {
               </thead>
               <tbody>
                 <tr v-for="renewal in renewals" :key="renewal.id">
-                  <td>{{ formatDate(renewal.paidAt ?? renewal.createdAt) }}</td>
-                  <td>
+                  <td class="fw-medium text-gray-9">{{ formatDate(renewal.paidAt ?? renewal.createdAt) }}</td>
+                  <td data-label="Plan">
                     {{ renewal.plan.name }}
                     <span class="text-gray-5">· {{ renewal.months }} mo</span>
                   </td>
-                  <td>
+                  <td data-label="Period">
                     <template v-if="renewal.periodStart && renewal.periodEnd">
                       {{ formatDate(renewal.periodStart) }} – {{ formatDate(renewal.periodEnd) }}
                     </template>
                     <template v-else>—</template>
                   </td>
-                  <td>{{ renewal.amount !== null ? formatPrice(renewal.amount) : '—' }}</td>
-                  <td>
+                  <td data-label="Amount">{{ renewal.amount !== null ? formatPrice(renewal.amount) : '—' }}</td>
+                  <td data-label="Payment">
                     <template v-if="renewal.paymentMethod">
                       {{ paymentMethodLabel(renewal.paymentMethod) }}
                       <div v-if="renewal.reference" class="fs-12 text-gray-5">Ref {{ renewal.reference }}</div>
@@ -424,7 +424,7 @@ function onConfirmed() {
                     <template v-else>—</template>
                     <div v-if="renewal.confirmedBy" class="fs-12 text-gray-5">by {{ renewal.confirmedBy }}</div>
                   </td>
-                  <td>
+                  <td data-label="Status">
                     <span class="badge" :class="renewalBadge(renewal.status).class">
                       {{ renewalBadge(renewal.status).label }}
                     </span>
