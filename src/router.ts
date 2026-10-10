@@ -12,6 +12,7 @@ import GeneralSettingsView from './views/settings/GeneralSettingsView.vue'
 import ExpiredProductsView from './views/product/ExpiredProductsView.vue'
 import LabelPrintView from './views/label/LabelPrintView.vue'
 import LandingView from './views/landing/LandingView.vue'
+import LegalView from './views/landing/LegalView.vue'
 import LoginView from './views/auth/LoginView.vue'
 import LowStocksView from './views/product/LowStocksView.vue'
 import ManageStockView from './views/stock/ManageStockView.vue'
@@ -42,6 +43,10 @@ const router = createRouter({
   routes: [
     // Public site (with pricing); signed-out visitors to "/" land here. Its Portal button opens the login.
     { path: '/welcome', name: 'landing', component: LandingView },
+    // Legal pages linked from the landing page footer (public, signed in or not)
+    { path: '/terms', name: 'terms', component: LegalView, props: { doc: 'terms' } },
+    { path: '/privacy', name: 'privacy', component: LegalView, props: { doc: 'privacy' } },
+    { path: '/refund-policy', name: 'refund-policy', component: LegalView, props: { doc: 'refunds' } },
     { path: '/login', name: 'login', component: LoginView, meta: { guestOnly: true } },
     // Where PayMongo sends a customer after paying a sale online (public: usually their own phone)
     {

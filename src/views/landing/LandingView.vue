@@ -4,6 +4,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, type Directive } from 'vue'
 import { describeSeats, formatPrice, getPlans, type Plan } from '@/api/subscription'
 import { googleSignInUrl } from '@/auth'
+import { legalLinks } from './legalDocs'
 
 /** Where "Get started" and the contact section send visitors */
 const CONTACT_EMAIL = 'sales@usystems.ph'
@@ -524,7 +525,10 @@ onBeforeUnmount(() => {
     <footer class="landing-footer">
       <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
         <span>Copyright &copy; {{ new Date().getFullYear() }} USystems POS</span>
-        <RouterLink :to="{ name: 'login' }">Portal</RouterLink>
+        <nav class="footer-links">
+          <RouterLink v-for="link in legalLinks" :key="link.id" :to="{ name: link.route }">{{ link.label }}</RouterLink>
+          <RouterLink :to="{ name: 'login' }">Portal</RouterLink>
+        </nav>
       </div>
     </footer>
 
@@ -1681,6 +1685,12 @@ onBeforeUnmount(() => {
 
 .landing-footer a {
   color: var(--muted);
+}
+
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
 }
 
 .landing-footer a:hover {
