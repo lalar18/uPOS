@@ -8,6 +8,8 @@ import QRCode from 'qrcode'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { cancelSaleCheckout, getSaleCheckout, paymentMethodLabel, type SaleCheckout } from '@/api/sales'
 import AppModal from '@/components/AppModal.vue'
+import PaymentLogos from '@/components/PaymentLogos.vue'
+import SecuredByPaymongo from '@/components/SecuredByPaymongo.vue'
 import { formatMoney } from '@/utils/money'
 
 const props = defineProps<{ checkout: SaleCheckout; saleReference: string }>()
@@ -27,6 +29,15 @@ if (props.checkout.checkoutUrl) {
 }
 
 const refundDue = computed(() => current.value.status === 'refund_due')
+
+/** Where the payment page is (checkout.paymongo.com), for the customer to check before paying */
+const pageHost = computed(() => {
+  try {
+    return current.value.checkoutUrl ? new URL(current.value.checkoutUrl).host : ''
+  } catch {
+    return ''
+  }
+})
 
 function settle(checkout: SaleCheckout) {
   current.value = checkout
@@ -87,7 +98,8 @@ async function cancel() {
         </div>
       </template>
       <template v-else>
-        <div class="fs-13 text-gray-5">{{ paymentMethodLabel(current.method) }} · total to pay</div>
+        <PaymentLogos :method="current.method" :height="32" class="mb-2" />
+        <div class="fs-13 text-gray-5">Pay with {{ paymentMethodLabel(current.method) }} · total to pay</div>
         <div class="total-amount">{{ formatMoney(current.totalCents) }}</div>
         <div v-if="current.serviceChargeCents > 0" class="fs-13 text-gray-5 mb-2">
           {{ formatMoney(current.amountCents) }} + {{ formatMoney(current.serviceChargeCents) }} service charge
@@ -95,7 +107,10 @@ async function cancel() {
 
         <!-- SVG made by the qrcode library from the payment page URL -->
         <div v-if="qrSvg" class="qr mx-auto my-3" role="img" aria-label="QR code of the payment page" v-html="qrSvg"></div>
-        <p class="fs-14 mb-2">Ask the customer to scan the code with their phone camera, or open the payment page here.</p>
+        <p class="fs-14 mb-1">Ask the customer to scan the code with their phone camera, or open the payment page here.</p>
+        <p v-if="pageHost" class="fs-12 text-gray-5 mb-2">
+          The payment page is PayMongo's, at <strong class="text-gray-9">{{ pageHost }}</strong>
+        </p>
         <button type="button" class="btn btn-white border mb-3" :disabled="!current.checkoutUrl" @click="openPage">
           <i class="ti ti-external-link me-1"></i>Open payment page
         </button>
@@ -103,6 +118,9 @@ async function cancel() {
         <div class="waiting fs-14" role="status">
           <span class="spinner-border spinner-border-sm text-primary me-2" aria-hidden="true"></span>
           Waiting for the payment…
+        </div>
+        <div class="mt-2">
+          <SecuredByPaymongo />
         </div>
       </template>
       <div v-if="error" class="alert alert-danger py-2 mt-3 mb-0 text-start" role="alert">{{ error }}</div>

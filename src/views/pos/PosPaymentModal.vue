@@ -17,6 +17,8 @@ import {
 } from '@/api/sales'
 import { saleChargeCents, type OnlinePaymentCharge } from '@/api/serviceCharge'
 import AppModal from '@/components/AppModal.vue'
+import PaymentLogos from '@/components/PaymentLogos.vue'
+import SecuredByPaymongo from '@/components/SecuredByPaymongo.vue'
 import { centsToText, currencySymbol, formatMoney, parsePeso } from '@/utils/money'
 
 const props = defineProps<{
@@ -157,7 +159,8 @@ function payLater() {
             :class="{ active: method === m }"
             @click="pickMethod(m)"
           >
-            <i class="ti" :class="`ti-${METHOD_ICONS[m]}`"></i>
+            <span v-if="isCheckoutMethod(m)" class="logo-chip"><PaymentLogos :method="m" :height="14" /></span>
+            <i v-else class="ti" :class="`ti-${METHOD_ICONS[m]}`"></i>
             <span>{{ paymentMethodLabel(m) }}</span>
           </button>
         </div>
@@ -225,10 +228,11 @@ function payLater() {
               </div>
             </div>
             <div v-if="online" :class="canPayLater ? 'col-sm-6' : 'col-12'">
-              <p class="fs-13 text-gray-5 mb-0" :class="{ 'pt-sm-4': canPayLater }">
+              <p class="fs-13 text-gray-5 mb-1" :class="{ 'pt-sm-4': canPayLater }">
                 The customer pays on PayMongo's page: they scan a QR code with their phone, or you open the
                 page here.
               </p>
+              <SecuredByPaymongo />
             </div>
             <div v-else :class="canPayLater ? 'col-sm-6' : 'col-12'">
               <label class="form-label" for="pos-reference">Reference no. <span class="text-gray-5 fw-normal">(optional)</span></label>
@@ -309,6 +313,16 @@ function payLater() {
 
 .method-grid button i {
   font-size: 18px;
+}
+
+/* Keeps the brand colours readable on the selected (orange) button */
+.method-grid .logo-chip {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: #ffffff;
 }
 
 .method-grid button.active {

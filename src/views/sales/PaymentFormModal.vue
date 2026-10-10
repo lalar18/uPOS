@@ -18,6 +18,8 @@ import {
   type SaleSummary,
 } from '@/api/sales'
 import AppModal from '@/components/AppModal.vue'
+import PaymentLogos from '@/components/PaymentLogos.vue'
+import SecuredByPaymongo from '@/components/SecuredByPaymongo.vue'
 import { toIsoDate } from '@/utils/date'
 import { centsToText, currencySymbol, formatMoney, parsePeso } from '@/utils/money'
 import OnlineCheckoutModal from './OnlineCheckoutModal.vue'
@@ -167,6 +169,7 @@ async function save() {
             <select id="payment-method" v-model="method" class="form-select">
               <option v-for="m in PAYMENT_METHODS" :key="m" :value="m">{{ paymentMethodLabel(m) }}</option>
             </select>
+            <PaymentLogos :method="method" :height="20" class="mt-2" />
           </div>
           <div v-if="method === 'cash'" class="col-sm-6">
             <label class="form-label" for="payment-received">
@@ -205,6 +208,7 @@ async function save() {
             </div>
             <div v-if="online" class="form-text">
               The customer pays on PayMongo's page: they scan a QR code with their phone, or you open the page here.
+              <div class="mt-1"><SecuredByPaymongo /></div>
             </div>
           </div>
           <div v-if="method !== 'cash' && !online" class="col-sm-6">
