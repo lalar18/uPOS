@@ -34,6 +34,8 @@ interface RenewalRow {
   status: 'pending' | 'paid' | 'cancelled'
   months: number
   amount: number | null
+  service_charge_cents: number
+  processing_fee_cents: number | null
   payment_method: string | null
   payment_reference: string | null
   note: string | null
@@ -46,7 +48,8 @@ interface RenewalRow {
 }
 
 export const RENEWAL_SELECT =`SELECT sr.id, sr.store_id, st.name AS store_name, sr.plan_id, p.name AS plan_name, p.monthly_price,
-    sr.status, sr.months, sr.amount, sr.payment_method, sr.payment_reference, sr.note,
+    sr.status, sr.months, sr.amount, sr.service_charge_cents, sr.processing_fee_cents,
+    sr.payment_method, sr.payment_reference, sr.note,
     u.full_name AS requested_by_name, sa.full_name AS confirmed_by_name,
     sr.period_start, sr.period_end, sr.created_at, sr.paid_at
   FROM subscription_renewals sr
@@ -63,6 +66,8 @@ export function publicRenewal(row: RenewalRow) {
     status: row.status,
     months: row.months,
     amount: row.amount,
+    serviceChargeCents: row.service_charge_cents, // part of amount, added for paying online
+    processingFeeCents: row.processing_fee_cents, // kept by PayMongo (null: not paid online)
     paymentMethod: row.payment_method,
     reference: row.payment_reference,
     note: row.note,

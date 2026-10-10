@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Shows what a renewal will cost (plan price + online payment fee) before going to PayMongo.
+// Shows what a renewal will cost (plan price + service charge) before going to PayMongo.
 import { formatPrice, type Plan } from '@/api/subscription'
 import AppModal from '@/components/AppModal.vue'
 
@@ -17,7 +17,7 @@ const total = () => props.plan.monthlyPrice + props.fee
         <span>{{ formatPrice(plan.monthlyPrice) }}</span>
       </div>
       <div v-if="fee > 0" class="d-flex justify-content-between mb-2">
-        <span>Online payment fee</span>
+        <span>Service charge</span>
         <span>{{ formatPrice(fee) }}</span>
       </div>
       <div class="d-flex justify-content-between border-top pt-2 fw-bold">

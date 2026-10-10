@@ -1,6 +1,8 @@
 <script setup lang="ts">
-// "Record payment" dialog for an invoice with a balance due.
+// "Record payment" dialog for an invoice with a balance due. Online methods may add a service
+// charge, collected on top of the amount.
 import { computed, ref } from 'vue'
+import { getOnlinePaymentCharge, saleChargeCents, type ServiceCharge } from '@/api/serviceCharge'
 import {
   addSalePayment,
   PAYMENT_METHODS,
@@ -32,6 +34,15 @@ const changeCents = computed(() => {
   const given = receivedCents.value
   if (method.value !== 'cash' || paid === null || given === null || Number.isNaN(paid) || Number.isNaN(given)) return null
   return given - paid
+})
+
+const charge = ref<ServiceCharge | null>(null)
+getOnlinePaymentCharge().then((result) => (charge.value = result))
+
+const serviceChargeCents = computed(() => {
+  const paid = amountCents.value
+  if (method.value === 'cash' || paid === null || Number.isNaN(paid)) return 0
+  return saleChargeCents(charge.value, method.value, paid)
 })
 
 function validate(): string {
@@ -126,6 +137,16 @@ async function save() {
           <div class="col-sm-6">
             <label class="form-label" for="payment-date">Date <span class="text-danger">*</span></label>
             <input id="payment-date" v-model="paidDate" type="date" class="form-control" :max="toIsoDate()" />
+          </div>
+          <div v-if="serviceChargeCents > 0" class="col-12">
+            <div class="alert alert-light border py-2 mb-0 fs-14 d-flex flex-wrap justify-content-between gap-2">
+              <span>
+                Service charge ({{ paymentMethodLabel(method) }}): <strong>{{ formatMoney(serviceChargeCents) }}</strong>
+              </span>
+              <span>
+                Total to collect: <strong class="text-gray-9">{{ formatMoney(amountCents! + serviceChargeCents) }}</strong>
+              </span>
+            </div>
           </div>
         </div>
 

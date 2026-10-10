@@ -1,15 +1,18 @@
 <script setup lang="ts">
 // The POS "Pay" dialog. Cash shows quick amounts and the change; other methods take a
 // reference number. A named customer can pay part now or charge it all to their account;
-// a walk-in customer must pay in full. The parent saves the sale and passes back errors.
+// a walk-in customer must pay in full. Online methods may add a service charge, collected on
+// top of the amount paid. The parent saves the sale and passes back errors.
 import { computed, ref } from 'vue'
 import { PAYMENT_METHODS, paymentMethodLabel, type PaymentInput, type PaymentMethod } from '@/api/sales'
+import { saleChargeCents, type ServiceCharge } from '@/api/serviceCharge'
 import AppModal from '@/components/AppModal.vue'
 import { centsToText, currencySymbol, formatMoney, parsePeso } from '@/utils/money'
 
 const props = defineProps<{
   totalCents: number
   customerName: string | null // null for a walk-in customer
+  charge: ServiceCharge | null // on payments by online methods
   saving: boolean
   error: string
 }>()
@@ -49,6 +52,17 @@ const changeCents = computed(() => {
   const given = receivedCents.value
   return given === null || Number.isNaN(given) ? null : given - props.totalCents
 })
+
+/** Paid now by a non-cash method (all of it for a walk-in customer) */
+const onlineAmountCents = computed(() => {
+  if (!canPayLater.value) return props.totalCents
+  const amount = parsePeso(amountText.value)
+  return amount === null || Number.isNaN(amount) ? 0 : Math.min(amount, props.totalCents)
+})
+
+const serviceChargeCents = computed(() =>
+  method.value === 'cash' ? 0 : saleChargeCents(props.charge, method.value, onlineAmountCents.value),
+)
 
 function pickMethod(value: PaymentMethod) {
   method.value = value
@@ -175,6 +189,20 @@ function payLater() {
               />
             </div>
           </div>
+          <div v-if="serviceChargeCents > 0" class="charge-box mt-3">
+            <div class="d-flex justify-content-between">
+              <span>Amount paid</span>
+              <span>{{ formatMoney(onlineAmountCents) }}</span>
+            </div>
+            <div class="d-flex justify-content-between">
+              <span>Service charge ({{ paymentMethodLabel(method) }})</span>
+              <span>{{ formatMoney(serviceChargeCents) }}</span>
+            </div>
+            <div class="d-flex justify-content-between fw-bold border-top pt-1 mt-1">
+              <span>Total to collect</span>
+              <span>{{ formatMoney(onlineAmountCents + serviceChargeCents) }}</span>
+            </div>
+          </div>
         </template>
       </div>
       <div class="modal-footer flex-wrap">
@@ -239,6 +267,13 @@ function payLater() {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.charge-box {
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #f9fafb;
+  font-size: 14px;
 }
 
 .change-row {

@@ -12,6 +12,7 @@ import {
   type ProductOption,
 } from '@/api/products'
 import { computeTotals, createSale, lineTotal, type PaymentInput, type Sale } from '@/api/sales'
+import { getOnlinePaymentCharge, type ServiceCharge } from '@/api/serviceCharge'
 import { getSettingsOrDefaults, taxRateText } from '@/api/settings'
 import { getStore, type Store } from '@/api/store'
 import AppModal from '@/components/AppModal.vue'
@@ -253,11 +254,15 @@ const saving = ref(false)
 const payError = ref('')
 const cartError = ref('')
 
+// The service charge on online payments (refreshed on each payment, in case it changed)
+const onlineCharge = ref<ServiceCharge | null>(null)
+
 function openPayment() {
   cartError.value = cartProblem()
   if (cartError.value) return
   payError.value = ''
   paying.value = true
+  getOnlinePaymentCharge().then((charge) => (onlineCharge.value = charge ?? onlineCharge.value))
 }
 
 const lastSale = ref<Sale | null>(null)
@@ -517,6 +522,7 @@ onBeforeUnmount(() => {
     v-if="paying"
     :total-cents="totals.totalCents"
     :customer-name="customer?.name ?? null"
+    :charge="onlineCharge"
     :saving="saving"
     :error="payError"
     @close="paying = false"

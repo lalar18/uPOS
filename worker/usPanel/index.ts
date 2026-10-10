@@ -3,6 +3,7 @@
 
 import { error } from '../documents'
 import { listStoreRenewals, handleRenewals, recordStorePayment } from './billing'
+import { handleIncome } from './income'
 import { getOverview } from './overview'
 import { handlePlans } from './plans'
 import { changePassword, getSuperAdmin, login, logout, publicSuperAdmin } from './session'
@@ -45,6 +46,10 @@ export async function handleUsPanel(db: D1Database, request: Request, url: URL):
   }
   if (path.startsWith('/api/us-panel/renewals')) {
     const response = await handleRenewals(db, request, url, admin)
+    if (response) return response
+  }
+  if (path === '/api/us-panel/income' || path === '/api/us-panel/service-charges') {
+    const response = await handleIncome(db, request, url, admin)
     if (response) return response
   }
   if (path.startsWith('/api/us-panel/plans')) {

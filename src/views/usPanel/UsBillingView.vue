@@ -8,6 +8,7 @@ import { storeCode } from '@/api/store'
 import { formatDate, formatPrice } from '@/api/subscription'
 import { cancelRenewal, listRenewals, type Renewal, type RenewalStatus } from '@/api/usPanel'
 import ListPager from '@/components/ListPager.vue'
+import { formatMoney } from '@/utils/money'
 import { renewalBadge } from './format'
 import UsConfirmModal from './UsConfirmModal.vue'
 import UsPaymentModal from './UsPaymentModal.vue'
@@ -163,7 +164,15 @@ function onCancelled() {
                 <template v-else>—</template>
               </td>
               <td>
-                <template v-if="renewal.amount !== null">{{ formatPrice(renewal.amount) }}</template>
+                <template v-if="renewal.amount !== null">
+                  {{ formatPrice(renewal.amount) }}
+                  <div v-if="renewal.serviceChargeCents" class="fs-12 text-gray-5">
+                    incl. {{ formatMoney(renewal.serviceChargeCents, 'PHP') }} charge
+                  </div>
+                  <div v-if="renewal.processingFeeCents" class="fs-12 text-gray-5">
+                    PayMongo fee {{ formatMoney(renewal.processingFeeCents, 'PHP') }}
+                  </div>
+                </template>
                 <span v-else class="text-gray-5">{{ formatPrice(renewal.plan.monthlyPrice) }}/mo due</span>
               </td>
               <td>

@@ -34,14 +34,6 @@ const METHOD_LABELS: Record<string, string> = {
 
 export const onlinePaymentEnabled = (env: PaymongoEnv) => !!env.PAYMONGO_SECRET_KEY
 
-/**
- * Fee added to a renewal paid online, in whole pesos, by the store's currency (standing in for
- * its country). Currencies not listed pay no fee.
- */
-const ONLINE_PAYMENT_FEES: Record<string, number> = { PHP: 10 }
-
-export const onlinePaymentFee = (currency: string) => ONLINE_PAYMENT_FEES[currency] ?? 0
-
 async function callApi<T>(env: PaymongoEnv, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     method: 'POST',
@@ -64,7 +56,7 @@ export interface CheckoutInput {
   storeName: string
   planName: string
   pesos: number // whole pesos
-  feePesos: number // onlinePaymentFee(), a line item of its own
+  feePesos: number // the renewal service charge (see serviceCharges.ts), a line item of its own
   origin: string // the app's origin, for the return URLs
 }
 
@@ -83,13 +75,14 @@ export async function createCheckoutSession(
           line_items: [
             { name: `${input.planName} plan, 1 month`, amount: input.pesos * 100, currency: 'PHP', quantity: 1 },
             ...(input.feePesos > 0
-              ? [{ name: 'Online payment fee', amount: input.feePesos * 100, currency: 'PHP', quantity: 1 }]
+              ? [{ name: 'Service charge', amount: input.feePesos * 100, currency: 'PHP', quantity: 1 }]
               : []),
           ],
           payment_method_types: PAYMENT_METHOD_TYPES,
           description: `Subscription renewal for ${input.storeName}`,
           reference_number: `RNW-${input.renewalId}`,
-          metadata: { renewal_id: String(input.renewalId) },
+          // The charge is read back from here when paid, as it may change before then
+          metadata: { renewal_id: String(input.renewalId), service_charge_cents: String(input.feePesos * 100) },
           success_url: `${back}success`,
           cancel_url: `${back}cancelled`,
           show_description: true,
@@ -129,7 +122,7 @@ async function verifySignature(secret: string, header: string, rawBody: string, 
 
 interface PaymongoPayment {
   id: string
-  attributes: { amount: number; status: string; source?: { type?: string } }
+  attributes: { amount: number; fee?: number; net_amount?: number; status: string; source?: { type?: string } }
 }
 
 interface CheckoutSessionEvent {
@@ -140,13 +133,24 @@ interface CheckoutSessionEvent {
       data?: {
         id: string
         attributes: {
-          metadata?: { renewal_id?: string } | null
+          metadata?: { renewal_id?: string; service_charge_cents?: string } | null
           payment_method_used?: string | null
           payments?: PaymongoPayment[]
         }
       }
     }
   }
+}
+
+/** What PayMongo kept of the payments (its fee and taxes), in centavos, or null if it didn't say */
+function processingFee(payments: PaymongoPayment[]): number | null {
+  let total = 0
+  for (const { attributes: a } of payments) {
+    if (typeof a.net_amount === 'number') total += a.amount - a.net_amount
+    else if (typeof a.fee === 'number') total += a.fee
+    else return null
+  }
+  return Math.max(total, 0)
 }
 
 /** POST /api/webhooks/paymongo: records a paid checkout session against its renewal. */
@@ -182,18 +186,22 @@ export async function handlePaymongoWebhook(db: D1Database, env: PaymongoEnv, re
 
   const method = session.attributes.payment_method_used ?? payments[0].attributes.source?.type ?? ''
   const cents = payments.reduce((sum, p) => sum + p.attributes.amount, 0)
+  const serviceCharge = Number(session.attributes.metadata?.service_charge_cents)
   const values = [
     Math.round(cents / 100),
     METHOD_NAMES[method] ?? 'other',
     payments[0].id,
     `Paid online through PayMongo${METHOD_LABELS[method] ? ` (${METHOD_LABELS[method]})` : ''}`,
     session.id,
+    Number.isSafeInteger(serviceCharge) && serviceCharge > 0 ? Math.min(serviceCharge, cents) : 0,
+    processingFee(payments),
   ]
   const markPaid = (id: number) =>
     db
       .prepare(
         `UPDATE subscription_renewals
-         SET amount = ?, payment_method = ?, payment_reference = ?, note = ?, checkout_session_id = ?, status = 'paid'
+         SET amount = ?, payment_method = ?, payment_reference = ?, note = ?, checkout_session_id = ?,
+           service_charge_cents = ?, processing_fee_cents = ?, status = 'paid'
          WHERE id = ? AND status = 'pending'`,
       )
       .bind(...values, id)

@@ -24,6 +24,7 @@ import {
   type SessionUser,
   type SessionUserRow,
 } from './session'
+import { handleOnlinePaymentCharge } from './serviceCharges'
 import { handleSubcategories } from './subcategories'
 import { handleSettings } from './settings'
 import { handleSubscription, listPlans, subscriptionExpired } from './subscription'
@@ -268,6 +269,11 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (!user) return notLoggedIn()
     const response = await handleQuotations(env.DB, request, url, user)
     if (response) return response
+  }
+
+  if (url.pathname === '/api/online-payment-charge') {
+    if (!user) return notLoggedIn()
+    return handleOnlinePaymentCharge(env.DB, request)
   }
 
   if (url.pathname === '/api/settings') {

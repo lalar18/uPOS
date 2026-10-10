@@ -358,7 +358,7 @@ const barClass = (used: number, max: number) => (used >= max ? 'bg-danger' : use
     <PaymentSummaryModal
       v-if="confirmPayment"
       :plan="confirmPayment.plan"
-      :fee="subscription.onlinePaymentFee"
+      :fee="subscription.onlinePaymentFees[confirmPayment.plan.id] ?? 0"
       :saving="saving"
       @close="confirmPayment = null"
       @confirm="pay"

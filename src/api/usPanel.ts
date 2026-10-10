@@ -1,5 +1,6 @@
 // The US Panel API (super admins only). See worker/usPanel/.
 import { readJson, sendJson } from './http'
+import type { ServiceCharge } from './serviceCharge'
 import type { Plan } from './subscription'
 import type { StoreInput } from './store'
 
@@ -130,6 +131,8 @@ export interface Renewal {
   status: RenewalStatus
   months: number
   amount: number | null // whole pesos received
+  serviceChargeCents: number // part of amount, added for paying online
+  processingFeeCents: number | null // kept by PayMongo (null: not paid online)
   paymentMethod: string | null
   reference: string | null
   note: string | null
@@ -188,6 +191,39 @@ export type PlanInput = Omit<Plan, 'id'>
 export const listPanelPlans = async (): Promise<PanelPlan[]> => readJson(await fetch(`${BASE}/plans`))
 
 export const updatePlan = (id: string, input: PlanInput) => sendJson<PanelPlan>('PUT', `${BASE}/plans/${id}`, input)
+
+// --- Income and service charges ---
+
+/** Money in centavos */
+export interface IncomeTotals {
+  subscriptionsCents: number // renewals received, less their service charges
+  renewalChargesCents: number // service charges on renewals paid online
+  saleChargesCents: number // service charges stores collected on online sale payments
+  processingFeesCents: number // kept by PayMongo
+  netCents: number // subscriptions + service charges - PayMongo fees
+  renewals: number
+  salePayments: number
+}
+
+export interface Income {
+  year: number
+  firstYear: number // earliest year with income
+  months: (IncomeTotals & { month: string })[] // "2026-01" .. "2026-12", in Philippine time
+  stores: (IncomeTotals & { id: number; name: string })[] // highest net first
+  totals: IncomeTotals
+}
+
+export interface ServiceCharges {
+  renewal: ServiceCharge
+  sale: ServiceCharge
+}
+
+export const getIncome = async (year: number): Promise<Income> => readJson(await fetch(`${BASE}/income?year=${year}`))
+
+export const getServiceCharges = async (): Promise<ServiceCharges> => readJson(await fetch(`${BASE}/service-charges`))
+
+export const updateServiceCharges = (input: ServiceCharges) =>
+  sendJson<ServiceCharges>('PUT', `${BASE}/service-charges`, input)
 
 // --- Account ---
 

@@ -10,7 +10,7 @@
 //
 //   GET    /api/plans                               -> plans, cheapest first (public: the landing page's pricing)
 //   GET    /api/subscription                        -> { plan, expiresAt, expired, usage, plans, pendingRenewal,
-//                                                       renewals, onlinePayment, onlinePaymentFee }
+//                                                       renewals, onlinePayment, onlinePaymentFees }
 //   POST   /api/subscription/renewals               { planId } -> renewal + { checkoutUrl } (admins; one pending at a time)
 //   POST   /api/subscription/renewals/:id/checkout  -> { checkoutUrl }  (admins; pays a pending renewal online)
 //   DELETE /api/subscription/renewals/:id           -> { ok }           (admins; cancels a pending renewal)
@@ -23,9 +23,9 @@ import {
   createCheckoutSession,
   expireCheckoutSession,
   onlinePaymentEnabled,
-  onlinePaymentFee,
   type PaymongoEnv,
 } from './paymongo'
+import { getServiceCharge, renewalChargePesos } from './serviceCharges'
 import type { SessionUser } from './session'
 
 export interface PlanRow {
@@ -160,7 +160,7 @@ function publicRenewal(row: RenewalRow) {
 const MAX_RENEWALS_SHOWN = 12
 
 async function getSubscription(db: D1Database, env: PaymongoEnv, user: SessionUser): Promise<Response> {
-  const [usage, plans, renewals] = await Promise.all([
+  const [usage, plans, renewals, charge] = await Promise.all([
     getPlanUsage(db, user.store_id),
     listPlanRows(db),
     db
@@ -170,6 +170,7 @@ async function getSubscription(db: D1Database, env: PaymongoEnv, user: SessionUs
       )
       .bind(user.store_id, MAX_RENEWALS_SHOWN + 1) // + the pending one, if any
       .all<RenewalRow>(),
+    getServiceCharge(db, 'renewal'),
   ])
   if (!usage) return error('Store not found', 404)
   const pending = renewals.results.find((r) => r.status === 'pending')
@@ -182,7 +183,10 @@ async function getSubscription(db: D1Database, env: PaymongoEnv, user: SessionUs
     pendingRenewal: pending ? publicRenewal(pending) : null,
     renewals: renewals.results.filter((r) => r.status === 'paid').slice(0, MAX_RENEWALS_SHOWN).map(publicRenewal),
     onlinePayment: onlinePaymentEnabled(env),
-    onlinePaymentFee: onlinePaymentEnabled(env) ? onlinePaymentFee(user.store_currency) : 0,
+    // Whole pesos added to each plan's price when paid online, by plan id
+    onlinePaymentFees: Object.fromEntries(
+      plans.results.map((p) => [p.id, onlinePaymentEnabled(env) ? renewalChargePesos(charge, p.monthly_price) : 0]),
+    ),
   })
 }
 
@@ -213,7 +217,7 @@ async function openCheckout(
     storeName: user.store_name,
     planName: renewal.plan_name,
     pesos: renewal.monthly_price,
-    feePesos: onlinePaymentFee(user.store_currency),
+    feePesos: renewalChargePesos(await getServiceCharge(db, 'renewal'), renewal.monthly_price),
     origin,
   })
   await db

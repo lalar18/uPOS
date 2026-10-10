@@ -73,6 +73,7 @@ const router = createRouter({
           meta: { menu: '/us-panel/stores' },
         },
         { path: 'billing', name: 'us-billing', component: () => import('./views/usPanel/UsBillingView.vue') },
+        { path: 'income', name: 'us-income', component: () => import('./views/usPanel/UsIncomeView.vue') },
         { path: 'plans', name: 'us-plans', component: () => import('./views/usPanel/UsPlansView.vue') },
         { path: 'account', name: 'us-account', component: () => import('./views/usPanel/UsAccountView.vue') },
         { path: ':pathMatch(.*)*', redirect: { name: 'us-dashboard' } },

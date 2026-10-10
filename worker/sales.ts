@@ -15,6 +15,9 @@
 // A sale takes its products out of stock (logged as "sale" stock adjustments) in the same
 // transaction that saves it. The stock log's CHECK (quantity_after >= 0) means a sale that
 // would take stock below zero fails as a whole, even when two tills sell the last item at once.
+//
+// A payment by an online method also records the service charge collected on top of it (see
+// serviceCharges.ts). It isn't part of the sale, and isn't sent back to the store.
 
 import {
   computeTotals,
@@ -44,6 +47,7 @@ import {
   type PaymentMethod,
 } from './documents'
 import { can } from './permissions'
+import { getServiceCharge, saleChargeCents } from './serviceCharges'
 import type { SessionUser } from './session'
 
 const MAX_PAYMENTS = 5
@@ -506,17 +510,19 @@ async function createSale(db: D1Database, request: Request, user: SessionUser): 
       .bind(linesJson(lines), storeId),
   ]
   if (payments.length > 0) {
+    const charge = await getServiceCharge(db, 'sale')
+    const charged = payments.map((p) => ({ ...p, serviceChargeCents: saleChargeCents(charge, p.method, p.amountCents) }))
     statements.push(
       db
         .prepare(
           `INSERT INTO sale_payments (store_id, sale_id, amount_cents, tendered_cents, method, reference, note,
-             paid_date, user_id, user_name)
+             service_charge_cents, paid_date, user_id, user_name)
            SELECT s.store_id, s.id, json_extract(j.value, '$.amountCents'), json_extract(j.value, '$.tenderedCents'),
              json_extract(j.value, '$.method'), json_extract(j.value, '$.reference'), json_extract(j.value, '$.note'),
-             ?, ?, ?
+             json_extract(j.value, '$.serviceChargeCents'), ?, ?, ?
            FROM json_each(?) j, sales s WHERE s.store_id = ? AND s.uid = ?`,
         )
-        .bind(saleDate, user.id, user.full_name, JSON.stringify(payments), storeId, uid),
+        .bind(saleDate, user.id, user.full_name, JSON.stringify(charged), storeId, uid),
       db
         .prepare(
           `UPDATE sales SET paid_cents = (SELECT COALESCE(SUM(amount_cents), 0) FROM sale_payments
@@ -577,6 +583,7 @@ async function addPayment(db: D1Database, request: Request, user: SessionUser, s
   if (!sale) return error('Sale not found', 404)
   if (sale.due_cents <= 0) return error('This invoice is already fully paid', 409)
   if (payment.amountCents > sale.due_cents) return error('The payment is more than the balance due', 400)
+  const charge = await getServiceCharge(db, 'sale')
 
   try {
     // Recalculating paid_cents runs the sales CHECK, so two payments at once can't overpay
@@ -584,8 +591,8 @@ async function addPayment(db: D1Database, request: Request, user: SessionUser, s
       db
         .prepare(
           `INSERT INTO sale_payments (store_id, sale_id, amount_cents, tendered_cents, method, reference, note,
-             paid_date, user_id, user_name)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             service_charge_cents, paid_date, user_id, user_name)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           storeId,
@@ -595,6 +602,7 @@ async function addPayment(db: D1Database, request: Request, user: SessionUser, s
           payment.method,
           payment.reference,
           payment.note,
+          saleChargeCents(charge, payment.method, payment.amountCents),
           paidDate,
           user.id,
           user.full_name,
