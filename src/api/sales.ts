@@ -197,6 +197,10 @@ export const createSale = (input: SaleInput) =>
 export const addSalePayment = (id: number, input: PaymentInput & { paidDate: string }) =>
   sendJson<Sale>('POST', `/api/sales/${id}/payments`, input)
 
+/** Cancels a sale nothing was paid on: its products go back in stock and the sale is removed */
+export const cancelSale = (id: number, reason: string | null) =>
+  sendJson<{ cancelled: true }>('POST', `/api/sales/${id}/cancel`, { reason })
+
 // --- Totals (keep in step with computeTotals in worker/documents.ts) ---
 
 export const lineTotal = (quantity: number, priceCents: number) => Math.round(quantity * priceCents)

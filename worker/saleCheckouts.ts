@@ -294,6 +294,19 @@ export async function closeOutdatedCheckout(db: D1Database, env: PaymongoEnv, sa
   if (row) await cancelCheckout(db, env, row)
 }
 
+/**
+ * Closes the checkout waiting for a sale, if any, before the sale is cancelled. Returns false if
+ * the customer had just paid it (the payment is then recorded on the sale).
+ */
+export async function closeWaitingCheckout(db: D1Database, env: PaymongoEnv, saleId: number): Promise<boolean> {
+  const row = await db
+    .prepare(`SELECT ${CHECKOUT_COLUMNS} FROM sale_checkouts WHERE sale_id = ? AND status = 'pending'`)
+    .bind(saleId)
+    .first<CheckoutRow>()
+  if (!row) return true
+  return (await cancelCheckout(db, env, row)).status === 'cancelled'
+}
+
 /** The checkout waiting for a sale's payment, if any, for the sale's detail */
 export async function pendingCheckout(db: D1Database, storeId: number, saleId: number) {
   const row = await db

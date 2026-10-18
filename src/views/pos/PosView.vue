@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // Point of sale (/pos). Tap products, scan a barcode into the search box (USB or Bluetooth
 // scanner) or scan barcodes and QR codes with the camera to fill the cart, then Pay. On wide screens the cart sits beside the products; on phones and tablets
-// a bar at the bottom shows the total and opens the cart full screen.
+// a bar at the bottom shows the total and opens the cart full screen. Cancel Sale empties the cart, and
+// a sale left unpaid online can be cancelled so it puts its stock back instead of staying unpaid.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { PickedCustomer } from '@/api/customers'
 import {
@@ -13,6 +14,7 @@ import {
   type ProductOption,
 } from '@/api/products'
 import {
+  cancelSale,
   computeTotals,
   createSale,
   getSale,
@@ -407,6 +409,56 @@ function paidOtherWay(sale: Sale) {
   lastSale.value = sale
 }
 
+// --- Cancelling the transaction ---
+// Before paying, the cart is only on this device, so cancelling just empties it. A sale already
+// saved for an online payment the customer didn't make is cancelled on the server: its products go
+// back in stock and it doesn't stay behind as an unpaid sale.
+
+const cancelling = ref<'cart' | 'sale' | null>(null)
+const cancelReason = ref('')
+const cancelBusy = ref(false)
+const cancelError = ref('')
+
+function askCancel(what: 'cart' | 'sale') {
+  cancelling.value = what
+  cancelReason.value = ''
+  cancelError.value = ''
+}
+
+function closeCancel() {
+  if (!cancelBusy.value) cancelling.value = null
+}
+
+async function confirmCancel() {
+  if (cancelling.value === 'cart') {
+    clearCart()
+    cartError.value = ''
+    cartOpen.value = false
+    cancelling.value = null
+    showNotice('Transaction cancelled.')
+    searchInput.value?.focus()
+    return
+  }
+  const sale = onlineSale.value
+  if (!sale) {
+    cancelling.value = null
+    return
+  }
+  cancelBusy.value = true
+  cancelError.value = ''
+  try {
+    await cancelSale(sale.id, cancelReason.value.trim() || null)
+    cancelling.value = null
+    endOnlinePayment()
+    loadProducts() // the stock is back
+    showNotice(`${sale.reference} cancelled. Its products are back in stock.`)
+  } catch (e) {
+    cancelError.value = e instanceof Error ? e.message : 'Could not cancel the sale'
+  } finally {
+    cancelBusy.value = false
+  }
+}
+
 // --- Receipt ---
 
 usePrintRoot(() => '@page { size: 80mm auto; margin: 3mm; }')
@@ -517,8 +569,14 @@ onBeforeUnmount(() => {
       <div class="cart-head">
         <h5 class="mb-0">Cart <span v-if="cart.length" class="text-gray-5 fw-normal fs-14">({{ formatQuantity(itemCount) }})</span></h5>
         <div class="d-flex gap-2">
-          <button v-if="cart.length" type="button" class="btn btn-sm btn-white border text-danger" @click="clearCart">
-            Clear
+          <button
+            v-if="cart.length"
+            type="button"
+            class="btn btn-sm btn-white border text-danger"
+            title="Cancel this transaction and empty the cart"
+            @click="askCancel('cart')"
+          >
+            <i class="ti ti-x me-1"></i>Cancel Sale
           </button>
           <button type="button" class="btn btn-sm btn-white border d-lg-none" aria-label="Close cart" @click="cartOpen = false">
             <i class="ti ti-x"></i>
@@ -654,21 +712,73 @@ onBeforeUnmount(() => {
     @close="payingOther = false"
     @saved="paidOtherWay"
   />
-  <AppModal v-else-if="onlineSale" :title="`Not paid yet · ${onlineSale.reference}`" @close="endOnlinePayment">
+  <AppModal
+    v-else-if="onlineSale && cancelling !== 'sale'"
+    :title="`Not paid yet · ${onlineSale.reference}`"
+    @close="endOnlinePayment"
+  >
     <div class="modal-body">
       <div class="alert alert-warning py-2" role="alert">{{ onlineProblem }}</div>
       <p class="mb-0">
         The sale is saved, with <strong>{{ formatMoney(onlineSale.dueCents) }}</strong> still due. Try the online payment
-        again, or take the payment another way. You can also leave it and record the payment later from the sale.
+        again, or take the payment another way. You can also leave it and record the payment later from the sale, or
+        cancel the transaction if the customer isn't buying after all.
       </p>
     </div>
     <div class="modal-footer flex-wrap">
+      <button
+        v-if="onlineSale.paidCents === 0"
+        type="button"
+        class="btn btn-outline-danger me-auto"
+        :disabled="retrying"
+        @click="askCancel('sale')"
+      >
+        Cancel Transaction
+      </button>
       <button type="button" class="btn btn-secondary" :disabled="retrying" @click="endOnlinePayment">Leave Unpaid</button>
       <button type="button" class="btn btn-white border" :disabled="retrying" @click="payingOther = true">
         Pay Another Way
       </button>
       <button v-if="onlineInput" type="button" class="btn btn-primary" :disabled="retrying" @click="retryOnline">
         {{ retrying ? 'Opening…' : 'Try Online Again' }}
+      </button>
+    </div>
+  </AppModal>
+
+  <!-- Cancelling the transaction -->
+  <AppModal
+    v-if="cancelling"
+    :title="cancelling === 'sale' && onlineSale ? `Cancel ${onlineSale.reference}?` : 'Cancel this transaction?'"
+    size="sm"
+    @close="closeCancel"
+  >
+    <div class="modal-body">
+      <p v-if="cancelling === 'cart'" class="mb-0">
+        The cart's {{ formatQuantity(itemCount) }} {{ itemCount === 1 ? 'item' : 'items' }}
+        ({{ formatMoney(totals.totalCents) }}) will be removed and nothing will be sold.
+      </p>
+      <template v-else-if="onlineSale">
+        <p>
+          Nothing was paid on this sale. Cancelling it puts its products back in stock and removes the sale, so it
+          isn't left unpaid.
+        </p>
+        <label for="pos-cancel-reason" class="form-label">Reason <span class="text-gray-5">(optional)</span></label>
+        <input
+          id="pos-cancel-reason"
+          v-model="cancelReason"
+          type="text"
+          class="form-control"
+          maxlength="500"
+          placeholder="e.g. Customer changed their mind"
+          @keydown.enter.prevent="confirmCancel"
+        />
+      </template>
+      <div v-if="cancelError" class="alert alert-danger py-2 mt-3 mb-0" role="alert">{{ cancelError }}</div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" :disabled="cancelBusy" @click="closeCancel">Keep It</button>
+      <button type="button" class="btn btn-danger" :disabled="cancelBusy" @click="confirmCancel">
+        {{ cancelBusy ? 'Cancelling…' : 'Yes, Cancel' }}
       </button>
     </div>
   </AppModal>

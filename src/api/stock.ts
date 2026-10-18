@@ -28,6 +28,7 @@ const REASON_LABELS: Record<string, string> = {
   opening: 'Opening stock', // recorded when a product is created
   sale: 'Sale', // recorded by sales
   sale_return: 'Sales return', // recorded when a return puts goods back in stock
+  sale_cancel: 'Sale cancelled', // recorded when an unpaid sale is cancelled and its goods go back in stock
   received: 'Stock received',
   count: 'Stock count',
   returned: 'Customer return',
@@ -43,7 +44,7 @@ const REASON_LABELS: Record<string, string> = {
 export const reasonLabel = (reason: string) => REASON_LABELS[reason] ?? reason
 
 /** Every reason the list can be filtered by, including the ones the system records */
-export const FILTER_REASONS = ['opening', 'sale', 'sale_return', ...ADJUSTMENT_REASONS] as const
+export const FILTER_REASONS = ['opening', 'sale', 'sale_return', 'sale_cancel', ...ADJUSTMENT_REASONS] as const
 
 export type AdjustmentMode = 'add' | 'remove' | 'set'
 

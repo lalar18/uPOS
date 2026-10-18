@@ -11,7 +11,13 @@
 //   GET  /api/sales/:id                    -> sale with items, payments, returns and onlineCheckout
 //   POST /api/sales     (SaleInput)        -> sale   (201; 200 when `uid` was already saved)
 //   POST /api/sales/:id/payments  { amountCents, method, reference, note, tenderedCents, paidDate } -> sale
+//   POST /api/sales/:id/cancel    { reason } -> { cancelled: true }
 //   /api/sales/:id/checkouts...            online payment through PayMongo (see saleCheckouts.ts)
+//
+// A sale nothing has been paid on (and nothing returned from) can be cancelled, e.g. when the
+// customer walks away before paying online: its products go back in stock, the sale is removed so
+// it doesn't stay behind as an unpaid invoice, and a copy is kept in cancelled_sales. Cashiers can
+// cancel their own sales; roles with sales.returns can cancel anyone's.
 //
 // A new sale can also be paid online: with `onlinePayment: { method, amountCents }`, its checkout
 // is opened once the sale is saved and comes back as `checkout` (or `checkoutError` if PayMongo
@@ -57,6 +63,7 @@ import { can } from './permissions'
 import {
   checkoutAvailable,
   closeOutdatedCheckout,
+  closeWaitingCheckout,
   handleSaleCheckouts,
   MIN_CHECKOUT_CENTS,
   openSaleCheckout,
@@ -672,6 +679,91 @@ async function addPayment(
   return detail ? Response.json(detail, { status: 201 }) : error('Sale not found', 404)
 }
 
+async function cancelSale(
+  db: D1Database,
+  env: PaymongoEnv,
+  request: Request,
+  user: SessionUser,
+  saleId: number,
+): Promise<Response> {
+  const storeId = user.store_id
+  const body = await request.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>)
+  const reason = cleanNote(body?.reason)
+  if (reason === undefined) return error('Reason is too long', 400)
+
+  const sale = await db
+    .prepare('SELECT paid_cents, returned_cents, user_id FROM sales WHERE id = ? AND store_id = ?')
+    .bind(saleId, storeId)
+    .first<{ paid_cents: number; returned_cents: number; user_id: number | null }>()
+  if (!sale) return error('Sale not found', 404)
+  if (sale.user_id !== user.id && !can(user, 'sales.returns')) {
+    return error("You can only cancel your own sales. Ask someone who can record returns.", 403)
+  }
+  if (sale.paid_cents !== 0) return error('A payment was made on this sale, so it cannot be cancelled. Record a return instead.', 409)
+  if (sale.returned_cents !== 0) return error('This sale has a return, so it cannot be cancelled.', 409)
+
+  // The customer can't pay online once it's cancelled
+  if (!(await closeWaitingCheckout(db, env, saleId))) {
+    return error('The customer just paid online, so the sale was not cancelled. Refresh to see the payment.', 409)
+  }
+
+  // Everything below only happens if the first statement copied the sale, i.e. it is still unpaid
+  const cancellable = `s.id = ?1 AND s.store_id = ?2 AND s.paid_cents = 0 AND s.returned_cents = 0
+    AND NOT EXISTS (SELECT 1 FROM sale_payments WHERE sale_id = s.id)
+    AND NOT EXISTS (SELECT 1 FROM sales_returns WHERE sale_id = s.id)
+    AND NOT EXISTS (SELECT 1 FROM sale_checkouts WHERE sale_id = s.id AND status != 'cancelled')`
+  const copied = 'EXISTS (SELECT 1 FROM cancelled_sales WHERE sale_id = ?1 AND store_id = ?2)'
+  const reference = saleReference(saleId)
+  const results = await db.batch([
+    db
+      .prepare(
+        `INSERT INTO cancelled_sales (store_id, sale_id, source, customer_id, customer_name, sale_date, total_cents,
+           items, reason, sold_by, sold_at, user_id, user_name)
+         SELECT s.store_id, s.id, s.source, s.customer_id, s.customer_name, s.sale_date, s.total_cents,
+           (SELECT json_group_array(json_object('productId', product_id, 'name', product_name, 'sku', product_sku,
+                     'unit', unit_short_name, 'quantity', quantity, 'priceCents', price_cents, 'totalCents', total_cents))
+            FROM (SELECT * FROM sale_items WHERE sale_id = s.id ORDER BY position, id)),
+           ?3, s.user_name, s.created_at, ?4, ?5
+         FROM sales s WHERE ${cancellable}`,
+      )
+      .bind(saleId, storeId, reason, user.id, user.full_name),
+    // Log the stock coming back, then put it on the products. Both read the same starting stock.
+    db
+      .prepare(
+        `INSERT INTO stock_adjustments (store_id, product_id, product_name, product_sku, unit_short_name, reason,
+           quantity_before, quantity_change, quantity_after, note, user_id, user_name)
+         SELECT p.store_id, p.id, p.name, p.sku, u.short_name, 'sale_cancel', p.quantity, x.quantity,
+           ROUND(p.quantity + x.quantity, 3), ?3, ?4, ?5
+         FROM (SELECT product_id, SUM(quantity) AS quantity FROM sale_items
+               WHERE sale_id = ?1 AND product_id IS NOT NULL GROUP BY product_id) x
+         JOIN products p ON p.id = x.product_id AND p.store_id = ?2
+         JOIN units u ON u.id = p.unit_id
+         WHERE ${copied}`,
+      )
+      .bind(saleId, storeId, `${reference} cancelled`, user.id, user.full_name),
+    db
+      .prepare(
+        `UPDATE products SET
+           quantity = ROUND(quantity + (SELECT SUM(quantity) FROM sale_items WHERE sale_id = ?1 AND product_id = products.id), 3),
+           updated_at = datetime('now')
+         WHERE store_id = ?2 AND id IN (SELECT product_id FROM sale_items WHERE sale_id = ?1) AND ${copied}`,
+      )
+      .bind(saleId, storeId),
+    // A converted quotation can be converted again
+    db
+      .prepare(
+        `UPDATE quotations SET status = 'accepted', updated_at = datetime('now')
+         WHERE store_id = ?2 AND id = (SELECT quotation_id FROM sales WHERE id = ?1 AND store_id = ?2) AND ${copied}`,
+      )
+      .bind(saleId, storeId),
+    db.prepare(`DELETE FROM sales WHERE id = ?1 AND store_id = ?2 AND ${copied}`).bind(saleId, storeId),
+  ])
+  if (!results[0]!.meta.changes) {
+    return error('The sale changed while cancelling, so it was not cancelled. Refresh and try again.', 409)
+  }
+  return Response.json({ cancelled: true })
+}
+
 /** Handles /api/sales routes, or returns null if the path isn't one of them. */
 export async function handleSales(
   db: D1Database,
@@ -683,8 +775,9 @@ export async function handleSales(
   const isCollection = url.pathname === '/api/sales'
   const itemMatch = url.pathname.match(/^\/api\/sales\/(\d+)$/)
   const paymentsMatch = url.pathname.match(/^\/api\/sales\/(\d+)\/payments$/)
+  const cancelMatch = url.pathname.match(/^\/api\/sales\/(\d+)\/cancel$/)
   const checkoutsMatch = /^\/api\/sales\/\d+\/checkouts(\/\d+)?$/.test(url.pathname)
-  if (!isCollection && !itemMatch && !paymentsMatch && !checkoutsMatch) return null
+  if (!isCollection && !itemMatch && !paymentsMatch && !cancelMatch && !checkoutsMatch) return null
 
   if (request.method !== 'GET' && !can(user, 'sales.create')) {
     return error("You don't have permission to make sales or record payments", 403)
@@ -698,6 +791,7 @@ export async function handleSales(
     return sale ? Response.json(sale) : error('Sale not found', 404)
   }
   if (paymentsMatch && request.method === 'POST') return addPayment(db, env, request, user, Number(paymentsMatch[1]))
+  if (cancelMatch && request.method === 'POST') return cancelSale(db, env, request, user, Number(cancelMatch[1]))
 
   return error('Method not allowed', 405)
 }

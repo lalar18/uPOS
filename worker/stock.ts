@@ -27,7 +27,7 @@ export const ADJUSTMENT_REASONS = [
   'other',
 ] as const
 type AdjustmentReason = (typeof ADJUSTMENT_REASONS)[number]
-const ALL_REASONS: readonly string[] = ['opening', 'sale', 'sale_return', ...ADJUSTMENT_REASONS]
+const ALL_REASONS: readonly string[] = ['opening', 'sale', 'sale_return', 'sale_cancel', ...ADJUSTMENT_REASONS]
 
 type AdjustmentMode = 'add' | 'remove' | 'set'
 
