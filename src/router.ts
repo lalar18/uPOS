@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { Permission } from './api/roles'
 import { loadSession, subscriptionExpired } from './auth'
+import { applySeo } from './seo'
 import { loadSuperAdmin } from './usPanelAuth'
 import HomeLayout from './layouts/HomeLayout.vue'
 import BrandView from './views/brand/BrandView.vue'
@@ -229,6 +230,9 @@ router.beforeEach(async (to) => {
     return { name: user?.role.isAdmin ? 'subscription' : 'dashboard' }
   }
 })
+
+// Title, description, canonical URL and robots tag for the page (public pages are indexed, the app isn't)
+router.afterEach((to) => applySeo(to))
 
 declare module 'vue-router' {
   interface RouteMeta {

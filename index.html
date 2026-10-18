@@ -1,20 +1,121 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-PH">
   <head>
     <meta charset="UTF-8">
-    <link rel="icon" type="image/svg+xml" href="/assets/img/MuntingDahan-favicon.svg">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MuntingDahan POS</title>
+    <title>MuntingDahan POS: Cloud POS with QR Ph Payments for Philippine Stores</title>
+    <!-- SEO tags for the landing page; src/seo.ts updates title, description, canonical and robots per page -->
+    <meta name="description" content="Cloud point of sale for sari-sari stores, groceries, pharmacies and shops in the Philippines. Barcode scanning, GCash, Maya and QR Ph payments, inventory and reports in your browser. Free 1-month trial.">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <link rel="canonical" href="https://muntingdahan.store/">
+    <meta name="theme-color" content="#1F4D3A">
+    <meta name="application-name" content="MuntingDahan POS">
+    <meta name="apple-mobile-web-app-title" content="MuntingDahan POS">
 
-    <!-- Template styles (served from public/assets) -->
+    <link rel="icon" type="image/svg+xml" href="/assets/img/MuntingDahan-favicon.svg">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png">
+
+    <!-- Link previews (Facebook, Messenger, Viber, LinkedIn, X) -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="MuntingDahan POS">
+    <meta property="og:locale" content="en_PH">
+    <meta property="og:url" content="https://muntingdahan.store/">
+    <meta property="og:title" content="MuntingDahan POS: Cloud POS with QR Ph Payments for Philippine Stores">
+    <meta property="og:description" content="Scan. Sell. Get paid by QR. Barcode scanning, GCash, Maya and QR Ph payments, inventory and reports for Philippine stores, all in your browser.">
+    <meta property="og:image" content="https://muntingdahan.store/assets/img/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="MuntingDahan POS: Scan. Sell. Get paid by QR. Cloud POS for Philippine stores.">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="MuntingDahan POS: Cloud POS with QR Ph Payments for Philippine Stores">
+    <meta name="twitter:description" content="Scan. Sell. Get paid by QR. Barcode scanning, GCash, Maya and QR Ph payments, inventory and reports for Philippine stores.">
+    <meta name="twitter:image" content="https://muntingdahan.store/assets/img/og-image.png">
+
+    <!-- Structured data for search results (keep the FAQ in step with LandingView.vue) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://muntingdahan.store/#organization",
+          "name": "MuntingDahan POS",
+          "url": "https://muntingdahan.store/",
+          "logo": "https://muntingdahan.store/assets/img/apple-touch-icon.png",
+          "email": "sales@usystems.ph",
+          "areaServed": "PH"
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://muntingdahan.store/#website",
+          "name": "MuntingDahan POS",
+          "url": "https://muntingdahan.store/",
+          "inLanguage": "en-PH",
+          "publisher": { "@id": "https://muntingdahan.store/#organization" }
+        },
+        {
+          "@type": "SoftwareApplication",
+          "name": "MuntingDahan POS",
+          "url": "https://muntingdahan.store/",
+          "image": "https://muntingdahan.store/assets/img/og-image.png",
+          "applicationCategory": "BusinessApplication",
+          "applicationSubCategory": "Point of Sale",
+          "operatingSystem": "Web browser (Windows, macOS, Android, iOS)",
+          "description": "Cloud point of sale for Philippine stores: barcode and QR scanning, GCash, Maya and QR Ph payments recorded on the sale, inventory with low-stock and expiry alerts, invoices, returns and reports.",
+          "featureList": [
+            "Point of sale for computers, tablets and phones",
+            "Barcode and QR scanning with a USB or Bluetooth scanner or the device camera",
+            "QR Ph online payments with GCash, Maya and bank apps",
+            "Inventory with variants, low-stock and expiry alerts",
+            "Barcode and QR code label printing",
+            "Sales, invoices, quotations and returns",
+            "Sales and profit reports"
+          ],
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "PHP",
+            "description": "Free for 1 month, then a monthly plan"
+          },
+          "publisher": { "@id": "https://muntingdahan.store/#organization" }
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            { "@type": "Question", "name": "Do I need to install anything?", "acceptedAnswer": { "@type": "Answer", "text": "No. MuntingDahan POS runs in your web browser, so it works on the computers, laptops, tablets and phones you already have." } },
+            { "@type": "Question", "name": "What barcode scanners work with it?", "acceptedAnswer": { "@type": "Answer", "text": "Any USB or Bluetooth scanner that types into the search box works. No scanner? Tap Scan on the POS to read barcodes and QR codes with your camera." } },
+            { "@type": "Question", "name": "How do online payments work?", "acceptedAnswer": { "@type": "Answer", "text": "When a customer pays by QR Ph, the POS shows a QR code for the sale. They pay with GCash, Maya or their bank app, and the payment is confirmed and recorded on the sale automatically. The money goes to your store wallet, which you can withdraw to GCash or a bank account." } },
+            { "@type": "Question", "name": "Can I lose my sales records?", "acceptedAnswer": { "@type": "Answer", "text": "Your records are kept in the cloud, not on one device. Every sale, payment, return and stock change is saved as it happens, so a broken or lost device does not take your history with it." } },
+            { "@type": "Question", "name": "Is there a fee for online payments?", "acceptedAnswer": { "@type": "Answer", "text": "A small service charge applies to online payments and withdrawals. It is always shown before anyone pays or withdraws. Cash sales have no extra fee." } },
+            { "@type": "Question", "name": "How does billing work?", "acceptedAnswer": { "@type": "Answer", "text": "New stores get 1 month free. After that, plans are billed monthly and you renew from the Subscription page inside the portal." } },
+            { "@type": "Question", "name": "What happens if my subscription expires?", "acceptedAnswer": { "@type": "Answer", "text": "Nothing is deleted. Your store becomes view-only until you renew, so you can still look up your sales and products." } },
+            { "@type": "Question", "name": "Can I change plans later?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Pick another plan when you renew. A bigger plan applies when the renewal is paid; a smaller one starts when your current period ends." } }
+          ]
+        }
+      ]
+    }
+    </script>
+
+    <!-- style.css @imports Google Fonts; connect early so the text renders sooner -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <!-- Template styles (served from public/assets). all.min.css already includes fontawesome.min.css -->
     <link rel="stylesheet" href="/assets/css/bootstrap.min.css">
     <link rel="stylesheet" href="/assets/plugins/tabler-icons/tabler-icons.css">
-    <link rel="stylesheet" href="/assets/plugins/fontawesome/css/fontawesome.min.css">
     <link rel="stylesheet" href="/assets/plugins/fontawesome/css/all.min.css">
     <link rel="stylesheet" href="/assets/css/style.css">
   </head>
   <body>
     <div id="app"></div>
+    <!-- For crawlers and browsers without JavaScript -->
+    <noscript>
+      <h1>MuntingDahan POS: cloud POS for Philippine stores</h1>
+      <p>Scan. Sell. Get paid by QR. MuntingDahan POS brings your counter, barcode scanning, QR Ph payments (GCash, Maya and bank apps), inventory and reports into one system that runs in your browser. Built for sari-sari stores, groceries and minimarts, hardware stores, pharmacies, cafés and retail shops. Every sale and payment is saved online the moment it happens. Start free for 1 month.</p>
+      <p>Please enable JavaScript to use MuntingDahan POS. Questions? Email <a href="mailto:sales@usystems.ph">sales@usystems.ph</a>.</p>
+      <p><a href="/terms">Terms &amp; Conditions</a> · <a href="/privacy">Privacy Policy</a> · <a href="/refund-policy">Return &amp; Refund Policy</a></p>
+    </noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

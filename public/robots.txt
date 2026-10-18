@@ -1,0 +1,7 @@
+# Public pages: the landing page and the legal pages (see sitemap.xml).
+# The signed-in app pages aren't blocked here so crawlers can see their noindex tag (src/seo.ts).
+User-agent: *
+Disallow: /api/
+Disallow: /us-panel
+
+Sitemap: https://muntingdahan.store/sitemap.xml
