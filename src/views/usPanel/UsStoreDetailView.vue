@@ -457,7 +457,7 @@ function onConfirmed() {
   />
   <UsPaymentModal
     v-if="recordingPayment && store"
-    :store="{ id: store.id, name: store.name, planId: store.plan.id }"
+    :store="{ id: store.id, name: store.name, planId: store.plan.id, usage: store.usage }"
     :plans="plans"
     :expires-at="store.expiresAt"
     @close="recordingPayment = false"

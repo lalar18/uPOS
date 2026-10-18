@@ -11,7 +11,9 @@ import {
   describeSeats,
   formatDate,
   getSubscription,
+  joinList,
   payRenewalOnline,
+  planOverage,
   requestRenewal,
   type Plan,
   type Subscription,
@@ -150,6 +152,11 @@ const canRenew = computed(
     (subscription.value.expired || remaining.value <= RENEW_WINDOW_DAYS),
 )
 
+/** What the store has over a plan's caps (empty: it fits). Another plan can only be chosen if it fits. */
+const overage = (plan: Plan) => (subscription.value ? planOverage(subscription.value.usage, plan) : [])
+/** Over its own plan's caps (e.g. a super admin moved it to a smaller plan): it keeps what it has */
+const overCurrent = computed(() => (subscription.value ? overage(subscription.value.plan) : []))
+
 const number = new Intl.NumberFormat('en-US')
 
 /** Width of a usage bar, capped at 100% (a store moved to a smaller plan can be over) */
@@ -280,6 +287,33 @@ const barClass = (used: number, max: number) => (used >= max ? 'bg-danger' : use
           </div>
         </div>
 
+        <!-- A cheaper plan, paid for, starting when the current period runs out -->
+        <div v-if="subscription.scheduledPlan" class="alert alert-info d-flex align-items-start gap-2" role="status">
+          <i class="ti ti-calendar-repeat fs-18 mt-1"></i>
+          <div>
+            <div class="fw-semibold">
+              Moving to the {{ subscription.scheduledPlan.plan.name }} plan on
+              {{ formatDate(subscription.scheduledPlan.startsAt) }}
+            </div>
+            <div class="fs-13">
+              You keep the {{ subscription.plan.name }} plan until then, since it's already paid for. Until the switch, you
+              can't add more users or products than the {{ subscription.scheduledPlan.plan.name }} plan allows.
+            </div>
+          </div>
+        </div>
+
+        <!-- Over the current plan's caps -->
+        <div v-if="overCurrent.length" class="alert alert-warning d-flex align-items-start gap-2" role="alert">
+          <i class="ti ti-alert-triangle fs-18 mt-1"></i>
+          <div>
+            <div class="fw-semibold">Your store is over the {{ subscription.plan.name }} plan's limits</div>
+            <div class="fs-13">
+              It allows {{ joinList(overCurrent) }}. You can keep using everything you have, but can't add more until
+              you remove the extra ones or move to a bigger plan.
+            </div>
+          </div>
+        </div>
+
         <div class="row g-4">
           <div class="col-md-6">
             <div class="d-flex justify-content-between fs-14 mb-1">
@@ -333,21 +367,27 @@ const barClass = (used: number, max: number) => (used >= max ? 'bg-danger' : use
               <li class="mb-1"><i class="ti ti-users me-2 text-primary"></i>{{ describeSeats(plan) }}</li>
               <li><i class="ti ti-box me-2 text-primary"></i>Up to {{ number.format(plan.maxProducts) }} products</li>
             </ul>
-            <button
-              v-if="plan.id !== subscription.plan.id && canRenew"
-              type="button"
-              class="btn btn-sm btn-outline-primary mt-auto align-self-start"
-              :disabled="saving"
-              @click="renew(plan)"
-            >
-              Renew on {{ plan.name }}
-            </button>
+            <template v-if="plan.id !== subscription.plan.id && canRenew">
+              <div v-if="overage(plan).length" class="fs-12 text-danger mb-2">
+                <i class="ti ti-alert-circle me-1"></i>Allows {{ joinList(overage(plan)) }}. Remove the extra ones to
+                switch to it.
+              </div>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-primary mt-auto align-self-start"
+                :disabled="saving || overage(plan).length > 0"
+                @click="renew(plan)"
+              >
+                Renew on {{ plan.name }}
+              </button>
+            </template>
           </div>
         </div>
       </div>
     </div>
     <p class="fs-13 text-gray-5 mt-3">
-      A renewal on another plan switches to it as soon as it's paid.
+      A bigger plan applies as soon as it's paid. A smaller one starts when your current period ends, so you keep
+      what you've already paid for.
       {{
         subscription.onlinePayment
           ? 'Pay with GCash, Maya, card, QR Ph or GrabPay through PayMongo.'

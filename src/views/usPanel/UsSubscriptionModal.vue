@@ -1,9 +1,9 @@
 <script setup lang="ts">
 // Moves a store to another plan and/or sets its expiry date directly, without a payment
 // (corrections, goodwill extensions, ending a store early). Payments go through Record Payment.
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { parseDbDate } from '@/api/http'
-import { describeSeats, formatPrice, type Plan } from '@/api/subscription'
+import { describeSeats, formatPrice, joinList, planOverage, type Plan } from '@/api/subscription'
 import { setStoreSubscription, type StoreDetail } from '@/api/usPanel'
 import AppModal from '@/components/AppModal.vue'
 import { addDays, toIsoDate } from '@/utils/date'
@@ -15,6 +15,12 @@ const planId = ref(props.store.plan.id)
 const expiresOn = ref(props.store.expiresAt ? toIsoDate(parseDbDate(props.store.expiresAt)) : toIsoDate())
 const error = ref('')
 const saving = ref(false)
+
+const chosenPlan = computed(() => props.plans.find((p) => p.id === planId.value))
+/** What the store has over the chosen plan's caps (it keeps it, but can't add more) */
+const overage = computed(() =>
+  chosenPlan.value && chosenPlan.value.id !== props.store.plan.id ? planOverage(props.store.usage, chosenPlan.value) : [],
+)
 
 const extend = (days: number) => (expiresOn.value = addDays(expiresOn.value || toIsoDate(), days))
 
@@ -39,7 +45,8 @@ async function save() {
         <div v-if="error" class="alert alert-danger py-2" role="alert">{{ error }}</div>
         <p class="fs-14 text-gray-5">
           This changes the subscription without recording a payment. To renew a paying store, use
-          <strong>Record Payment</strong> instead.
+          <strong>Record Payment</strong> instead. It applies right away and replaces any plan change the
+          store paid for that hasn't started yet.
         </p>
         <div class="mb-3">
           <label class="form-label" for="sub-plan">Plan</label>
@@ -48,6 +55,9 @@ async function save() {
               {{ plan.name }} · {{ formatPrice(plan.monthlyPrice) }}/mo · {{ describeSeats(plan) }}
             </option>
           </select>
+          <div v-if="overage.length" class="alert alert-warning py-2 mt-2 mb-0 fs-13" role="alert">
+            {{ chosenPlan?.name }} allows {{ joinList(overage) }}. The store keeps what it has, but can't add more.
+          </div>
         </div>
         <div class="mb-2">
           <label class="form-label" for="sub-expires">Expires on (end of day)</label>

@@ -18,7 +18,7 @@
 import { can } from './permissions'
 import { sniffImageType } from './profile'
 import type { SessionUser } from './session'
-import { getPlanUsage, PRODUCT_SLOT_FREE, productLimitReached } from './subscription'
+import { capBinds, getPlanUsage, PRODUCT_SLOT_FREE, productLimitReached } from './subscription'
 
 type Status = 'active' | 'inactive'
 
@@ -463,8 +463,7 @@ async function createProduct(db: D1Database, user: SessionUser, request: Request
           input.expiryDate,
           input.warrantyId,
           input.status,
-          storeId,
-          storeId,
+          ...capBinds(storeId),
         ),
       db
         .prepare(

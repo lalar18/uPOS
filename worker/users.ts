@@ -23,9 +23,12 @@ import type { SessionUser } from './session'
 import {
   ADMIN_SEAT_FREE,
   adminLimitReached,
+  adminsFull,
+  capBinds,
   getPlanUsage,
   USER_SEAT_FREE,
   userLimitReached,
+  usersFull,
 } from './subscription'
 
 interface UserRow {
@@ -205,17 +208,16 @@ async function createUser(db: D1Database, admin: SessionUser, request: Request):
         role.id,
         input.active ? 1 : 0,
         await hashPassword(password),
-        storeId,
-        storeId,
+        ...capBinds(storeId),
         role.is_admin,
-        storeId,
+        ...capBinds(storeId),
       )
       .first<{ id: number }>()
     if (!created) {
       // The plan is full: say which cap stopped it
       const usage = await getPlanUsage(db, storeId)
       if (!usage) return error('Store not found', 404)
-      return usage.users >= usage.plan.max_users ? userLimitReached(usage) : adminLimitReached(usage)
+      return usersFull(usage) ? userLimitReached(usage) : adminLimitReached(usage)
     }
     const row = await getUser(db, storeId, created.id)
     return row ? Response.json(publicUser(row), { status: 201 }) : error('Could not add the user', 500)
@@ -263,7 +265,7 @@ async function updateUser(db: D1Database, admin: SessionUser, request: Request, 
         storeId,
         id,
         becomesAdmin ? 1 : 0,
-        storeId,
+        ...capBinds(storeId),
       )
       .run()
     // No row changed: the last-admin rule or the plan stopped it, or the user was just deleted
@@ -271,7 +273,7 @@ async function updateUser(db: D1Database, admin: SessionUser, request: Request, 
       if (!(await getUser(db, storeId, id))) return error('User not found', 404)
       if (becomesAdmin) {
         const usage = await getPlanUsage(db, storeId)
-        if (usage && usage.plan.max_admins !== null && usage.admins >= usage.plan.max_admins) {
+        if (usage && adminsFull(usage)) {
           return adminLimitReached(usage)
         }
       }

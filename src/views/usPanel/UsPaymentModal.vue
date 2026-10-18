@@ -4,14 +4,14 @@
 // extended by the months paid for (from its expiry, or from today if it already expired).
 import { computed, ref, watch } from 'vue'
 import { PAYMENT_METHODS, paymentMethodLabel } from '@/api/sales'
-import { formatDate, formatPrice, type Plan } from '@/api/subscription'
+import { formatDate, formatPrice, joinList, planOverage, type Plan, type PlanUsage } from '@/api/subscription'
 import { MAX_PAID_MONTHS, payRenewal, recordStorePayment, type Renewal } from '@/api/usPanel'
 import { parseDbDate } from '@/api/http'
 import AppModal from '@/components/AppModal.vue'
 
 const props = defineProps<{
   renewal?: Renewal // a pending renewal to confirm
-  store?: { id: number; name: string; planId: string } // or a store to record a payment for
+  store?: { id: number; name: string; planId: string; usage?: PlanUsage } // or a store to record a payment for
   plans?: Plan[] // needed with `store`
   expiresAt?: string | null // the store's current expiry, to preview the new one
 }>()
@@ -49,6 +49,21 @@ const newExpiry = computed(() => {
   const end = new Date(start)
   end.setUTCMonth(end.getUTCMonth() + months.value)
   return end
+})
+
+// Moving a store to another plan (recording a payment without a request)
+const chosenPlan = computed(() => (props.store ? props.plans?.find((p) => p.id === planId.value) : undefined))
+const currentPlan = computed(() => props.plans?.find((p) => p.id === props.store?.planId))
+/** What the store has over the chosen plan's caps (it keeps it, but can't add more) */
+const overage = computed(() =>
+  chosenPlan.value && props.store?.usage && chosenPlan.value.id !== props.store.planId
+    ? planOverage(props.store.usage, chosenPlan.value)
+    : [],
+)
+/** A cheaper plan waits until the period already paid for runs out (see worker/subscription.ts) */
+const switchesOn = computed(() => {
+  if (!chosenPlan.value || !currentPlan.value || chosenPlan.value.monthlyPrice >= currentPlan.value.monthlyPrice) return null
+  return props.expiresAt && parseDbDate(props.expiresAt) > new Date() ? props.expiresAt : null
 })
 
 async function save() {
@@ -110,6 +125,15 @@ async function save() {
                 {{ p.name }} · {{ formatPrice(p.monthlyPrice) }}/mo
               </option>
             </select>
+          </div>
+          <div v-if="!renewal && (overage.length || switchesOn)" class="col-12">
+            <div v-if="switchesOn" class="alert alert-info py-2 mb-2 fs-13" role="status">
+              The store stays on {{ currentPlan?.name }} until {{ formatDate(switchesOn) }} (already paid for), then
+              moves to {{ chosenPlan?.name }}.
+            </div>
+            <div v-if="overage.length" class="alert alert-warning py-2 mb-0 fs-13" role="alert">
+              {{ chosenPlan?.name }} allows {{ joinList(overage) }}. The store keeps what it has, but can't add more.
+            </div>
           </div>
           <div class="col-sm-6">
             <label class="form-label" for="pay-months">Months paid <span class="text-danger">*</span></label>

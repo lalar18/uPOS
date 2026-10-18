@@ -285,15 +285,18 @@ async function setSubscription(db: D1Database, request: Request, id: number): Pr
   if (!(await db.prepare('SELECT 1 FROM plans WHERE id = ?').bind(planId).first())) return error('Choose a plan', 400)
   if (!isDate(body?.expiresOn)) return error('Choose the expiry date', 400)
 
-  // Runs to the end of that day in the Philippines (23:59:59 UTC+8)
-  const result = await db
-    .prepare(
-      `UPDATE stores SET plan_id = ?, plan_expires_at = datetime(?, '+16 hours', '-1 second'), updated_at = datetime('now')
-       WHERE id = ?`,
-    )
-    .bind(planId, body!.expiresOn, id)
-    .run()
-  return result.meta.changes ? getStoreDetail(db, id) : storeNotFound()
+  // Runs to the end of that day in the Philippines (23:59:59 UTC+8). The override replaces any
+  // plan change paid for earlier that hadn't started yet.
+  const [result] = await db.batch([
+    db
+      .prepare(
+        `UPDATE stores SET plan_id = ?, plan_expires_at = datetime(?, '+16 hours', '-1 second'), updated_at = datetime('now')
+         WHERE id = ?`,
+      )
+      .bind(planId, body!.expiresOn, id),
+    db.prepare('UPDATE subscription_renewals SET plan_scheduled = 0 WHERE store_id = ? AND plan_scheduled = 1').bind(id),
+  ])
+  return result!.meta.changes ? getStoreDetail(db, id) : storeNotFound()
 }
 
 async function listStoreUsers(db: D1Database, storeId: number): Promise<Response> {

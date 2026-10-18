@@ -20,13 +20,21 @@ export interface Renewal {
   paidAt: string | null
 }
 
+export interface PlanUsage {
+  users: number
+  admins: number
+  products: number
+}
+
 export interface Subscription {
   plan: Plan
   expiresAt: string | null // UTC "YYYY-MM-DD HH:MM:SS"
   expired: boolean
-  usage: { users: number; admins: number; products: number }
+  usage: PlanUsage
   plans: Plan[] // every plan, cheapest first
   pendingRenewal: Renewal | null // waiting for payment
+  // A cheaper plan paid for, which the store moves to when the period already paid for runs out
+  scheduledPlan: { plan: { id: string; name: string }; startsAt: string } | null
   renewals: Renewal[] // paid ones, newest first
   onlinePayment: boolean // renewals are paid on PayMongo's checkout page (else confirmed by a super admin)
   onlinePaymentFees: Record<string, number> // by plan id: whole pesos added to a renewal paid online (0: none)
@@ -63,6 +71,27 @@ export const daysLeft = (expiresAt: string, now = new Date()) =>
 /** A UTC timestamp as "Oct 8, 2026" */
 export const formatDate = (value: string) =>
   parseDbDate(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+
+/**
+ * What a store has over a plan's caps, e.g. ["1 user (you have 5)", "500 products (you have 1,240)"];
+ * empty when it fits. Keep in step with planOverage in worker/subscription.ts.
+ */
+export function planOverage(usage: PlanUsage, plan: Plan): string[] {
+  const count = (n: number, noun: string) => `${n.toLocaleString('en-US')} ${noun}${n === 1 ? '' : 's'}`
+  const over: string[] = []
+  if (usage.users > plan.maxUsers) over.push(`${count(plan.maxUsers, 'user')} (you have ${usage.users})`)
+  if (plan.maxAdmins !== null && usage.admins > plan.maxAdmins) {
+    over.push(`${count(plan.maxAdmins, 'admin')} (you have ${usage.admins})`)
+  }
+  if (usage.products > plan.maxProducts) {
+    over.push(`${count(plan.maxProducts, 'product')} (you have ${usage.products.toLocaleString('en-US')})`)
+  }
+  return over
+}
+
+/** "a, b and c" */
+export const joinList = (items: string[]) =>
+  items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
 
 /** "1 admin + 2 users", "5 users", "1 user" */
 export function describeSeats(plan: Plan): string {

@@ -8,9 +8,15 @@
 // otherwise a super admin marks it paid in the US Panel (see usPanel/billing.ts). Either way
 // the store is extended by the months paid for.
 //
+// Moving to another plan: a plan that costs the same or more applies as soon as it's paid; a
+// cheaper one waits until the period already paid for runs out (applyDuePlanChanges). Another
+// plan can only be requested if the store fits its caps, and while a cheaper plan is pending or
+// scheduled the store is held to its caps. A store over its caps anyway (a super admin moved it,
+// or lowered a plan's caps) keeps what it has but can't add more.
+//
 //   GET    /api/plans                               -> plans, cheapest first (public: the landing page's pricing)
 //   GET    /api/subscription                        -> { plan, expiresAt, expired, usage, plans, pendingRenewal,
-//                                                       renewals, onlinePayment, onlinePaymentFees }
+//                                                       scheduledPlan, renewals, onlinePayment, onlinePaymentFees }
 //   POST   /api/subscription/renewals               { planId } -> renewal + { checkoutUrl } (admins; one pending at a time)
 //   POST   /api/subscription/renewals/:id/checkout  -> { checkoutUrl }  (admins; pays a pending renewal online)
 //   DELETE /api/subscription/renewals/:id           -> { ok }           (admins; cancels a pending renewal)
@@ -42,6 +48,7 @@ export interface PlanRow {
 
 export interface PlanUsage {
   plan: PlanRow
+  upcoming: PlanRow[] // other plans the store is moving to (see CAPPING_PLAN_IDS)
   users: number
   admins: number
   products: number
@@ -55,18 +62,29 @@ export const TRIAL_PERIOD = '+1 month'
 
 export const PLAN_COLUMNS = 'p.id, p.name, p.max_users, p.max_admins, p.max_products, p.monthly_price'
 
-/** SQL that's true while store `?` can add a user (binds: storeId, storeId) */
+/**
+ * Ids of the plans whose caps store `?` is held to: its own, and any it's moving to (a scheduled
+ * plan change, or a renewal waiting for payment), so it can't grow past a smaller plan it's about
+ * to be on. The lowest cap of these applies. (binds: storeId, storeId)
+ */
+const CAPPING_PLAN_IDS = `SELECT plan_id FROM stores WHERE id = ?
+  UNION SELECT plan_id FROM subscription_renewals WHERE store_id = ? AND (status = 'pending' OR plan_scheduled = 1)`
+
+/** SQL that's true while store `?` can add a user (binds: storeId × 3) */
 export const USER_SEAT_FREE = `(SELECT COUNT(*) FROM users WHERE store_id = ?) <
-  (SELECT p.max_users FROM stores st JOIN plans p ON p.id = st.plan_id WHERE st.id = ?)`
+  (SELECT MIN(max_users) FROM plans WHERE id IN (${CAPPING_PLAN_IDS}))`
 
-/** SQL that's true while store `?` can give one more user the Admin role (binds: storeId) */
-export const ADMIN_SEAT_FREE = `(SELECT p.max_admins IS NULL OR p.max_admins > (
-    SELECT COUNT(*) FROM users u JOIN roles r ON r.id = u.role_id WHERE u.store_id = st.id AND r.is_admin = 1)
-  FROM stores st JOIN plans p ON p.id = st.plan_id WHERE st.id = ?)`
+/** SQL that's true while store `?` can give one more user the Admin role (binds: storeId × 3) */
+export const ADMIN_SEAT_FREE = `(SELECT cap IS NULL OR cap > (
+    SELECT COUNT(*) FROM users u JOIN roles r ON r.id = u.role_id WHERE u.store_id = ? AND r.is_admin = 1)
+  FROM (SELECT MIN(max_admins) AS cap FROM plans WHERE id IN (${CAPPING_PLAN_IDS})))` // MIN skips NULL (any)
 
-/** SQL that's true while store `?` can add a product (binds: storeId, storeId) */
+/** SQL that's true while store `?` can add a product (binds: storeId × 3) */
 export const PRODUCT_SLOT_FREE = `(SELECT COUNT(*) FROM products WHERE store_id = ?) <
-  (SELECT p.max_products FROM stores st JOIN plans p ON p.id = st.plan_id WHERE st.id = ?)`
+  (SELECT MIN(max_products) FROM plans WHERE id IN (${CAPPING_PLAN_IDS}))`
+
+/** The binds of USER_SEAT_FREE, ADMIN_SEAT_FREE and PRODUCT_SLOT_FREE */
+export const capBinds = (storeId: number) => [storeId, storeId, storeId]
 
 export function publicPlan(row: PlanRow) {
   return {
@@ -89,32 +107,109 @@ export async function listPlans(db: D1Database): Promise<Response> {
 }
 
 export async function getPlanUsage(db: D1Database, storeId: number): Promise<PlanUsage | null> {
-  const row = await db
-    .prepare(
-      `SELECT ${PLAN_COLUMNS},
-         (SELECT COUNT(*) FROM users WHERE store_id = st.id) AS users,
-         (SELECT COUNT(*) FROM users u JOIN roles r ON r.id = u.role_id
-            WHERE u.store_id = st.id AND r.is_admin = 1) AS admins,
-         (SELECT COUNT(*) FROM products WHERE store_id = st.id) AS products
-       FROM stores st JOIN plans p ON p.id = st.plan_id WHERE st.id = ?`,
-    )
-    .bind(storeId)
-    .first<PlanRow & { users: number; admins: number; products: number }>()
+  const [row, upcoming] = await Promise.all([
+    db
+      .prepare(
+        `SELECT ${PLAN_COLUMNS},
+           (SELECT COUNT(*) FROM users WHERE store_id = st.id) AS users,
+           (SELECT COUNT(*) FROM users u JOIN roles r ON r.id = u.role_id
+              WHERE u.store_id = st.id AND r.is_admin = 1) AS admins,
+           (SELECT COUNT(*) FROM products WHERE store_id = st.id) AS products
+         FROM stores st JOIN plans p ON p.id = st.plan_id WHERE st.id = ?`,
+      )
+      .bind(storeId)
+      .first<PlanRow & { users: number; admins: number; products: number }>(),
+    db
+      .prepare(
+        `SELECT ${PLAN_COLUMNS} FROM plans p
+         WHERE p.id IN (${CAPPING_PLAN_IDS}) AND p.id != (SELECT plan_id FROM stores WHERE id = ?)`,
+      )
+      .bind(storeId, storeId, storeId)
+      .all<PlanRow>(),
+  ])
   if (!row) return null
   const { users, admins, products, ...plan } = row
-  return { plan, users, admins, products }
+  return { plan, upcoming: upcoming.results, users, admins, products }
 }
 
-const upgradeHint = 'Upgrade your subscription plan to add more.'
+type Cap = 'max_users' | 'max_admins' | 'max_products'
 
-export const userLimitReached = (usage: PlanUsage) =>
-  error(`Your ${usage.plan.name} plan allows ${usage.plan.max_users} user${usage.plan.max_users === 1 ? '' : 's'}. ${upgradeHint}`, 409)
+/** The plan whose cap applies (the lowest of the store's plan and those it's moving to); its cap null: any */
+export function cappingPlan(usage: PlanUsage, cap: Cap): PlanRow {
+  const capOf = (p: PlanRow) => p[cap] ?? Infinity
+  return usage.upcoming.reduce((low, p) => (capOf(p) < capOf(low) ? p : low), usage.plan)
+}
 
-export const adminLimitReached = (usage: PlanUsage) =>
-  error(`Your ${usage.plan.name} plan allows ${usage.plan.max_admins} admin${usage.plan.max_admins === 1 ? '' : 's'}. ${upgradeHint}`, 409)
+function limitReached(usage: PlanUsage, cap: Cap, noun: string): Response {
+  const plan = cappingPlan(usage, cap)
+  const max = plan[cap] ?? 0
+  const allows = `${max.toLocaleString('en-US')} ${noun}${max === 1 ? '' : 's'}`
+  return plan.id === usage.plan.id
+    ? error(`Your ${plan.name} plan allows ${allows}. Upgrade your subscription plan to add more.`, 409)
+    : error(`Your store is moving to the ${plan.name} plan, which allows ${allows}, so no more can be added.`, 409)
+}
 
-export const productLimitReached = (usage: PlanUsage) =>
-  error(`Your ${usage.plan.name} plan allows ${usage.plan.max_products.toLocaleString('en-US')} products. ${upgradeHint}`, 409)
+export const userLimitReached = (usage: PlanUsage) => limitReached(usage, 'max_users', 'user')
+export const adminLimitReached = (usage: PlanUsage) => limitReached(usage, 'max_admins', 'admin')
+export const productLimitReached = (usage: PlanUsage) => limitReached(usage, 'max_products', 'product')
+
+/** True when the store has as many users as its caps allow */
+export const usersFull = (usage: PlanUsage) => usage.users >= cappingPlan(usage, 'max_users').max_users
+
+/** True when the store has as many admins as its caps allow */
+export function adminsFull(usage: PlanUsage): boolean {
+  const max = cappingPlan(usage, 'max_admins').max_admins
+  return max !== null && usage.admins >= max
+}
+
+/**
+ * What a store has over a plan's caps, e.g. ["1 user (you have 5)", "500 products (you have 1,240)"].
+ * Keep in step with planOverage in src/api/subscription.ts.
+ */
+export function planOverage(usage: Pick<PlanUsage, 'users' | 'admins' | 'products'>, plan: PlanRow): string[] {
+  const count = (n: number, noun: string) => `${n.toLocaleString('en-US')} ${noun}${n === 1 ? '' : 's'}`
+  const over: string[] = []
+  if (usage.users > plan.max_users) over.push(`${count(plan.max_users, 'user')} (you have ${usage.users})`)
+  if (plan.max_admins !== null && usage.admins > plan.max_admins) {
+    over.push(`${count(plan.max_admins, 'admin')} (you have ${usage.admins})`)
+  }
+  if (usage.products > plan.max_products) {
+    over.push(`${count(plan.max_products, 'product')} (you have ${usage.products.toLocaleString('en-US')})`)
+  }
+  return over
+}
+
+const joinList = (items: string[]) =>
+  items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
+
+/** "YYYY-MM-DD HH:MM:SS" (UTC), like the timestamps in the database */
+const sqlNow = () => new Date().toISOString().slice(0, 19).replace('T', ' ')
+
+/**
+ * Moves stores to the plans of paid renewals whose periods have started (a cheaper plan waits for
+ * its period: see migrations/0032_schedule_plan_changes.sql). One store, or every store with null.
+ */
+export async function applyDuePlanChanges(db: D1Database, storeId: number | null): Promise<void> {
+  const now = sqlNow()
+  const onlyStore = storeId === null ? '' : 'AND store_id = ?'
+  const storeBind = storeId === null ? [] : [storeId]
+  await db.batch([
+    // The latest period that has started decides the plan
+    db
+      .prepare(
+        `UPDATE stores SET plan_id = (
+           SELECT sr.plan_id FROM subscription_renewals sr
+           WHERE sr.store_id = stores.id AND sr.plan_scheduled = 1 AND sr.period_start <= ?
+           ORDER BY sr.period_start DESC, sr.id DESC LIMIT 1
+         ), updated_at = datetime('now')
+         WHERE id IN (SELECT store_id FROM subscription_renewals WHERE plan_scheduled = 1 AND period_start <= ? ${onlyStore})`,
+      )
+      .bind(now, now, ...storeBind),
+    db
+      .prepare(`UPDATE subscription_renewals SET plan_scheduled = 0 WHERE plan_scheduled = 1 AND period_start <= ? ${onlyStore}`)
+      .bind(now, ...storeBind),
+  ])
+}
 
 /** "Oct 8, 2026", for error messages (the browser formats dates itself) */
 export const formatExpiry = (value: string | null) =>
@@ -169,7 +264,7 @@ function publicRenewal(row: RenewalRow) {
 const MAX_RENEWALS_SHOWN = 12
 
 async function getSubscription(db: D1Database, env: PaymongoEnv, user: SessionUser): Promise<Response> {
-  const [usage, plans, renewals, charge] = await Promise.all([
+  const [usage, plans, renewals, charge, scheduled] = await Promise.all([
     getPlanUsage(db, user.store_id),
     listPlanRows(db),
     db
@@ -180,6 +275,16 @@ async function getSubscription(db: D1Database, env: PaymongoEnv, user: SessionUs
       .bind(user.store_id, MAX_RENEWALS_SHOWN + 1) // + the pending one, if any
       .all<RenewalRow>(),
     getServiceCharge(db, 'renewal'),
+    // The next paid change to another plan, once its period starts
+    db
+      .prepare(
+        `SELECT sr.plan_id, p.name AS plan_name, sr.period_start
+         FROM subscription_renewals sr JOIN plans p ON p.id = sr.plan_id JOIN stores st ON st.id = sr.store_id
+         WHERE sr.store_id = ? AND sr.plan_scheduled = 1 AND sr.plan_id != st.plan_id
+         ORDER BY sr.period_start, sr.id LIMIT 1`,
+      )
+      .bind(user.store_id)
+      .first<{ plan_id: string; plan_name: string; period_start: string }>(),
   ])
   if (!usage) return error('Store not found', 404)
   const pending = renewals.results.find((r) => r.status === 'pending')
@@ -190,6 +295,9 @@ async function getSubscription(db: D1Database, env: PaymongoEnv, user: SessionUs
     usage: { users: usage.users, admins: usage.admins, products: usage.products },
     plans: plans.results.map(publicPlan),
     pendingRenewal: pending ? publicRenewal(pending) : null,
+    scheduledPlan: scheduled
+      ? { plan: { id: scheduled.plan_id, name: scheduled.plan_name }, startsAt: scheduled.period_start }
+      : null,
     renewals: renewals.results.filter((r) => r.status === 'paid').slice(0, MAX_RENEWALS_SHOWN).map(publicRenewal),
     onlinePayment: onlinePaymentEnabled(env),
     // Whole pesos added to each plan's price when paid online, by plan id
@@ -260,8 +368,19 @@ async function requestRenewal(
 ): Promise<Response> {
   const body = await request.json<{ planId?: unknown }>().catch(() => null)
   const planId = typeof body?.planId === 'string' ? body.planId : ''
-  const plan = await db.prepare('SELECT id FROM plans WHERE id = ?').bind(planId).first()
+  const plan = await db.prepare(`SELECT ${PLAN_COLUMNS} FROM plans p WHERE p.id = ?`).bind(planId).first<PlanRow>()
   if (!plan) return error('Choose a plan', 400)
+
+  // Another plan has to fit what the store has (renewing its own plan is always allowed)
+  const usage = await getPlanUsage(db, user.store_id)
+  if (!usage) return error('Store not found', 404)
+  const over = usage.plan.id === plan.id ? [] : planOverage(usage, plan)
+  if (over.length) {
+    return error(
+      `The ${plan.name} plan allows ${joinList(over)}. Remove the extra ones first, or choose a bigger plan.`,
+      409,
+    )
+  }
 
   // The partial unique index allows one pending renewal per store
   const row = await db

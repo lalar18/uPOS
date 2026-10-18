@@ -12,7 +12,8 @@
     // Its secret is not stored here: `npx wrangler secret put GOOGLE_CLIENT_SECRET` (and .dev.vars locally).
     "GOOGLE_CLIENT_ID": "436051304053-672gmbt3lk7u5pils95keft1bhu790i2.apps.googleusercontent.com"
   },
-  // Checks the withdrawals being sent through PayMongo (worker/payoutTransfers.ts)
+  // Checks the withdrawals being sent through PayMongo (worker/payoutTransfers.ts), and applies
+  // plan changes whose periods have started (applyDuePlanChanges in worker/subscription.ts)
   "triggers": {
     "crons": ["*/10 * * * *"]
   },

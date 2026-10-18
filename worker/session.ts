@@ -1,6 +1,7 @@
 // Cookie-based sessions stored in D1.
 
 import { parsePermissions, PERMISSIONS, type Permission } from './permissions'
+import { applyDuePlanChanges } from './subscription'
 
 const COOKIE_NAME = 'session'
 const SHORT_SESSION_SECONDS = 60 * 60 * 12 // 12 hours
@@ -103,15 +104,20 @@ export async function getSessionUser(db: D1Database, request: Request): Promise<
   // The role is read on every request, so permission changes apply right away
   const row = await db
     .prepare(
-      `SELECT ${SESSION_USER_COLUMNS}
+      `SELECT ${SESSION_USER_COLUMNS},
+         EXISTS (SELECT 1 FROM subscription_renewals WHERE store_id = u.store_id AND plan_scheduled = 1
+           AND period_start <= datetime('now')) AS plan_change_due
        FROM sessions s
        JOIN users u ON u.id = s.user_id
        ${SESSION_USER_JOINS}
        WHERE s.id = ? AND s.expires_at > datetime('now') AND u.is_active = 1 AND st.is_active = 1`,
     )
     .bind(await sha256Hex(token))
-    .first<SessionUserRow>()
-  return row ? sessionUserFromRow(row) : null
+    .first<SessionUserRow & { plan_change_due: number }>()
+  if (!row) return null
+  // A plan change paid for earlier starts with its period, before this request uses the plan
+  if (row.plan_change_due) await applyDuePlanChanges(db, row.store_id)
+  return sessionUserFromRow(row)
 }
 
 /** Signs the user out everywhere except this request's session (e.g. after a password change). */

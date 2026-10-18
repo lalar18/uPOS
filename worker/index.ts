@@ -32,7 +32,7 @@ import { handleOnlinePaymentCharge } from './serviceCharges'
 import { handleSubcategories } from './subcategories'
 import { handleSettings } from './settings'
 import { handleWallet } from './storePayouts'
-import { handleSubscription, listPlans, subscriptionExpired } from './subscription'
+import { applyDuePlanChanges, handleSubscription, listPlans, subscriptionExpired } from './subscription'
 import { handleSuppliers } from './suppliers'
 import { handleUnits } from './units'
 import { handleUsPanel } from './usPanel'
@@ -95,9 +95,11 @@ export default {
   },
 
   // Every 10 minutes (wrangler.jsonc triggers): checks the withdrawals being sent through PayMongo,
-  // in case its callbacks didn't arrive
+  // in case its callbacks didn't arrive, and moves stores to plans paid for whose periods have
+  // started (stores in use are moved on their next request; this catches the rest)
   async scheduled(_controller, env, ctx) {
     ctx.waitUntil(refreshPendingTransfers(env.DB, env, null, 50).catch((err) => console.error(err)))
+    ctx.waitUntil(applyDuePlanChanges(env.DB, null).catch((err) => console.error(err)))
   },
 } satisfies ExportedHandler<Env>
 
