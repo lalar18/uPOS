@@ -287,6 +287,16 @@ async function handleLogout() {
           </li>
         </ul>
 
+        <!-- Mobile POS shortcut (the header's POS button is hidden on small screens) -->
+        <RouterLink
+          v-if="can('sales.create') && !subscriptionExpired()"
+          to="/pos"
+          class="mobile-pos-btn btn btn-dark btn-sm align-items-center"
+          title="POS"
+        >
+          <i class="ti ti-device-laptop me-1"></i>POS
+        </RouterLink>
+
         <!-- Mobile user menu (replaces the right-hand menu on small screens) -->
         <div class="dropdown mobile-user-menu" data-dropdown>
           <a href="#" class="nav-link dropdown-toggle" @click.prevent="toggleDropdown('mobile')">
@@ -386,6 +396,21 @@ async function handleLogout() {
 @media (min-width: 992px) {
   .sidebar-inner {
     height: calc(100% - 65px); /* minus .sidebar-logo */
+  }
+}
+
+.mobile-pos-btn {
+  display: none;
+}
+
+@media (max-width: 991.96px) {
+  .mobile-pos-btn {
+    display: inline-flex;
+    position: absolute;
+    top: 50%;
+    right: 60px; /* left of .mobile-user-menu */
+    transform: translateY(-50%);
+    z-index: 10;
   }
 }
 
