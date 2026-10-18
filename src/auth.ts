@@ -70,7 +70,6 @@ export interface GoogleSignup {
   email: string
   fullName: string
   plan: string
-  trialDays: number
 }
 
 /** The Google account waiting to name its store (after Google sent a new account to /signup). */

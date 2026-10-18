@@ -10,6 +10,7 @@ import { handlePaymongoWebhook } from './paymongoWebhook'
 import { handleTransferCallback, refreshPendingTransfers, TRANSFER_CALLBACK_PATH } from './payoutTransfers'
 import { handleProducts } from './products'
 import { handleQuotations } from './quotations'
+import { handleReports } from './reports'
 import { handleSales } from './sales'
 import { checkoutAvailable } from './saleCheckouts'
 import { handleSalesReturns } from './salesReturns'
@@ -293,6 +294,12 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (url.pathname.startsWith('/api/wallet')) {
     if (!user) return notLoggedIn()
     const response = await handleWallet(env.DB, env, request, url, user)
+    if (response) return response
+  }
+
+  if (url.pathname.startsWith('/api/reports/')) {
+    if (!user) return notLoggedIn()
+    const response = await handleReports(env.DB, request, url, user)
     if (response) return response
   }
 

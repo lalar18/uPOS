@@ -75,7 +75,6 @@ export interface StoreQuery {
 
 export interface NewStoreInput extends StoreInput {
   planId: string
-  trialDays: number // free days before the first payment is due
   admin: { fullName: string; email: string; password: string }
 }
 

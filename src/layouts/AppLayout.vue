@@ -9,7 +9,8 @@ import { menu, type MenuItem } from './menu'
 const router = useRouter()
 const route = useRoute()
 
-const allowed = (item: MenuItem) => (!item.adminOnly || isAdmin()) && (!item.permission || can(item.permission))
+const allowed = (item: MenuItem) =>
+  (!item.adminOnly || isAdmin()) && (item.permission === undefined || [item.permission].flat().every(can))
 const visibleMenu = computed(() =>
   menu
     .map((section) => ({ ...section, items: section.items.filter(allowed) }))

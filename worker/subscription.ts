@@ -47,6 +47,12 @@ export interface PlanUsage {
   products: number
 }
 
+/**
+ * Every new store (Google signup or added in the US Panel) starts with this free trial: one
+ * calendar month, as an SQLite datetime modifier. Keep TRIAL_LABEL in src/api/subscription.ts in step.
+ */
+export const TRIAL_PERIOD = '+1 month'
+
 export const PLAN_COLUMNS = 'p.id, p.name, p.max_users, p.max_admins, p.max_products, p.monthly_price'
 
 /** SQL that's true while store `?` can add a user (binds: storeId, storeId) */

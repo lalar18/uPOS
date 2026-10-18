@@ -2,7 +2,7 @@
 // Adds a store on a plan with its first admin, who can then sign in at /login and add
 // the rest of the store's users.
 import { reactive, ref, watch } from 'vue'
-import { formatPrice, type Plan } from '@/api/subscription'
+import { formatPrice, TRIAL_LABEL, type Plan } from '@/api/subscription'
 import { createStore, type StoreDetail } from '@/api/usPanel'
 import { MIN_PASSWORD_LENGTH } from '@/api/users'
 import AppModal from '@/components/AppModal.vue'
@@ -20,7 +20,6 @@ const form = reactive({
   postalCode: '',
   tin: '',
   planId: props.plans[0]?.id ?? '',
-  trialDays: 30,
   admin: { fullName: '', email: '', password: '' },
 })
 const showPassword = ref(false)
@@ -93,17 +92,11 @@ async function save() {
             </select>
           </div>
           <div class="col-md-6">
-            <label class="form-label" for="new-store-trial">Free days before first payment</label>
-            <input
-              id="new-store-trial"
-              v-model.number="form.trialDays"
-              type="number"
-              min="0"
-              max="365"
-              step="1"
-              class="form-control"
-            />
-            <div class="form-text">0 makes it view-only until a payment is recorded.</div>
+            <span class="form-label d-block">Free trial</span>
+            <div class="form-control-plaintext py-2">
+              <i class="ti ti-gift me-1 text-primary"></i>{{ TRIAL_LABEL }}, the standard for every new store
+            </div>
+            <div class="form-text">Change the expiry later from the store's subscription if needed.</div>
           </div>
         </div>
 

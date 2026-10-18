@@ -24,6 +24,8 @@ import RoleView from './views/role/RoleView.vue'
 import QuotationDetailView from './views/quotation/QuotationDetailView.vue'
 import QuotationFormView from './views/quotation/QuotationFormView.vue'
 import QuotationsView from './views/quotation/QuotationsView.vue'
+import ReportsView from './views/reports/ReportsView.vue'
+import ReportView from './views/reports/ReportView.vue'
 import SaleDetailView from './views/sales/SaleDetailView.vue'
 import SaleFormView from './views/sales/SaleFormView.vue'
 import SaleListView from './views/sales/SaleListView.vue'
@@ -172,6 +174,14 @@ const router = createRouter({
         { path: 'pos', name: 'pos', component: PosView, meta: { permission: 'sales.create', writes: true } },
         { path: 'customers', name: 'customers', component: CustomerView },
         { path: 'suppliers', name: 'suppliers', component: SupplierView },
+        { path: 'reports', name: 'reports', component: ReportsView, meta: { permission: 'reports.view' } },
+        {
+          path: 'reports/:reportKey([a-z-]+)',
+          name: 'report',
+          component: ReportView,
+          props: true,
+          meta: { permission: 'reports.view' },
+        },
         { path: 'store', name: 'store', component: StoreView },
         { path: 'users', name: 'users', component: UserView, meta: { adminOnly: true } },
         { path: 'roles', name: 'roles', component: RoleView, meta: { adminOnly: true } },

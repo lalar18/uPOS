@@ -15,6 +15,7 @@ export const PERMISSIONS = [
   'quotations.delete',
   'customers.manage', // edit and delete customers (anyone can add one at the till)
   'suppliers.manage',
+  'reports.view', // the Reports pages (profit and cost figures also need products.manage)
   'store.manage',
   'settings.manage',
 ] as const

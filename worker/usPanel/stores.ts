@@ -1,7 +1,8 @@
 // Stores, for super admins (US Panel). Unlike the store's own pages, these reach every store.
 //
 //   GET    /api/us-panel/stores?search=&status=&planId=&sort=&page=&pageSize=  -> { items, total }
-//   POST   /api/us-panel/stores    { ...store info, planId, trialDays, admin: { fullName, email, password } } -> store
+//   POST   /api/us-panel/stores    { ...store info, planId, admin: { fullName, email, password } } -> store
+//            (new stores start on the standard free trial, TRIAL_PERIOD)
 //   GET    /api/us-panel/stores/:id                                   -> store (with usage and activity)
 //   PUT    /api/us-panel/stores/:id                { ...store info }   -> store
 //   PUT    /api/us-panel/stores/:id/status         { active }          -> store
@@ -16,11 +17,10 @@
 import { cleanText, error, isDate, likePattern, positiveId, readPaging, referenceId } from '../documents'
 import { hashPassword } from '../password'
 import { readStoreInput } from '../store'
-import { PLAN_COLUMNS, publicPlan, type PlanRow } from '../subscription'
+import { PLAN_COLUMNS, publicPlan, TRIAL_PERIOD, type PlanRow } from '../subscription'
 import { EMAIL_PATTERN, emailTaken, MAX_FULL_NAME_LENGTH, readPassword } from '../users'
 
 export const EXPIRING_DAYS = 7
-const MAX_TRIAL_DAYS = 365
 
 interface StoreListRow {
   id: number
@@ -187,7 +187,7 @@ async function listStores(db: D1Database, url: URL): Promise<Response> {
   })
 }
 
-/** Adds a store on a plan, with its first admin user. */
+/** Adds a store on a plan (on the standard free trial), with its first admin user. */
 async function createStore(db: D1Database, request: Request): Promise<Response> {
   const info = await readStoreInput(request.clone())
   if (info instanceof Response) return info
@@ -196,10 +196,6 @@ async function createStore(db: D1Database, request: Request): Promise<Response> 
 
   const planId = typeof body.planId === 'string' ? body.planId : ''
   if (!(await db.prepare('SELECT 1 FROM plans WHERE id = ?').bind(planId).first())) return error('Choose a plan', 400)
-  const trialDays = body.trialDays ?? 30
-  if (!Number.isSafeInteger(trialDays) || (trialDays as number) < 0 || (trialDays as number) > MAX_TRIAL_DAYS) {
-    return error(`Free days must be between 0 and ${MAX_TRIAL_DAYS}`, 400)
-  }
 
   const admin = (body.admin ?? {}) as Record<string, unknown>
   const adminName = cleanText(admin.fullName)
@@ -229,7 +225,7 @@ async function createStore(db: D1Database, request: Request): Promise<Response> 
       info.postalCode,
       info.tin,
       planId,
-      `+${trialDays} days`,
+      TRIAL_PERIOD,
     )
     .first<{ id: number }>()
   if (!store) return error('Could not add the store', 500)

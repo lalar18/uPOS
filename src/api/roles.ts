@@ -32,6 +32,16 @@ export const PERMISSION_GROUPS = [
     ],
   },
   {
+    title: 'Reports',
+    permissions: [
+      {
+        key: 'reports.view',
+        label: 'View reports',
+        hint: 'Sales, payments, inventory and other reports; profit and cost figures also need Manage products',
+      },
+    ],
+  },
+  {
     title: 'Settings',
     permissions: [
       { key: 'store.manage', label: 'Edit store information', hint: 'Name, address and TIN on receipts' },

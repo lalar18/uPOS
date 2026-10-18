@@ -2,7 +2,7 @@
 // Public one-page site: what USystems POS does, the plans and their prices (from /api/plans,
 // so they always match the real limits), and the Portal button that opens the login page.
 import { computed, onBeforeUnmount, onMounted, ref, type Directive } from 'vue'
-import { describeSeats, formatPrice, getPlans, type Plan } from '@/api/subscription'
+import { describeSeats, formatPrice, getPlans, TRIAL_LABEL, type Plan } from '@/api/subscription'
 import { googleSignInUrl } from '@/auth'
 import { legalLinks } from './legalDocs'
 
@@ -508,7 +508,7 @@ onBeforeUnmount(() => {
         <div class="cta-bg" aria-hidden="true"></div>
         <div v-reveal class="container text-center position-relative">
           <h2>Ready to set up your store?</h2>
-          <p>Sign up with Google and start selling today, free for 14 days. Questions? Email us.</p>
+          <p>Sign up with Google and start selling today, free for {{ TRIAL_LABEL }}. Questions? Email us.</p>
           <div class="d-flex flex-wrap justify-content-center gap-2">
             <a :href="googleSignInUrl()" class="btn btn-primary btn-lg btn-glow">
               <i class="ti ti-brand-google me-1"></i>Start free trial

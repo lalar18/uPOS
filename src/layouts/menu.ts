@@ -8,7 +8,7 @@ export interface MenuItem {
   to: string
   icon: string // tabler icon name, without the "ti-" prefix
   adminOnly?: boolean // only the store's Admin role
-  permission?: Permission // hidden from roles without it
+  permission?: Permission | Permission[] // hidden from roles without it (or without all of them)
 }
 
 export interface MenuSection {
@@ -65,8 +65,19 @@ export const menu: MenuSection[] = [
   {
     title: 'Reports',
     items: [
-      { label: 'Sales Report', to: '/reports/sales', icon: 'chart-bar' },
-      { label: 'Profit & Loss', to: '/reports/profit-loss', icon: 'report-money' },
+      { label: 'All Reports', to: '/reports', icon: 'report-analytics', permission: 'reports.view' },
+      { label: 'Sales Summary', to: '/reports/sales', icon: 'chart-bar', permission: 'reports.view' },
+      { label: 'Sales by Product', to: '/reports/product-sales', icon: 'chart-pie', permission: 'reports.view' },
+      {
+        label: 'Profit & Loss',
+        to: '/reports/profit-loss',
+        icon: 'report-money',
+        permission: ['reports.view', 'products.manage'],
+      },
+      { label: 'Payments Received', to: '/reports/payments', icon: 'cash', permission: 'reports.view' },
+      { label: 'Receivables', to: '/reports/receivables', icon: 'file-dollar', permission: 'reports.view' },
+      { label: 'Inventory Valuation', to: '/reports/inventory', icon: 'building-warehouse', permission: 'reports.view' },
+      { label: 'Stock Movement', to: '/reports/stock-movement', icon: 'arrows-exchange', permission: 'reports.view' },
     ],
   },
   {

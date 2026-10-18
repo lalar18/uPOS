@@ -3,6 +3,7 @@
 // new Google accounts here (see worker/google.ts); everyone else never sees this page.
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { TRIAL_LABEL } from '@/api/subscription'
 import { completeGoogleSignup, getGoogleSignup, googleSignInUrl, type GoogleSignup } from '@/auth'
 
 const router = useRouter()
@@ -51,7 +52,7 @@ async function handleSubmit() {
                 <h3>Create Your Store</h3>
                 <h4 v-if="signup" class="fs-16">
                   Signed in with Google as <strong>{{ signup.email }}</strong>. Name your store to start your
-                  {{ signup.trialDays }}-day free trial.
+                  {{ TRIAL_LABEL }} free trial.
                 </h4>
               </div>
 

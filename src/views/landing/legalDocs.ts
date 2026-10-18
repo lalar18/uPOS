@@ -25,7 +25,7 @@ export const legalLinks: { id: LegalDocId; route: string; label: string }[] = [
   { id: 'refunds', route: 'refund-policy', label: 'Return & Refund Policy' },
 ]
 
-const UPDATED = 'October 11, 2026'
+const UPDATED = 'October 18, 2026'
 
 export const legalDocs: Record<LegalDocId, LegalDoc> = {
   terms: {
@@ -52,7 +52,7 @@ export const legalDocs: Record<LegalDocId, LegalDoc> = {
       {
         heading: '3. Free trial',
         paragraphs: [
-          'New stores get a free trial of 14 days. No payment is taken during the trial. When it ends, the store becomes view-only until a plan is paid for. We may change or end the free trial offer for new sign-ups at any time.',
+          'New stores get a free trial of 1 month. No payment is taken during the trial. When it ends, the store becomes view-only until a plan is paid for. We may change or end the free trial offer for new sign-ups at any time.',
         ],
       },
       {
@@ -229,7 +229,7 @@ export const legalDocs: Record<LegalDocId, LegalDoc> = {
       {
         heading: '1. Free trial first',
         paragraphs: [
-          'Every new store gets a 14-day free trial with every feature, and no payment is taken. Please use it to make sure USystems POS fits your store before you pay for a plan.',
+          'Every new store gets a 1-month free trial with every feature, and no payment is taken. Please use it to make sure USystems POS fits your store before you pay for a plan.',
         ],
       },
       {

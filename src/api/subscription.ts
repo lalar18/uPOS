@@ -35,6 +35,9 @@ export interface Subscription {
 /** Every plan and its price; works without logging in (the landing page uses it). */
 export const getPlans = async (): Promise<Plan[]> => readJson(await fetch('/api/plans'))
 
+/** The free trial every new store gets (keep in step with TRIAL_PERIOD in worker/subscription.ts) */
+export const TRIAL_LABEL = '1 month'
+
 /** 1499 as "₱1,499" */
 export const formatPrice = (pesos: number) => `₱${pesos.toLocaleString('en-US')}`
 

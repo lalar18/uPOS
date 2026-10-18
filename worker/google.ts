@@ -13,6 +13,7 @@
 
 import { createSession, newSessionToken, readSessionToken, sha256Hex } from './session'
 import { readStoreInput } from './store'
+import { TRIAL_PERIOD } from './subscription'
 import { emailTaken, MAX_FULL_NAME_LENGTH } from './users'
 
 export interface GoogleEnv {
@@ -20,9 +21,8 @@ export interface GoogleEnv {
   GOOGLE_CLIENT_SECRET?: string
 }
 
-/** New stores from a Google signup start on this plan, free for this many days. */
+/** New stores from a Google signup start on this plan, on the standard free trial. */
 const SIGNUP_PLAN_ID = 'basic'
-const SIGNUP_TRIAL_DAYS = 14
 
 const STATE_COOKIE = 'google_oauth'
 const STATE_COOKIE_PATH = '/api/auth/google'
@@ -262,7 +262,7 @@ async function completeSignup(db: D1Database, request: Request): Promise<Respons
       info.postalCode,
       info.tin,
       SIGNUP_PLAN_ID,
-      `+${SIGNUP_TRIAL_DAYS} days`,
+      TRIAL_PERIOD,
     )
     .first<{ id: number }>()
   if (!store) return error('Could not create the store', 500)
@@ -314,7 +314,6 @@ export async function handleGoogle(
         email: signup.email,
         fullName: signup.full_name,
         plan: SIGNUP_PLAN_ID,
-        trialDays: SIGNUP_TRIAL_DAYS,
       })
     }
     if (request.method === 'POST') return completeSignup(db, request)
