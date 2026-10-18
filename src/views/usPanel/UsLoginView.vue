@@ -40,7 +40,7 @@ async function handleSubmit() {
           <form @submit.prevent="handleSubmit">
             <div class="login-userset">
               <div class="login-logo logo-normal">
-                <img src="/assets/img/usystems-pos-logo.svg" alt="USystems POS" />
+                <img src="/assets/img/MuntingDahan-pos-logo.svg" alt="MuntingDahan POS" />
               </div>
 
               <div class="login-userheading">
@@ -94,7 +94,7 @@ async function handleSubmit() {
               </div>
 
               <div class="my-4 d-flex justify-content-center align-items-center copyright-text">
-                <p>Copyright &copy; {{ new Date().getFullYear() }} USystems POS</p>
+                <p>Copyright &copy; {{ new Date().getFullYear() }} MuntingDahan POS</p>
               </div>
             </div>
           </form>

@@ -52,15 +52,15 @@ async function handleSubmit() {
           <form @submit.prevent="handleSubmit">
             <div class="login-userset">
               <RouterLink to="/" class="login-logo logo-normal" title="Back to home">
-                <img src="/assets/img/usystems-pos-logo.svg" alt="USystems POS" />
+                <img src="/assets/img/MuntingDahan-pos-logo.svg" alt="MuntingDahan POS" />
               </RouterLink>
               <a href="#" class="login-logo logo-white">
-                <img src="/assets/img/logo-white.svg" alt="USystems POS" />
+                <img src="/assets/img/logo-white.svg" alt="MuntingDahan POS" />
               </a>
 
               <div class="login-userheading">
                 <h3>Sign In</h3>
-                <h4 class="fs-16">Access the USystems POS panel using your email and password.</h4>
+                <h4 class="fs-16">Access the MuntingDahan POS panel using your email and password.</h4>
               </div>
 
               <div v-if="error" class="alert alert-danger py-2" role="alert">{{ error }}</div>
@@ -132,11 +132,11 @@ async function handleSubmit() {
               </div>
 
               <p class="text-center fs-14 text-gray-6 mb-0">
-                New to USystems POS? Continue with Google to create your store, free for {{ TRIAL_LABEL }}.
+                New to MuntingDahan POS? Continue with Google to create your store, free for {{ TRIAL_LABEL }}.
               </p>
 
               <div class="my-4 d-flex justify-content-center align-items-center copyright-text">
-                <p>Copyright &copy; {{ new Date().getFullYear() }} USystems POS</p>
+                <p>Copyright &copy; {{ new Date().getFullYear() }} MuntingDahan POS</p>
               </div>
             </div>
           </form>

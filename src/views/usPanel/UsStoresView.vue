@@ -89,7 +89,7 @@ function onCreated(store: StoreDetail) {
   <div class="page-header flex-wrap gap-2">
     <div class="page-title">
       <h4>Stores</h4>
-      <h6>Every store on USystems POS</h6>
+      <h6>Every store on MuntingDahan POS</h6>
     </div>
     <div class="page-actions d-flex align-items-center gap-2">
       <button type="button" class="btn btn-white border" title="Refresh" :disabled="loading" @click="load">

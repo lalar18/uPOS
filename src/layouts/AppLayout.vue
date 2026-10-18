@@ -154,10 +154,10 @@ async function handleLogout() {
         <!-- Logo (mobile only; on desktop the logo sits in the sidebar) -->
         <div class="header-left active">
           <RouterLink to="/" class="logo logo-normal">
-            <img src="/assets/img/usystems-pos-logo.svg" alt="USystems POS" />
+            <img src="/assets/img/MuntingDahan-pos-logo.svg" alt="MuntingDahan POS" />
           </RouterLink>
           <RouterLink to="/" class="logo-small">
-            <img src="/assets/img/usystems-pos-favicon.svg" alt="USystems POS" />
+            <img src="/assets/img/MuntingDahan-favicon.svg" alt="MuntingDahan POS" />
           </RouterLink>
         </div>
 
@@ -327,10 +327,10 @@ async function handleLogout() {
     <div id="sidebar" class="sidebar" @mouseenter="hovering = true" @mouseleave="hovering = false">
       <div class="sidebar-logo">
         <RouterLink to="/" class="logo logo-normal">
-          <img src="/assets/img/usystems-pos-logo.svg" alt="USystems POS" />
+          <img src="/assets/img/MuntingDahan-pos-logo.svg" alt="MuntingDahan POS" />
         </RouterLink>
         <RouterLink to="/" class="logo-small">
-          <img src="/assets/img/usystems-pos-favicon.svg" alt="USystems POS" />
+          <img src="/assets/img/MuntingDahan-favicon.svg" alt="MuntingDahan POS" />
         </RouterLink>
         <a
           id="toggle_btn"

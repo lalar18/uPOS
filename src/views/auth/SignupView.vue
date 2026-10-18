@@ -45,7 +45,7 @@ async function handleSubmit() {
           <form @submit.prevent="handleSubmit">
             <div class="login-userset">
               <RouterLink to="/" class="login-logo logo-normal" title="Back to home">
-                <img src="/assets/img/usystems-pos-logo.svg" alt="USystems POS" />
+                <img src="/assets/img/MuntingDahan-pos-logo.svg" alt="MuntingDahan POS" />
               </RouterLink>
 
               <div class="login-userheading">

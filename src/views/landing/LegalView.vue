@@ -21,7 +21,7 @@ watch(
     <header class="legal-header">
       <div class="container d-flex align-items-center justify-content-between gap-3">
         <RouterLink to="/" class="brand">
-          <img src="/assets/img/usystems-pos-logo.svg" alt="USystems POS" />
+          <img src="/assets/img/MuntingDahan-pos-logo.svg" alt="MuntingDahan POS" />
         </RouterLink>
         <RouterLink to="/" class="btn btn-white border">
           <i class="ti ti-arrow-left me-1"></i>Back to home
@@ -54,7 +54,7 @@ watch(
 
     <footer class="legal-footer">
       <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
-        <span>Copyright &copy; {{ new Date().getFullYear() }} USystems POS</span>
+        <span>Copyright &copy; {{ new Date().getFullYear() }} MuntingDahan POS</span>
         <a :href="`mailto:${CONTACT_EMAIL}`">{{ CONTACT_EMAIL }}</a>
       </div>
     </footer>

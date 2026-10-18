@@ -30,13 +30,13 @@ const UPDATED = 'October 18, 2026'
 export const legalDocs: Record<LegalDocId, LegalDoc> = {
   terms: {
     title: 'Terms & Conditions',
-    summary: 'The rules for using USystems POS. By creating a store or signing in, you agree to them.',
+    summary: 'The rules for using MuntingDahan POS. By creating a store or signing in, you agree to them.',
     updated: UPDATED,
     sections: [
       {
         heading: '1. About these terms',
         paragraphs: [
-          'These Terms & Conditions ("Terms") govern your use of USystems POS (the "Service"), a web-based point of sale and inventory system operated by USystems ("we", "us", "our"). "You" means the person or business that creates a store on the Service, and every user that store adds.',
+          'These Terms & Conditions ("Terms") govern your use of MuntingDahan POS (the "Service"), a web-based point of sale and inventory system operated by USystems ("we", "us", "our"). "You" means the person or business that creates a store on the Service, and every user that store adds.',
           'By signing up, signing in or using the Service, you agree to these Terms, our Privacy Policy and our Return & Refund Policy. If you do not agree, do not use the Service.',
         ],
       },
@@ -130,13 +130,13 @@ export const legalDocs: Record<LegalDocId, LegalDoc> = {
 
   privacy: {
     title: 'Privacy Policy',
-    summary: 'What personal information USystems POS collects, why, and how we protect it.',
+    summary: 'What personal information MuntingDahan POS collects, why, and how we protect it.',
     updated: UPDATED,
     sections: [
       {
         heading: '1. Who we are',
         paragraphs: [
-          'USystems ("we", "us") operates USystems POS. We follow the Data Privacy Act of 2012 (Republic Act No. 10173) and its implementing rules. This policy explains how we handle personal information when you visit our website or use the Service.',
+          'USystems ("we", "us") operates MuntingDahan POS. We follow the Data Privacy Act of 2012 (Republic Act No. 10173) and its implementing rules. This policy explains how we handle personal information when you visit our website or use the Service.',
         ],
       },
       {
@@ -229,13 +229,13 @@ export const legalDocs: Record<LegalDocId, LegalDoc> = {
       {
         heading: '1. Free trial first',
         paragraphs: [
-          'Every new store gets a 1-month free trial with every feature, and no payment is taken. Please use it to make sure USystems POS fits your store before you pay for a plan.',
+          'Every new store gets a 1-month free trial with every feature, and no payment is taken. Please use it to make sure MuntingDahan POS fits your store before you pay for a plan.',
         ],
       },
       {
         heading: '2. Subscription payments',
         paragraphs: [
-          'USystems POS is a digital service, so there is nothing to return. Monthly plan payments are non-refundable once the renewal has been applied to your store, including for months you do not fully use. If you stop renewing, your store simply becomes view-only when the paid month ends, and nothing is deleted.',
+          'MuntingDahan POS is a digital service, so there is nothing to return. Monthly plan payments are non-refundable once the renewal has been applied to your store, including for months you do not fully use. If you stop renewing, your store simply becomes view-only when the paid month ends, and nothing is deleted.',
           'We will refund a subscription payment when:',
         ],
         list: [
@@ -254,7 +254,7 @@ export const legalDocs: Record<LegalDocId, LegalDoc> = {
       {
         heading: '4. Returns and refunds for things bought from a store',
         paragraphs: [
-          'Stores that use USystems POS sell their own goods and set their own return policies. If you bought something from a store and want to return it or get a refund, please contact that store. Stores record returns and refunds in USystems POS, but the decision is theirs.',
+          'Stores that use MuntingDahan POS sell their own goods and set their own return policies. If you bought something from a store and want to return it or get a refund, please contact that store. Stores record returns and refunds in MuntingDahan POS, but the decision is theirs.',
           'If a customer pays a store online twice for the same sale, the extra payment is flagged and refunded to the customer.',
         ],
       },

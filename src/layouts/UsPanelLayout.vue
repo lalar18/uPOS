@@ -55,10 +55,10 @@ async function handleLogout() {
       <div class="main-header">
         <div class="header-left active">
           <RouterLink to="/us-panel" class="logo logo-normal">
-            <img src="/assets/img/usystems-pos-logo.svg" alt="USystems POS" />
+            <img src="/assets/img/MuntingDahan-pos-logo.svg" alt="MuntingDahan POS" />
           </RouterLink>
           <RouterLink to="/us-panel" class="logo-small">
-            <img src="/assets/img/usystems-pos-favicon.svg" alt="USystems POS" />
+            <img src="/assets/img/MuntingDahan-favicon.svg" alt="MuntingDahan POS" />
           </RouterLink>
         </div>
 
@@ -116,10 +116,10 @@ async function handleLogout() {
     <div id="sidebar" class="sidebar">
       <div class="sidebar-logo">
         <RouterLink to="/us-panel" class="logo logo-normal">
-          <img src="/assets/img/usystems-pos-logo.svg" alt="USystems POS" />
+          <img src="/assets/img/MuntingDahan-pos-logo.svg" alt="MuntingDahan POS" />
         </RouterLink>
         <RouterLink to="/us-panel" class="logo-small">
-          <img src="/assets/img/usystems-pos-favicon.svg" alt="USystems POS" />
+          <img src="/assets/img/MuntingDahan-favicon.svg" alt="MuntingDahan POS" />
         </RouterLink>
       </div>
       <div class="sidebar-inner">

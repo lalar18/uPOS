@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Public one-page site: what USystems POS does (the counter, barcode scanning, QR Ph payments
+// Public one-page site: what MuntingDahan POS does (the counter, barcode scanning, QR Ph payments
 // recorded on the sale, inventory and reports), the plans and their prices (from /api/plans,
 // so they always match the real limits), and the Portal button that opens the login page.
 import QRCode from 'qrcode'
@@ -151,7 +151,7 @@ const included = [
 const faqs = [
   {
     q: 'Do I need to install anything?',
-    a: 'No. USystems POS runs in your web browser, so it works on the computers, laptops, tablets and phones you already have.',
+    a: 'No. MuntingDahan POS runs in your web browser, so it works on the computers, laptops, tablets and phones you already have.',
   },
   {
     q: 'What barcode scanners work with it?',
@@ -220,7 +220,7 @@ const syncedCount = ref(37)
 const timers: number[] = []
 
 const qrSvg = ref('')
-QRCode.toString('USystems POS demo payment', { type: 'svg', margin: 0, color: { dark: '#092c4c', light: '#ffffff' } })
+QRCode.toString('MuntingDahan POS demo payment', { type: 'svg', margin: 0, color: { dark: '#092c4c', light: '#ffffff' } })
   .then((svg) => (qrSvg.value = svg))
   .catch(() => {})
 
@@ -374,7 +374,7 @@ onBeforeUnmount(() => {
     <header class="landing-header" :class="{ scrolled }">
       <div class="container d-flex align-items-center justify-content-between gap-3">
         <a href="#top" class="brand" @click.prevent="go('top')">
-          <img src="/assets/img/usystems-pos-logo.svg" alt="USystems POS" />
+          <img src="/assets/img/MuntingDahan-pos-logo.svg" alt="MuntingDahan POS" />
         </a>
         <nav class="nav-links" :class="{ open: menuOpen }">
           <a
@@ -424,7 +424,7 @@ onBeforeUnmount(() => {
                 Scan. Sell. Get paid by QR. <span class="highlight">Every record safe in the cloud.</span>
               </h1>
               <p class="lead-text hero-in" style="--d: 160ms">
-                USystems POS brings your counter, barcode scanning, QR Ph payments, inventory and reports into one
+                MuntingDahan POS brings your counter, barcode scanning, QR Ph payments, inventory and reports into one
                 system that runs in your browser. Every sale and payment is saved online the moment it happens.
               </p>
               <div class="d-flex flex-wrap gap-2 hero-in" style="--d: 240ms">
@@ -797,7 +797,7 @@ onBeforeUnmount(() => {
       <div class="container">
         <div class="footer-grid">
           <div class="footer-brand">
-            <img src="/assets/img/usystems-pos-logo.svg" alt="USystems POS" />
+            <img src="/assets/img/MuntingDahan-pos-logo.svg" alt="MuntingDahan POS" />
             <p>Cloud point of sale, barcode scanning and QR Ph payments for Philippine stores.</p>
             <a :href="`mailto:${CONTACT_EMAIL}`"><i class="ti ti-mail me-1"></i>{{ CONTACT_EMAIL }}</a>
           </div>
@@ -815,7 +815,7 @@ onBeforeUnmount(() => {
             <RouterLink v-for="link in legalLinks" :key="link.id" :to="{ name: link.route }">{{ link.label }}</RouterLink>
           </div>
         </div>
-        <div class="footer-bottom">Copyright &copy; {{ new Date().getFullYear() }} USystems POS</div>
+        <div class="footer-bottom">Copyright &copy; {{ new Date().getFullYear() }} MuntingDahan POS</div>
       </div>
     </footer>
 
