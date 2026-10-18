@@ -6,6 +6,9 @@
 // again. Codes can also be typed in, for labels the camera can't read. A quantity set before
 // scanning adds that many at once, then goes back to 1.
 //
+// With `single`, it reads one code for a form field instead: no quantity, and it closes as
+// soon as onScan accepts a code.
+//
 // Decoding uses ZXing compiled to WebAssembly (the same on every browser). It's loaded only
 // when the scanner first opens, from this site (not a CDN), which the CSP requires.
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -20,6 +23,7 @@ export interface ScanResult {
 
 const props = defineProps<{
   title?: string
+  single?: boolean
   onScan: (code: string, quantity: number) => Promise<ScanResult>
 }>()
 const emit = defineEmits<{ close: [] }>()
@@ -171,7 +175,7 @@ function stepQuantity(delta: number) {
 }
 
 async function submit(code: string) {
-  const quantity = scanQuantity()
+  const quantity = props.single ? 1 : scanQuantity()
   if (quantity === null) {
     result.value = { ok: false, message: 'Enter a quantity above 0 before scanning.' }
     signal(false)
@@ -188,6 +192,12 @@ async function submit(code: string) {
   }
   result.value = answer
   signal(answer.ok)
+  if (answer.ok && props.single) {
+    closed = true
+    stopCamera()
+    emit('close')
+    return
+  }
   if (answer.ok) quantityText.value = '1'
 }
 
@@ -243,7 +253,7 @@ onBeforeUnmount(() => {
       </div>
 
       <p v-if="!cameraError" class="text-center text-gray-5 fs-13 mt-2 mb-0">
-        Point the camera at a barcode or QR code. Keep scanning to add more.
+        Point the camera at a barcode or QR code.{{ single ? '' : ' Keep scanning to add more.' }}
       </p>
 
       <div
@@ -256,7 +266,7 @@ onBeforeUnmount(() => {
         <span class="text-break">{{ result.message }}</span>
       </div>
 
-      <div class="mt-3">
+      <div v-if="!single" class="mt-3">
         <label class="form-label fs-13 mb-1" for="scanner-quantity">Quantity per scan</label>
         <div class="input-group input-group-sm quantity-group">
           <button type="button" class="btn btn-white border" aria-label="Less" @click="stepQuantity(-1)">
@@ -296,15 +306,17 @@ onBeforeUnmount(() => {
             v-model="typedCode"
             type="text"
             class="form-control"
-            placeholder="Barcode or SKU"
+            :placeholder="single ? 'Barcode' : 'Barcode or SKU'"
             autocomplete="off"
           />
-          <button type="submit" class="btn btn-primary" :disabled="busy || !typedCode.trim()">Add</button>
+          <button type="submit" class="btn btn-primary" :disabled="busy || !typedCode.trim()">
+            {{ single ? 'Use' : 'Add' }}
+          </button>
         </div>
       </form>
     </div>
     <div class="modal-footer">
-      <button type="button" class="btn btn-white border" @click="emit('close')">Done</button>
+      <button type="button" class="btn btn-white border" @click="emit('close')">{{ single ? 'Cancel' : 'Done' }}</button>
     </div>
   </AppModal>
 </template>

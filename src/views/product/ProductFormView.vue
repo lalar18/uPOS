@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   createProduct,
+  findProductByCode,
   generateSku,
   getProduct,
   getProductOptions,
@@ -16,6 +17,7 @@ import {
   type ProductOptions,
 } from '@/api/products'
 import { can } from '@/auth'
+import BarcodeScannerModal, { type ScanResult } from '@/components/BarcodeScannerModal.vue'
 import { formatDuration } from '@/api/warranties'
 import { resizeImage } from '@/utils/image'
 import { currencySymbol } from '@/utils/money'
@@ -54,6 +56,24 @@ const manufacturedDate = ref('') // YYYY-MM-DD, from <input type="date">
 const expiryDate = ref('')
 const warrantyId = ref<number | null>(null)
 const active = ref(true)
+
+// --- Barcode scanner ---
+
+const scanningBarcode = ref(false)
+const BARCODE_PATTERN = /^[A-Za-z0-9._/-]{1,50}$/ // what the server accepts
+
+/** Fills the Barcode field with the scanned code, unless another product already has it */
+async function useScannedBarcode(code: string): Promise<ScanResult> {
+  if (!BARCODE_PATTERN.test(code)) {
+    return { ok: false, message: `“${code}” can’t be saved as a barcode (letters, numbers and - _ . / only, up to 50).` }
+  }
+  const other = await findProductByCode(code)
+  if (other && other.id !== original?.id) {
+    return { ok: false, message: `${other.name} already uses this code.` }
+  }
+  barcode.value = code
+  return { ok: true, message: `Barcode set to ${code}` }
+}
 
 const centsToText = (cents: number | null) => (cents === null ? '' : (cents / 100).toFixed(2))
 
@@ -329,16 +349,26 @@ load()
               </div>
               <div class="col-sm-6">
                 <label class="form-label" for="product-barcode">Barcode</label>
-                <input
-                  id="product-barcode"
-                  v-model="barcode"
-                  type="text"
-                  class="form-control"
-                  maxlength="50"
-                  inputmode="numeric"
-                  spellcheck="false"
-                  placeholder="Scan or type"
-                />
+                <div class="input-group">
+                  <input
+                    id="product-barcode"
+                    v-model="barcode"
+                    type="text"
+                    class="form-control"
+                    maxlength="50"
+                    inputmode="numeric"
+                    spellcheck="false"
+                    placeholder="Scan or type"
+                  />
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary"
+                    title="Scan with the camera"
+                    @click="scanningBarcode = true"
+                  >
+                    <i class="ti ti-scan"></i><span class="ms-1">Scan</span>
+                  </button>
+                </div>
               </div>
               <div class="col-sm-6">
                 <label class="form-label" for="product-category">Category</label>
@@ -574,6 +604,14 @@ load()
       </button>
     </div>
   </form>
+
+  <BarcodeScannerModal
+    v-if="scanningBarcode"
+    title="Scan Product Barcode"
+    single
+    :on-scan="useScannedBarcode"
+    @close="scanningBarcode = false"
+  />
 </template>
 
 <style scoped>
