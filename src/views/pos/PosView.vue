@@ -672,15 +672,26 @@ onBeforeUnmount(() => {
       </div>
     </aside>
 
-    <!-- Phones and tablets: the cart's total, which opens the cart -->
+    <!-- Phones and tablets: the cart's total, which opens the cart (or cancels it without opening it) -->
     <div class="cart-bar d-lg-none">
       <div class="min-w-0">
         <div class="fs-12 text-gray-5">{{ formatQuantity(itemCount) }} {{ itemCount === 1 ? 'item' : 'items' }}</div>
         <div class="fw-bold text-gray-9 fs-18">{{ formatMoney(totals.totalCents) }}</div>
       </div>
-      <button type="button" class="btn btn-primary" @click="cartOpen = true">
-        <i class="ti ti-shopping-cart me-1"></i>View Cart
-      </button>
+      <div class="d-flex gap-2 flex-shrink-0">
+        <button
+          v-if="cart.length"
+          type="button"
+          class="btn btn-white border text-danger"
+          title="Cancel this transaction and empty the cart"
+          @click="askCancel('cart')"
+        >
+          <i class="ti ti-x me-1"></i>Cancel
+        </button>
+        <button type="button" class="btn btn-primary" @click="cartOpen = true">
+          <i class="ti ti-shopping-cart me-1"></i>View Cart
+        </button>
+      </div>
     </div>
   </div>
 
