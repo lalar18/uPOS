@@ -1,23 +1,26 @@
 <script setup lang="ts">
-// Sets up the store's own GCash account on the General Settings page: the admin uploads the QR code
-// GCash generated for their account. The POS only offers GCash once this is saved; the customer
-// scans the QR, pays straight into this account, and the cashier types in the reference no.
+// Sets up the store's own GCash account on the General Settings page (store admin only): the admin
+// uploads the QR code GCash generated for their account, and crops it down to just the code. The POS
+// only offers GCash once this is saved; the customer scans the QR, pays straight into this account,
+// and the cashier types in the reference no.
 import { computed, onBeforeUnmount, ref } from 'vue'
 import {
   formatGcashNumber,
   getGcashAccount,
-  prepareQrImage,
   removeGcashAccount,
   saveGcashAccount,
   type GcashAccount,
 } from '@/api/gcash'
 import ConfirmDeleteModal from '@/components/ConfirmDeleteModal.vue'
+import QrCropModal from './QrCropModal.vue'
 
 const account = ref<GcashAccount | null>(null)
 const accountName = ref('')
 const accountNumber = ref('')
 const qr = ref<Blob | null>(null) // a new QR picked, not saved yet
 const qrPreview = ref('') // object URL of `qr`
+const original = ref('') // object URL of the picked file, so "Adjust" crops from the full image again
+const cropSrc = ref<string | null>(null) // the crop dialog shows while set
 const fileInput = ref<HTMLInputElement | null>(null)
 const loading = ref(true)
 const saving = ref(false)
@@ -38,6 +41,7 @@ function fill(a: GcashAccount | null) {
   accountName.value = a?.accountName ?? ''
   accountNumber.value = a ? formatGcashNumber(a.accountNumber) : ''
   setQr(null)
+  setOriginal('')
 }
 
 function setQr(blob: Blob | null) {
@@ -45,7 +49,15 @@ function setQr(blob: Blob | null) {
   qr.value = blob
   qrPreview.value = blob ? URL.createObjectURL(blob) : ''
 }
-onBeforeUnmount(() => setQr(null))
+function setOriginal(url: string) {
+  if (original.value) URL.revokeObjectURL(original.value)
+  original.value = url
+}
+
+onBeforeUnmount(() => {
+  setQr(null)
+  setOriginal('')
+})
 
 async function load() {
   loading.value = true
@@ -60,7 +72,7 @@ async function load() {
 }
 load()
 
-async function pickFile(event: Event) {
+function pickFile(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = '' // picking the same file again still fires change
@@ -71,11 +83,32 @@ async function pickFile(event: Event) {
     error.value = 'Choose an image of your GCash QR code.'
     return
   }
-  try {
-    setQr(await prepareQrImage(file))
-  } catch {
-    error.value = 'Could not read that image. Try a PNG or JPG screenshot of your QR code.'
-  }
+  cropSrc.value = URL.createObjectURL(file) // becomes `original` once cropped
+}
+
+/** Closes the crop dialog, dropping a newly picked file that wasn't used */
+function closeCrop() {
+  if (cropSrc.value?.startsWith('blob:') && cropSrc.value !== original.value) URL.revokeObjectURL(cropSrc.value)
+  cropSrc.value = null
+}
+
+/** Crops the QR again: from the picked file if there is one, else from the saved QR */
+function adjust() {
+  error.value = ''
+  success.value = ''
+  cropSrc.value = original.value || account.value?.qrUrl || null
+}
+
+function cropped(image: Blob) {
+  if (cropSrc.value?.startsWith('blob:') && cropSrc.value !== original.value) setOriginal(cropSrc.value)
+  cropSrc.value = null
+  setQr(image)
+}
+
+/** The picked image couldn't be shown (not an image the browser can read) */
+function cropFailed() {
+  closeCrop()
+  error.value = 'Could not read that image. Try a PNG or JPG screenshot of your QR code.'
 }
 
 async function save() {
@@ -123,7 +156,8 @@ function removed() {
         </span>
       </h5>
       <p class="fs-13 text-gray-5 mb-3">
-        Upload the QR code from your GCash app (GCash &gt; QR &gt; Receive / Generate QR). At the POS, the customer
+        Upload the QR code from your GCash app (GCash &gt; QR &gt; Receive / Generate QR). You can crop it to
+        show only the QR. At the POS, the customer
         scans it and pays straight to your GCash account, then you type in the reference no. from their receipt.
         No service charge is added.
       </p>
@@ -140,9 +174,20 @@ function removed() {
             </div>
           </div>
           <input ref="fileInput" type="file" accept="image/*" class="d-none" @change="pickFile" />
-          <button type="button" class="btn btn-sm btn-white border w-100 mt-2" @click="fileInput?.click()">
-            <i class="ti ti-upload me-1"></i>{{ shownQr ? 'Change QR' : 'Upload QR' }}
-          </button>
+          <div class="d-flex gap-2 mt-2">
+            <button type="button" class="btn btn-sm btn-white border flex-fill" @click="fileInput?.click()">
+              <i class="ti ti-upload me-1"></i>{{ shownQr ? 'Change' : 'Upload QR' }}
+            </button>
+            <button
+              v-if="shownQr"
+              type="button"
+              class="btn btn-sm btn-white border flex-fill"
+              title="Crop or straighten the QR"
+              @click="adjust"
+            >
+              <i class="ti ti-crop me-1"></i>Adjust
+            </button>
+          </div>
         </div>
         <div class="col-sm">
           <div class="mb-3">
@@ -188,6 +233,8 @@ function removed() {
       </div>
     </fieldset>
   </form>
+
+  <QrCropModal v-if="cropSrc" :src="cropSrc" @close="closeCrop" @done="cropped" @failed="cropFailed" />
 
   <ConfirmDeleteModal
     v-if="confirmingRemove"

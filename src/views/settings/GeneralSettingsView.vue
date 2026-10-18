@@ -2,7 +2,7 @@
 // Store-wide defaults used by the sales screens (the router keeps out roles without settings.manage).
 import { computed, ref } from 'vue'
 import { getSettings, taxRateText, updateSettings, type Settings } from '@/api/settings'
-import { currentUser } from '@/auth'
+import { currentUser, isAdmin } from '@/auth'
 import { CURRENCIES, currencySymbol, formatMoney, parsePercentBp } from '@/utils/money'
 import GcashSettingsCard from './GcashSettingsCard.vue'
 
@@ -197,7 +197,8 @@ function reset() {
     </fieldset>
   </form>
 
-  <GcashSettingsCard v-if="!loadError" />
+  <!-- Only the store admin sets up GCash, as payments go to that account -->
+  <GcashSettingsCard v-if="!loadError && isAdmin()" />
 </template>
 
 <style scoped>

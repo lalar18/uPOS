@@ -29,23 +29,14 @@ export async function removeGcashAccount(): Promise<void> {
 /** "09171234567" -> "0917 123 4567" */
 export const formatGcashNumber = (number: string) => number.replace(/^(\d{4})(\d{3})(\d{4})$/, '$1 $2 $3')
 
-const MAX_QR_SIDE = 1200
+/** Longest side of the saved QR image; the crop dialog scales the crop down to fit */
+export const MAX_QR_SIDE = 1200
 
 /**
- * Shrinks a QR screenshot so it fits the upload limit. Kept as PNG (sharp edges scan best) unless
- * that's still too big, then JPEG at high quality.
+ * Turns the cropped QR into an image to upload. Kept as PNG (sharp edges scan best) unless that's
+ * too big for the upload limit, then JPEG at high quality.
  */
-export async function prepareQrImage(file: File): Promise<Blob> {
-  const bitmap = await createImageBitmap(file)
-  const scale = Math.min(1, MAX_QR_SIDE / Math.max(bitmap.width, bitmap.height))
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.round(bitmap.width * scale)
-  canvas.height = Math.round(bitmap.height * scale)
-  const ctx = canvas.getContext('2d')!
-  ctx.fillStyle = '#ffffff' // transparent PNGs get a white background, so the QR stays readable
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
-  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-  bitmap.close()
+export async function qrCanvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   const toBlob = (type: string, quality?: number) =>
     new Promise<Blob>((resolve, reject) =>
       canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not read the image'))), type, quality),

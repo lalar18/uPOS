@@ -1,5 +1,6 @@
 // The store's own GCash account (see migrations/0034_create_store_gcash_accounts.sql). Any user of
-// the store can read it (the POS shows the QR code); only roles with settings.manage can change it.
+// the store can read it (the POS shows the QR code); only the store admin can set it up or change it,
+// like the wallet, since payments go to that account.
 //
 //   GET    /api/settings/gcash      -> account | null
 //   PUT    /api/settings/gcash      multipart { accountName, accountNumber, qr? (image, needed the first time) } -> account
@@ -7,7 +8,6 @@
 //   GET    /api/settings/gcash/qr   -> the QR image
 
 import { error } from './documents'
-import { can } from './permissions'
 import { sniffImageType } from './profile'
 import type { SessionUser } from './session'
 
@@ -110,7 +110,7 @@ export async function handleGcash(db: D1Database, request: Request, url: URL, us
   }
   if (request.method === 'GET') return getAccount(db, user.store_id)
   if (request.method !== 'PUT' && request.method !== 'DELETE') return error('Method not allowed', 405)
-  if (!can(user, 'settings.manage')) return error("You don't have permission to change settings", 403)
+  if (!user.is_admin) return error('Only the store admin can set up the GCash account', 403)
   if (request.method === 'PUT') return saveAccount(db, request, user.store_id)
   await db.prepare('DELETE FROM store_gcash_accounts WHERE store_id = ?').bind(user.store_id).run()
   return Response.json(null)
