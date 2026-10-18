@@ -3,7 +3,8 @@
 // tablets, the webcam on computers. It keeps scanning until closed so several items can be
 // scanned in a row; onScan says what became of each code and the answer shows under the
 // video. A code held in front of the camera counts once; take it away and back to scan it
-// again. Codes can also be typed in, for labels the camera can't read.
+// again. Codes can also be typed in, for labels the camera can't read. A quantity set before
+// scanning adds that many at once, then goes back to 1.
 //
 // Decoding uses ZXing compiled to WebAssembly (the same on every browser). It's loaded only
 // when the scanner first opens, from this site (not a CDN), which the CSP requires.
@@ -19,7 +20,7 @@ export interface ScanResult {
 
 const props = defineProps<{
   title?: string
-  onScan: (code: string) => Promise<ScanResult>
+  onScan: (code: string, quantity: number) => Promise<ScanResult>
 }>()
 const emit = defineEmits<{ close: [] }>()
 
@@ -48,6 +49,7 @@ const result = ref<ScanResult | null>(null)
 const busy = ref(false)
 const flash = ref(false)
 const typedCode = ref('')
+const quantityText = ref('1')
 
 let stream: MediaStream | null = null
 let detector: Detector | null = null
@@ -157,11 +159,28 @@ async function scanFrame() {
   scheduleScan()
 }
 
+/** The quantity to add per scan, or null while it isn't a positive number */
+function scanQuantity(): number | null {
+  const value = Math.round(Number(String(quantityText.value).trim()) * 1000) / 1000
+  return Number.isFinite(value) && value > 0 ? value : null
+}
+
+function stepQuantity(delta: number) {
+  const next = Math.floor(scanQuantity() ?? 1) + delta
+  quantityText.value = String(Math.max(1, next))
+}
+
 async function submit(code: string) {
+  const quantity = scanQuantity()
+  if (quantity === null) {
+    result.value = { ok: false, message: 'Enter a quantity above 0 before scanning.' }
+    signal(false)
+    return
+  }
   busy.value = true
   let answer: ScanResult
   try {
-    answer = await props.onScan(code)
+    answer = await props.onScan(code, quantity)
   } catch (e) {
     answer = { ok: false, message: e instanceof Error ? e.message : 'Something went wrong' }
   } finally {
@@ -169,6 +188,7 @@ async function submit(code: string) {
   }
   result.value = answer
   signal(answer.ok)
+  if (answer.ok) quantityText.value = '1'
 }
 
 async function submitTyped() {
@@ -236,6 +256,29 @@ onBeforeUnmount(() => {
         <span class="text-break">{{ result.message }}</span>
       </div>
 
+      <div class="mt-3">
+        <label class="form-label fs-13 mb-1" for="scanner-quantity">Quantity per scan</label>
+        <div class="input-group input-group-sm quantity-group">
+          <button type="button" class="btn btn-white border" aria-label="Less" @click="stepQuantity(-1)">
+            <i class="ti ti-minus"></i>
+          </button>
+          <input
+            id="scanner-quantity"
+            v-model="quantityText"
+            type="number"
+            inputmode="decimal"
+            min="0"
+            step="any"
+            class="form-control text-center"
+            :class="{ 'is-invalid': scanQuantity() === null }"
+          />
+          <button type="button" class="btn btn-white border" aria-label="More" @click="stepQuantity(1)">
+            <i class="ti ti-plus"></i>
+          </button>
+        </div>
+        <div class="form-text fs-12">Set it before scanning to add several at once. It goes back to 1 after each item.</div>
+      </div>
+
       <div v-if="cameras.length > 1" class="mt-3">
         <label class="form-label fs-13 mb-1" for="scanner-camera">Camera</label>
         <select id="scanner-camera" v-model="cameraId" class="form-select form-select-sm" @change="startCamera">
@@ -299,6 +342,10 @@ onBeforeUnmount(() => {
   border-radius: 10px;
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.3);
   pointer-events: none;
+}
+
+.quantity-group {
+  max-width: 180px;
 }
 
 .overlay-message {

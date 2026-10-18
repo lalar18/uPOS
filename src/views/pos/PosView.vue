@@ -144,20 +144,23 @@ function quantityOf(line: CartLine): number | null {
 
 const lineCents = (line: CartLine) => lineTotal(quantityOf(line) ?? 0, line.product.priceCents)
 
-/** Adds one of the product; returns why it can't be added, or '' when it was */
-function addToCart(product: Product): string {
+/** Adds the amount (one by default) of the product; returns why it can't be added, or '' when it was */
+function addToCart(product: Product, amount = 1): string {
+  if (!product.unit.allowDecimal && !Number.isInteger(amount)) {
+    return `${product.name} is sold in whole ${product.unit.shortName}.`
+  }
   const line = cart.value.find((l) => l.product.id === product.id)
   const current = line ? (quantityOf(line) ?? 0) : 0
-  if (current + 1 > product.quantity) {
+  if (round3(current + amount) > product.quantity) {
     return product.quantity <= 0
       ? `${product.name} is out of stock.`
       : `Only ${formatQuantity(product.quantity)} ${product.unit.shortName} of ${product.name} in stock.`
   }
   if (line) {
-    line.quantityText = String(round3(current + 1))
+    line.quantityText = String(round3(current + amount))
   } else {
     if (cart.value.length >= MAX_CART_LINES) return `A sale can have up to ${MAX_CART_LINES} products.`
-    cart.value.push({ product, quantityText: '1' })
+    cart.value.push({ product, quantityText: String(amount) })
   }
   return ''
 }
@@ -173,15 +176,19 @@ function add(product: Product): boolean {
 
 const scanning = ref(false)
 
-async function addScanned(code: string): Promise<ScanResult> {
+async function addScanned(code: string, amount: number): Promise<ScanResult> {
   const product = await findProductByCode(code)
   if (!product) return { ok: false, message: `No product has the code “${code}”.` }
   refreshCart([product])
-  const problem = addToCart(product)
+  const problem = addToCart(product, amount)
   if (problem) return { ok: false, message: problem }
   const line = cart.value.find((l) => l.product.id === product.id)
-  const inCart = line ? formatQuantity(quantityOf(line) ?? 0) : '1'
-  return { ok: true, message: `Added ${product.name} (${inCart} in cart) · ${formatMoney(product.priceCents)}` }
+  const inCart = line ? formatQuantity(quantityOf(line) ?? 0) : formatQuantity(amount)
+  const added = amount === 1 ? '' : `${formatQuantity(amount)} × `
+  return {
+    ok: true,
+    message: `Added ${added}${product.name} (${inCart} in cart) · ${formatMoney(product.priceCents)}`,
+  }
 }
 
 function step(line: CartLine, delta: number) {

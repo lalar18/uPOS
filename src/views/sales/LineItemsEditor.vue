@@ -66,16 +66,19 @@ onBeforeUnmount(() => clearTimeout(searchTimer))
 const showResults = computed(() => searchFocused.value && search.value.trim() !== '')
 const addError = ref('')
 
-/** Adds one of the product; returns why it can't be added, or '' when it was */
-function addLine(product: Product): string {
+/** Adds the amount (one by default) of the product; returns why it can't be added, or '' when it was */
+function addLine(product: Product, amount = 1): string {
+  if (!product.unit.allowDecimal && !Number.isInteger(amount)) {
+    return `${product.name} is sold in whole ${product.unit.shortName}.`
+  }
   const existing = lines.value.find((line) => line.productId === product.id)
   if (existing) {
     const quantity = lineQuantity(existing) ?? 0
-    existing.quantityText = String(Math.round((quantity + 1) * 1000) / 1000)
+    existing.quantityText = String(Math.round((quantity + amount) * 1000) / 1000)
   } else if (lines.value.length >= MAX_LINES) {
     return `A document can have up to ${MAX_LINES} products.`
   } else {
-    lines.value.push(lineFromProduct(product))
+    lines.value.push(lineFromProduct(product, amount))
   }
   return ''
 }
@@ -103,16 +106,17 @@ async function addFromEnter() {
 
 const scanning = ref(false)
 
-async function addScanned(code: string): Promise<ScanResult> {
+async function addScanned(code: string, amount: number): Promise<ScanResult> {
   const product = await findProductByCode(code)
   if (!product) return { ok: false, message: `No product has the code “${code}”.` }
   addError.value = ''
-  const problem = addLine(product)
+  const problem = addLine(product, amount)
   if (problem) return { ok: false, message: problem }
   const line = lines.value.find((l) => l.productId === product.id)
-  const quantity = line ? formatQuantity(lineQuantity(line) ?? 0) : '1'
+  const quantity = line ? formatQuantity(lineQuantity(line) ?? 0) : formatQuantity(amount)
   const overStock = props.checkStock && line && isOverStock(line) ? ' · more than in stock' : ''
-  return { ok: !overStock, message: `Added ${product.name} (${quantity})${overStock}` }
+  const added = amount === 1 ? '' : `${formatQuantity(amount)} × `
+  return { ok: !overStock, message: `Added ${added}${product.name} (${quantity})${overStock}` }
 }
 
 function remove(index: number) {
