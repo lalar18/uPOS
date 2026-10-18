@@ -1,6 +1,8 @@
 <script setup lang="ts">
-// Public one-page site: what USystems POS does, the plans and their prices (from /api/plans,
+// Public one-page site: what USystems POS does (the counter, barcode scanning, QR Ph payments
+// recorded on the sale, inventory and reports), the plans and their prices (from /api/plans,
 // so they always match the real limits), and the Portal button that opens the login page.
+import QRCode from 'qrcode'
 import { computed, onBeforeUnmount, onMounted, ref, type Directive } from 'vue'
 import { describeSeats, formatPrice, getPlans, TRIAL_LABEL, type Plan } from '@/api/subscription'
 import { googleSignInUrl } from '@/auth'
@@ -21,18 +23,49 @@ getPlans()
 
 const number = new Intl.NumberFormat('en-US')
 
-const sections = ['features', 'how', 'pricing', 'faq', 'contact']
+const navLinks = [
+  ['features', 'Features'],
+  ['online', 'Online payments'],
+  ['pricing', 'Pricing'],
+  ['faq', 'FAQ'],
+  ['contact', 'Contact'],
+] as const
+const sections = ['stores', 'features', 'online', 'day', 'how', 'pricing', 'faq', 'contact']
+
+const storeTypes = [
+  { icon: 'building-store', title: 'Sari-sari stores', text: 'Quick counter sales, charge-to-account for regulars, and stock you can trust.' },
+  { icon: 'shopping-cart', title: 'Groceries & minimarts', text: 'Scan barcodes at the counter and track expiry dates on perishables.' },
+  { icon: 'tools', title: 'Hardware & auto parts', text: 'Big catalogs with variants, warranties, quotations and supplier records.' },
+  { icon: 'pill', title: 'Pharmacies', text: 'Expiry alerts, batch-friendly stock adjustments and clean sales records.' },
+  { icon: 'tools-kitchen-2', title: 'Cafés & food stalls', text: 'Fast tap-to-add menus and QR Ph payments during the lunch rush.' },
+  { icon: 'shirt', title: 'Retail & boutiques', text: 'Sizes and colors as variants, printed price labels and returns handled cleanly.' },
+]
 
 const features = [
   {
     icon: 'device-desktop-dollar',
     title: 'Fast point of sale',
-    text: 'Ring up sales in seconds with product search, barcode scanning, discounts and change computation.',
+    text: 'Tap or search products, apply discounts and see the change instantly. Works on computers, tablets and phones.',
+  },
+  {
+    icon: 'scan',
+    title: 'Barcode & QR scanning',
+    text: 'Use a USB or Bluetooth scanner, or just the camera of your phone or laptop. Set a quantity and scan once to add many.',
+  },
+  {
+    icon: 'qrcode',
+    title: 'QR Ph online payments',
+    text: 'Customers scan and pay with GCash, Maya or their bank app. The payment is confirmed and recorded on the sale automatically.',
+  },
+  {
+    icon: 'cloud-check',
+    title: 'Every record in the cloud',
+    text: 'Sales, payments, returns and stock changes are saved online the moment they happen. No lost notebooks, no lost files.',
   },
   {
     icon: 'packages',
     title: 'Inventory that keeps up',
-    text: 'Track stock per product and variant, adjust counts, and get alerts for low stock and expiring items.',
+    text: 'Stock per product and variant, adjustments with reasons, and alerts for low stock and expiring items.',
   },
   {
     icon: 'barcode',
@@ -42,7 +75,22 @@ const features = [
   {
     icon: 'file-invoice',
     title: 'Sales, invoices & returns',
-    text: 'Every sale is recorded with its invoice. Handle returns cleanly and keep your records accurate.',
+    text: 'Every sale gets its invoice and receipt. Handle returns and refunds without breaking your numbers.',
+  },
+  {
+    icon: 'user-dollar',
+    title: 'Customers & receivables',
+    text: 'Let regulars pay part now or charge to their account, and see who owes what and for how long.',
+  },
+  {
+    icon: 'report-analytics',
+    title: 'Reports & dashboards',
+    text: 'Sales, profit & loss, payments, tax, inventory value and stock movement. Arrange your own dashboard.',
+  },
+  {
+    icon: 'wallet',
+    title: 'Store wallet & withdrawals',
+    text: 'Online payments collect in your store wallet. Withdraw to GCash or your bank account any time.',
   },
   {
     icon: 'file-description',
@@ -56,31 +104,74 @@ const features = [
   },
 ]
 
+const onlineSteps = [
+  { icon: 'scan', title: 'Ring up the sale', text: 'Scan or tap the items. The sale is saved the moment you press Pay.' },
+  { icon: 'qrcode', title: 'Customer scans the QR', text: 'A QR Ph code appears on screen. They pay with GCash, Maya or any bank app.' },
+  { icon: 'cloud-check', title: 'Confirmed and recorded', text: 'Payment and reference are matched to the sale on their own. Stock updates too.' },
+  { icon: 'building-bank', title: 'Money in your wallet', text: 'Online sales add up in your store wallet, ready to withdraw to GCash or bank.' },
+]
+
+const recordPromises = [
+  { icon: 'cloud-lock', title: 'Saved as it happens', text: 'No end-of-day upload. Each sale reaches the cloud when it is rung up.' },
+  { icon: 'arrows-exchange', title: 'Payments match themselves', text: 'Online payments land on the right sale with their reference, even if the cashier closed the screen.' },
+  { icon: 'history', title: 'A full paper trail', text: 'Returns, stock adjustments and who sold what stay on record for audits and reports.' },
+  { icon: 'devices', title: 'Open it anywhere', text: 'If a device breaks or gets lost, sign in on another one. Your records are all there.' },
+]
+
+const day = [
+  { time: '6:00 AM', icon: 'sunrise', title: 'Open with a plan', text: 'Your dashboard shows low stock, items about to expire and what customers still owe.' },
+  { time: '12:00 PM', icon: 'bolt', title: 'Breeze through the rush', text: 'Scan barcodes, take cash or QR Ph, and print the receipt. Each sale in seconds.' },
+  { time: '3:00 PM', icon: 'truck-delivery', title: 'Restock with confidence', text: 'Receive stock from suppliers and print shelf labels for new items.' },
+  { time: '9:00 PM', icon: 'moon', title: 'Close in a minute', text: "See today's sales, profit and payments by method. Everything already balanced." },
+]
+
 const steps = [
-  { icon: 'mail', title: 'Tell us about your store', text: 'Pick a plan and send us a message. We set up your store account for you.' },
+  { icon: 'brand-google', title: 'Sign up with Google', text: `Create your store in a minute and try every feature free for ${TRIAL_LABEL}.` },
   { icon: 'packages', title: 'Add your products', text: 'Enter your catalog, set prices and stock, and print labels for your shelves.' },
   { icon: 'building-store', title: 'Start selling', text: 'Open the POS on any browser and ring up your first sale the same day.' },
 ]
 
 const included = [
   'Point of sale',
+  'Camera & USB barcode scanning',
+  'QR Ph online payments',
+  'Cloud records & backups',
   'Products, variants & warranties',
   'Stock adjustments & alerts',
   'Barcode & QR label printing',
   'Sales, invoices & returns',
+  'Customers & receivables',
+  'Reports & dashboards',
   'Quotations',
-  'Customers & suppliers',
+  'Suppliers',
+  'Store wallet & withdrawals',
   'Roles & permissions',
 ]
 
 const faqs = [
   {
     q: 'Do I need to install anything?',
-    a: 'No. USystems POS runs in your web browser, so it works on the computers, laptops and tablets you already have.',
+    a: 'No. USystems POS runs in your web browser, so it works on the computers, laptops, tablets and phones you already have.',
+  },
+  {
+    q: 'What barcode scanners work with it?',
+    a: 'Any USB or Bluetooth scanner that types into the search box works. No scanner? Tap Scan on the POS to read barcodes and QR codes with your camera.',
+  },
+  {
+    q: 'How do online payments work?',
+    a: 'When a customer pays by QR Ph, the POS shows a QR code for the sale. They pay with GCash, Maya or their bank app, and the payment is confirmed and recorded on the sale automatically. The money goes to your store wallet, which you can withdraw to GCash or a bank account.',
+  },
+  {
+    q: 'Can I lose my sales records?',
+    a: 'Your records are kept in the cloud, not on one device. Every sale, payment, return and stock change is saved as it happens, so a broken or lost device does not take your history with it.',
+  },
+  {
+    q: 'Is there a fee for online payments?',
+    a: 'A small service charge applies to online payments and withdrawals. It is always shown before anyone pays or withdraws. Cash sales have no extra fee.',
   },
   {
     q: 'How does billing work?',
-    a: 'Plans are billed monthly. You renew from the Subscription page inside the portal, and your store is extended by a month once payment is confirmed.',
+    a: `New stores get ${TRIAL_LABEL} free. After that, plans are billed monthly and you renew from the Subscription page inside the portal.`,
   },
   {
     q: 'What happens if my subscription expires?',
@@ -88,7 +179,7 @@ const faqs = [
   },
   {
     q: 'Can I change plans later?',
-    a: 'Yes. Choose another plan when you renew and your store switches to it as soon as the renewal is paid.',
+    a: 'Yes. Pick another plan when you renew. A bigger plan applies when the renewal is paid; a smaller one starts when your current period ends.',
   },
 ]
 const openFaq = ref<number | null>(0)
@@ -98,7 +189,7 @@ function go(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
 }
 
-// --- Hero demo: a tiny working POS visitors can click ---
+// --- Hero demo: a tiny working POS visitors can click, scan into and pay by cash or QR Ph ---
 
 const demoProducts = [
   { name: 'Coffee 3-in-1', price: 48, icon: 'coffee' },
@@ -110,26 +201,42 @@ const demoProducts = [
 ]
 const startingCart = () => ({ 'Coffee 3-in-1': 2, 'Bottled water': 2, 'Bread loaf': 1 }) as Record<string, number>
 
+type DemoMethod = 'cash' | 'qrph'
+
 const cart = ref<Record<string, number>>(startingCart())
 const cartLines = computed(() =>
   demoProducts.filter((p) => cart.value[p.name]).map((p) => ({ ...p, qty: cart.value[p.name]! })),
 )
 const cartTotal = computed(() => cartLines.value.reduce((sum, line) => sum + line.price * line.qty, 0))
 const lastAdded = ref('')
-const paid = ref(false)
+/** idle → (QR Ph: waiting for the customer) → paid */
+const stage = ref<'idle' | 'waiting' | 'paid'>('idle')
+const paidBy = ref<DemoMethod>('cash')
+const scanning = ref(false)
+const scanMessage = ref('')
 const todaySales = ref(12480)
 const shownSales = ref(todaySales.value)
+const syncedCount = ref(37)
 const timers: number[] = []
 
+const qrSvg = ref('')
+QRCode.toString('USystems POS demo payment', { type: 'svg', margin: 0, color: { dark: '#092c4c', light: '#ffffff' } })
+  .then((svg) => (qrSvg.value = svg))
+  .catch(() => {})
+
+function later(fn: () => void, ms: number) {
+  timers.push(window.setTimeout(fn, ms))
+}
+
 function addToCart(name: string) {
-  if (paid.value) return
+  if (stage.value !== 'idle') return
   cart.value = { ...cart.value, [name]: (cart.value[name] ?? 0) + 1 }
   lastAdded.value = name
-  timers.push(window.setTimeout(() => lastAdded.value === name && (lastAdded.value = ''), 400))
+  later(() => lastAdded.value === name && (lastAdded.value = ''), 400)
 }
 
 function removeFromCart(name: string) {
-  if (paid.value) return
+  if (stage.value !== 'idle') return
   const qty = (cart.value[name] ?? 0) - 1
   const next = { ...cart.value }
   if (qty > 0) next[name] = qty
@@ -137,16 +244,35 @@ function removeFromCart(name: string) {
   cart.value = next
 }
 
-function pay() {
-  if (paid.value || !cartTotal.value) return
-  paid.value = true
+/** Pretends to read a barcode: a laser sweep, then a random product goes into the cart */
+function scan() {
+  if (scanning.value || stage.value !== 'idle') return
+  scanning.value = true
+  later(() => {
+    const product = demoProducts[Math.floor(Math.random() * demoProducts.length)]!
+    scanning.value = false
+    addToCart(product.name)
+    scanMessage.value = `Beep! ${product.name} added`
+    later(() => (scanMessage.value = ''), 1600)
+  }, 750)
+}
+
+function pay(method: DemoMethod) {
+  if (stage.value !== 'idle' || !cartTotal.value) return
+  paidBy.value = method
+  if (method === 'cash') return finishSale()
+  stage.value = 'waiting'
+  later(finishSale, 2000)
+}
+
+function finishSale() {
+  stage.value = 'paid'
+  syncedCount.value++
   countTo(todaySales.value + cartTotal.value)
-  timers.push(
-    window.setTimeout(() => {
-      cart.value = {}
-      paid.value = false
-    }, 2200),
-  )
+  later(() => {
+    cart.value = {}
+    stage.value = 'idle'
+  }, 2400)
 }
 
 /** Animates the "Today's sales" chip up to its new value */
@@ -252,16 +378,17 @@ onBeforeUnmount(() => {
         </a>
         <nav class="nav-links" :class="{ open: menuOpen }">
           <a
-            v-for="[id, label] in [['features', 'Features'], ['pricing', 'Pricing'], ['faq', 'FAQ'], ['contact', 'Contact']]"
+            v-for="[id, label] in navLinks"
             :key="id"
             :href="`#${id}`"
             :class="{ active: activeSection === id }"
-            @click.prevent="go(id!)"
+            @click.prevent="go(id)"
           >
             {{ label }}
           </a>
         </nav>
         <div class="d-flex align-items-center gap-2">
+          <a :href="googleSignInUrl()" class="btn btn-outline-primary header-trial">Try free</a>
           <RouterLink :to="{ name: 'login' }" class="btn btn-primary portal-btn">
             <i class="ti ti-login-2 me-1"></i>Portal
           </RouterLink>
@@ -291,31 +418,38 @@ onBeforeUnmount(() => {
           <div class="row align-items-center g-5">
             <div class="col-lg-6">
               <span class="pill hero-in" style="--d: 0ms">
-                <span class="pill-dot"></span>Point of sale for growing stores
+                <span class="pill-dot"></span>Cloud POS for Philippine stores
               </span>
               <h1 class="hero-in" style="--d: 80ms">
-                Sell faster. Know your stock. <span class="highlight">Run your store from anywhere.</span>
+                Scan. Sell. Get paid by QR. <span class="highlight">Every record safe in the cloud.</span>
               </h1>
               <p class="lead-text hero-in" style="--d: 160ms">
-                USystems POS brings your counter, inventory, invoices and team into one simple system that runs
-                in your browser.
+                USystems POS brings your counter, barcode scanning, QR Ph payments, inventory and reports into one
+                system that runs in your browser. Every sale and payment is saved online the moment it happens.
               </p>
               <div class="d-flex flex-wrap gap-2 hero-in" style="--d: 240ms">
-                <a href="#pricing" class="btn btn-primary btn-lg btn-glow" @click.prevent="go('pricing')">
-                  See pricing<i class="ti ti-arrow-right ms-2 arrow"></i>
+                <a :href="googleSignInUrl()" class="btn btn-primary btn-lg btn-glow">
+                  <i class="ti ti-brand-google me-1"></i>Start free for {{ TRIAL_LABEL }}
                 </a>
-                <a :href="googleSignInUrl()" class="btn btn-outline-dark btn-lg">
-                  <i class="ti ti-brand-google me-1"></i>Start free trial
+                <a href="#features" class="btn btn-outline-dark btn-lg" @click.prevent="go('features')">
+                  See features<i class="ti ti-arrow-right ms-2 arrow"></i>
                 </a>
               </div>
               <ul class="hero-points hero-in" style="--d: 320ms">
                 <li><i class="ti ti-circle-check"></i>Nothing to install</li>
-                <li><i class="ti ti-circle-check"></i>All features in every plan</li>
-                <li><i class="ti ti-circle-check"></i>Monthly billing</li>
+                <li><i class="ti ti-circle-check"></i>Camera or USB scanner</li>
+                <li><i class="ti ti-circle-check"></i>GCash, Maya & bank QR</li>
+                <li><i class="ti ti-circle-check"></i>No lost records</li>
               </ul>
+              <div class="hero-logos hero-in" style="--d: 400ms">
+                <span>Customers pay with</span>
+                <img src="/assets/img/payments/qrph.svg" alt="QR Ph" />
+                <img src="/assets/img/payments/gcash.svg" alt="GCash" />
+                <img src="/assets/img/payments/maya.svg" alt="Maya" />
+              </div>
             </div>
             <div class="col-lg-6">
-              <!-- A small working POS: click products to add them, then Pay -->
+              <!-- A small working POS: tap or scan products, then pay by cash or QR Ph -->
               <div class="mock-wrap hero-in" style="--d: 200ms">
                 <div class="float-chip chip-sales">
                   <span class="chip-icon green"><i class="ti ti-trending-up"></i></span>
@@ -325,34 +459,44 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
                 <div class="float-chip chip-stock">
-                  <span class="chip-icon amber"><i class="ti ti-bell-ringing"></i></span>
+                  <span class="chip-icon blue"><i class="ti ti-cloud-check"></i></span>
                   <div>
-                    <small>Low stock</small>
-                    <strong>Fresh milk · 4 left</strong>
+                    <small>Saved to cloud</small>
+                    <strong>{{ syncedCount }} sales today</strong>
                   </div>
                 </div>
 
                 <div class="mock">
                   <div class="mock-bar">
                     <span></span><span></span><span></span>
-                    <em>Try it — tap a product</em>
+                    <em :class="{ beep: scanMessage }">{{ scanMessage || 'Try it — tap, scan or pay' }}</em>
                   </div>
                   <div class="mock-body">
-                    <div class="mock-products">
-                      <button
-                        v-for="product in demoProducts"
-                        :key="product.name"
-                        type="button"
-                        class="mock-product"
-                        :class="{ bump: lastAdded === product.name }"
-                        :aria-label="`Add ${product.name}`"
-                        @click="addToCart(product.name)"
-                      >
-                        <i class="ti" :class="`ti-${product.icon}`"></i>
-                        <span class="name">{{ product.name }}</span>
-                        <span class="price">{{ formatPrice(product.price) }}</span>
-                        <span class="add"><i class="ti ti-plus"></i></span>
-                      </button>
+                    <div class="mock-left">
+                      <div class="mock-search">
+                        <i class="ti ti-search"></i>
+                        <span>Search or scan barcode</span>
+                        <button type="button" class="mock-scan" :disabled="scanning || stage !== 'idle'" @click="scan">
+                          <i class="ti ti-scan me-1"></i>Scan
+                        </button>
+                      </div>
+                      <div class="mock-products" :class="{ scanning }">
+                        <span class="laser" aria-hidden="true"></span>
+                        <button
+                          v-for="product in demoProducts"
+                          :key="product.name"
+                          type="button"
+                          class="mock-product"
+                          :class="{ bump: lastAdded === product.name }"
+                          :aria-label="`Add ${product.name}`"
+                          @click="addToCart(product.name)"
+                        >
+                          <i class="ti" :class="`ti-${product.icon}`"></i>
+                          <span class="name">{{ product.name }}</span>
+                          <span class="price">{{ formatPrice(product.price) }}</span>
+                          <span class="add"><i class="ti ti-plus"></i></span>
+                        </button>
+                      </div>
                     </div>
                     <div class="mock-cart">
                       <div class="fw-semibold mb-2 d-flex justify-content-between">
@@ -369,17 +513,39 @@ onBeforeUnmount(() => {
                             <span>{{ formatPrice(line.price * line.qty) }}</span>
                           </div>
                         </TransitionGroup>
-                        <div v-if="!cartLines.length && !paid" class="mock-empty">Tap a product to add it</div>
+                        <div v-if="!cartLines.length && stage === 'idle'" class="mock-empty">Tap or scan a product</div>
                       </div>
                       <div class="mock-total">
                         <span>Total</span><span>{{ formatPrice(cartTotal) }}</span>
                       </div>
-                      <button type="button" class="mock-pay" :class="{ paid }" :disabled="!cartTotal && !paid" @click="pay">
-                        <template v-if="paid"><i class="ti ti-check me-1"></i>Sale recorded</template>
-                        <template v-else>Pay {{ formatPrice(cartTotal) }}</template>
-                      </button>
+                      <div v-if="stage === 'idle'" class="mock-pay-row">
+                        <button type="button" class="mock-pay" :disabled="!cartTotal" @click="pay('cash')">
+                          <i class="ti ti-cash me-1"></i>Cash
+                        </button>
+                        <button type="button" class="mock-pay qr" :disabled="!cartTotal" @click="pay('qrph')">
+                          <i class="ti ti-qrcode me-1"></i>QR Ph
+                        </button>
+                      </div>
+                      <div v-else-if="stage === 'waiting'" class="mock-pay waiting">
+                        <span class="spinner-border spinner-border-sm me-2"></span>Waiting for payment…
+                      </div>
+                      <div v-else class="mock-pay paid">
+                        <i class="ti ti-cloud-check me-1"></i>{{ paidBy === 'qrph' ? 'QR Ph paid' : 'Paid' }} · saved
+                      </div>
                     </div>
                   </div>
+
+                  <!-- QR Ph: the customer scans this with their phone -->
+                  <Transition name="fade">
+                    <div v-if="stage === 'waiting'" class="mock-qr">
+                      <div class="mock-qr-card">
+                        <img src="/assets/img/payments/qrph.svg" alt="QR Ph" class="qr-brand" />
+                        <div class="qr-code" v-html="qrSvg"></div>
+                        <strong>Scan to pay {{ formatPrice(cartTotal) }}</strong>
+                        <small>GCash · Maya · any bank app</small>
+                      </div>
+                    </div>
+                  </Transition>
                 </div>
               </div>
             </div>
@@ -387,13 +553,33 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
+      <!-- Who it's for -->
+      <section id="stores" class="section section-tight">
+        <div class="container">
+          <div v-reveal class="section-head">
+            <span class="eyebrow">Made for your store</span>
+            <h2>Built for every kind of tindahan</h2>
+            <p>From the corner sari-sari store to a busy hardware shop, it fits how you already sell.</p>
+          </div>
+          <div class="stores">
+            <div v-for="(store, i) in storeTypes" :key="store.title" v-reveal="(i % 3) * 80" class="store-card">
+              <span class="store-icon"><i class="ti" :class="`ti-${store.icon}`"></i></span>
+              <div>
+                <h3>{{ store.title }}</h3>
+                <p>{{ store.text }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Features -->
-      <section id="features" class="section">
+      <section id="features" class="section section-alt">
         <div class="container">
           <div v-reveal class="section-head">
             <span class="eyebrow">Features</span>
             <h2>Everything your counter needs</h2>
-            <p>Built for sari-sari stores, groceries, hardware shops and retailers of every size.</p>
+            <p>Every plan includes every feature: selling, scanning, online payments, stock and reports.</p>
           </div>
           <div class="row g-4">
             <div v-for="(feature, i) in features" :key="feature.title" class="col-md-6 col-lg-4">
@@ -407,8 +593,92 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
+      <!-- POS to online payment, on record -->
+      <section id="online" class="section online">
+        <div class="container">
+          <div v-reveal class="section-head">
+            <span class="eyebrow">From the counter to online payment</span>
+            <h2>Every sale, every peso, on record</h2>
+            <p>
+              Cash or QR Ph, the sale and its payment are saved together in the cloud. Nothing to copy into a notebook,
+              nothing to reconcile at night.
+            </p>
+          </div>
+
+          <div class="row g-5 align-items-center">
+            <div class="col-lg-6">
+              <ol class="flow">
+                <li v-for="(step, i) in onlineSteps" :key="step.title" v-reveal="i * 110" class="flow-step">
+                  <span class="flow-icon"><i class="ti" :class="`ti-${step.icon}`"></i></span>
+                  <div>
+                    <h3><span class="flow-num">{{ i + 1 }}</span>{{ step.title }}</h3>
+                    <p>{{ step.text }}</p>
+                  </div>
+                </li>
+              </ol>
+            </div>
+            <div class="col-lg-6">
+              <!-- What the sale looks like once it's paid online -->
+              <div v-reveal="150" class="record">
+                <div class="record-head">
+                  <div>
+                    <small>Sale</small>
+                    <strong>INV-000142</strong>
+                  </div>
+                  <span class="badge-paid"><i class="ti ti-circle-check me-1"></i>Paid</span>
+                </div>
+                <div class="record-lines">
+                  <div><span>2 × Coffee 3-in-1</span><span>₱96.00</span></div>
+                  <div><span>2 × Bottled water</span><span>₱40.00</span></div>
+                  <div><span>1 × Bread loaf</span><span>₱75.00</span></div>
+                  <div class="total"><span>Total</span><span>₱211.00</span></div>
+                </div>
+                <div class="record-payment">
+                  <img src="/assets/img/payments/qrph.svg" alt="QR Ph" />
+                  <div>
+                    <strong>QR Ph · ₱211.00</strong>
+                    <small>Ref. 7Q4K-29XH-0142 · via GCash</small>
+                  </div>
+                </div>
+                <ul class="record-log">
+                  <li><span class="dot"></span><time>10:42</time>Sale saved by cashier Ana</li>
+                  <li><span class="dot"></span><time>10:43</time>QR Ph payment confirmed</li>
+                  <li><span class="dot"></span><time>10:43</time>Stock updated for 3 products</li>
+                  <li><span class="dot ok"></span><time>10:43</time>₱211.00 added to store wallet</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="promises">
+            <div v-for="(item, i) in recordPromises" :key="item.title" v-reveal="i * 80" class="promise">
+              <i class="ti" :class="`ti-${item.icon}`"></i>
+              <h3>{{ item.title }}</h3>
+              <p>{{ item.text }}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- A day at the store -->
+      <section id="day" class="section section-alt">
+        <div class="container">
+          <div v-reveal class="section-head">
+            <span class="eyebrow">A day at the store</span>
+            <h2>From opening to closing, it has your back</h2>
+          </div>
+          <div class="day">
+            <div v-for="(moment, i) in day" :key="moment.time" v-reveal="i * 100" class="moment">
+              <div class="moment-time"><i class="ti" :class="`ti-${moment.icon}`"></i>{{ moment.time }}</div>
+              <h3>{{ moment.title }}</h3>
+              <p>{{ moment.text }}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- How it works -->
-      <section id="how" class="section section-alt">
+      <section id="how" class="section">
         <div class="container">
           <div v-reveal class="section-head">
             <span class="eyebrow">How it works</span>
@@ -429,12 +699,12 @@ onBeforeUnmount(() => {
       </section>
 
       <!-- Pricing -->
-      <section id="pricing" class="section">
+      <section id="pricing" class="section section-alt">
         <div class="container">
           <div v-reveal class="section-head">
             <span class="eyebrow">Pricing</span>
             <h2>Simple monthly plans</h2>
-            <p>Every plan includes every feature. Pick the one that fits your team and catalog.</p>
+            <p>Every plan includes every feature and starts with {{ TRIAL_LABEL }} free. Pick the one that fits your team and catalog.</p>
           </div>
 
           <div v-if="plansError" class="alert alert-warning text-center mx-auto" style="max-width: 560px">
@@ -458,14 +728,15 @@ onBeforeUnmount(() => {
                 <ul class="limits">
                   <li><i class="ti ti-users"></i>{{ describeSeats(plan) }}</li>
                   <li><i class="ti ti-box"></i>Up to {{ number.format(plan.maxProducts) }} products</li>
+                  <li><i class="ti ti-qrcode"></i>QR Ph online payments</li>
                   <li><i class="ti ti-circle-check"></i>All features included</li>
                 </ul>
                 <a
-                  :href="`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(`USystems POS ${plan.name} plan`)}`"
+                  :href="googleSignInUrl()"
                   class="btn w-100 mt-auto"
                   :class="plan.id === POPULAR_PLAN ? 'btn-primary btn-glow' : 'btn-outline-primary'"
                 >
-                  Get started<i class="ti ti-arrow-right ms-2 arrow"></i>
+                  Start free trial<i class="ti ti-arrow-right ms-2 arrow"></i>
                 </a>
               </div>
             </div>
@@ -481,13 +752,13 @@ onBeforeUnmount(() => {
       </section>
 
       <!-- FAQ -->
-      <section id="faq" class="section section-alt">
+      <section id="faq" class="section">
         <div class="container faq-container">
           <div v-reveal class="section-head">
             <span class="eyebrow">FAQ</span>
             <h2>Questions, answered</h2>
           </div>
-          <div v-for="(faq, i) in faqs" :key="faq.q" v-reveal="i * 70" class="faq" :class="{ open: openFaq === i }">
+          <div v-for="(faq, i) in faqs" :key="faq.q" v-reveal="i * 50" class="faq" :class="{ open: openFaq === i }">
             <button
               type="button"
               class="faq-q"
@@ -507,7 +778,7 @@ onBeforeUnmount(() => {
       <section id="contact" class="cta">
         <div class="cta-bg" aria-hidden="true"></div>
         <div v-reveal class="container text-center position-relative">
-          <h2>Ready to set up your store?</h2>
+          <h2>Ready to run your store?</h2>
           <p>Sign up with Google and start selling today, free for {{ TRIAL_LABEL }}. Questions? Email us.</p>
           <div class="d-flex flex-wrap justify-content-center gap-2">
             <a :href="googleSignInUrl()" class="btn btn-primary btn-lg btn-glow">
@@ -523,12 +794,28 @@ onBeforeUnmount(() => {
     </main>
 
     <footer class="landing-footer">
-      <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
-        <span>Copyright &copy; {{ new Date().getFullYear() }} USystems POS</span>
-        <nav class="footer-links">
-          <RouterLink v-for="link in legalLinks" :key="link.id" :to="{ name: link.route }">{{ link.label }}</RouterLink>
-          <RouterLink :to="{ name: 'login' }">Portal</RouterLink>
-        </nav>
+      <div class="container">
+        <div class="footer-grid">
+          <div class="footer-brand">
+            <img src="/assets/img/usystems-pos-logo.svg" alt="USystems POS" />
+            <p>Cloud point of sale, barcode scanning and QR Ph payments for Philippine stores.</p>
+            <a :href="`mailto:${CONTACT_EMAIL}`"><i class="ti ti-mail me-1"></i>{{ CONTACT_EMAIL }}</a>
+          </div>
+          <div>
+            <h4>Product</h4>
+            <a v-for="[id, label] in navLinks" :key="id" :href="`#${id}`" @click.prevent="go(id)">{{ label }}</a>
+          </div>
+          <div>
+            <h4>Get started</h4>
+            <a :href="googleSignInUrl()">Start free trial</a>
+            <RouterLink :to="{ name: 'login' }">Portal</RouterLink>
+          </div>
+          <div>
+            <h4>Legal</h4>
+            <RouterLink v-for="link in legalLinks" :key="link.id" :to="{ name: link.route }">{{ link.label }}</RouterLink>
+          </div>
+        </div>
+        <div class="footer-bottom">Copyright &copy; {{ new Date().getFullYear() }} USystems POS</div>
       </div>
     </footer>
 
@@ -1361,7 +1648,7 @@ onBeforeUnmount(() => {
   font-size: 26px;
   display: grid;
   place-items: center;
-  box-shadow: 0 0 0 8px var(--alt-bg);
+  box-shadow: 0 0 0 8px #fff;
   transition:
     background 0.3s,
     color 0.3s,
@@ -1687,11 +1974,6 @@ onBeforeUnmount(() => {
   color: var(--muted);
 }
 
-.footer-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 20px;
-}
 
 .landing-footer a:hover {
   color: var(--brand);
@@ -1734,6 +2016,580 @@ onBeforeUnmount(() => {
 .fade-leave-to {
   opacity: 0;
   transform: translateY(10px);
+}
+
+/* Header trial button: room for it only on wider screens */
+@media (max-width: 575.98px) {
+  .header-trial {
+    display: none;
+  }
+}
+
+/* Hero payment logos */
+.hero-logos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin-top: 24px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.hero-logos img {
+  height: 22px;
+  width: auto;
+}
+
+/* POS demo: search bar, scanner, QR Ph */
+.mock-left {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mock-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px 4px 4px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mock-search span {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mock-scan {
+  border: 0;
+  border-radius: 6px;
+  background: var(--navy);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  transition: background 0.2s;
+}
+
+.mock-scan:hover:not(:disabled) {
+  background: var(--brand);
+}
+
+.mock-scan:disabled {
+  opacity: 0.6;
+}
+
+.mock-products {
+  position: relative;
+}
+
+.laser {
+  position: absolute;
+  left: -4px;
+  right: -4px;
+  top: 0;
+  height: 2px;
+  z-index: 2;
+  background: #ff3b30;
+  box-shadow: 0 0 10px 2px rgba(255, 59, 48, 0.6);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mock-products.scanning .laser {
+  animation: laser 0.75s ease-in-out;
+}
+
+@keyframes laser {
+  0% {
+    opacity: 1;
+    top: 0;
+  }
+  50% {
+    top: calc(100% - 2px);
+  }
+  100% {
+    opacity: 1;
+    top: 0;
+  }
+}
+
+.mock-bar em.beep {
+  color: #7ee2a0;
+}
+
+.mock-pay-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.mock-pay.qr {
+  background: var(--navy);
+}
+
+.mock-pay.qr:hover:not(:disabled) {
+  background: #0d3d69;
+}
+
+.mock-pay.waiting {
+  background: var(--navy);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mock-pay.paid {
+  font-size: 12px;
+}
+
+.mock-qr {
+  position: absolute;
+  inset: 40px 0 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  background: rgba(9, 44, 76, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+.mock-qr-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: #fff;
+  border-radius: 14px;
+  padding: 16px 22px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+  animation: rise 0.35s var(--ease);
+}
+
+.qr-brand {
+  height: 20px;
+}
+
+.qr-code {
+  width: 120px;
+  height: 120px;
+}
+
+.qr-code :deep(svg) {
+  width: 100%;
+  height: 100%;
+}
+
+.mock-qr-card strong {
+  color: var(--navy);
+  font-size: 14px;
+}
+
+.mock-qr-card small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.chip-icon.blue {
+  background: rgba(13, 110, 253, 0.1);
+  color: #0d6efd;
+}
+
+/* Who it's for */
+.section-tight {
+  padding: 80px 0;
+}
+
+.stores {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.store-card {
+  display: flex;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  transition:
+    border-color 0.3s,
+    box-shadow 0.3s,
+    opacity 0.7s var(--ease),
+    transform 0.7s var(--ease);
+}
+
+.store-card:hover {
+  border-color: #ffd9b3;
+  box-shadow: 0 14px 30px rgba(9, 44, 76, 0.07);
+}
+
+.store-icon {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--navy);
+  color: #fff;
+  font-size: 22px;
+}
+
+.store-card h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--navy);
+  margin-bottom: 4px;
+}
+
+.store-card p {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0;
+}
+
+@media (max-width: 991.98px) {
+  .stores {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 575.98px) {
+  .stores {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* POS to online payment */
+.online {
+  background: linear-gradient(180deg, #fff 0%, #fff7ef 100%);
+}
+
+.flow {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  position: relative;
+}
+
+.flow::before {
+  content: '';
+  position: absolute;
+  left: 23px;
+  top: 24px;
+  bottom: 24px;
+  border-left: 2px dashed #f3c99f;
+}
+
+.flow-step {
+  position: relative;
+  display: flex;
+  gap: 18px;
+  padding: 0 0 26px;
+}
+
+.flow-step:last-child {
+  padding-bottom: 0;
+}
+
+.flow-icon {
+  position: relative;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: var(--brand);
+  color: #fff;
+  font-size: 22px;
+  box-shadow: 0 8px 18px rgba(254, 159, 67, 0.3);
+}
+
+.flow-step h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--navy);
+  margin: 4px 0 4px;
+}
+
+.flow-num {
+  color: var(--brand);
+  margin-right: 8px;
+}
+
+.flow-step p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.record {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: 0 30px 60px rgba(9, 44, 76, 0.12);
+  max-width: 460px;
+  margin: 0 auto;
+}
+
+.record-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.record-head small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.record-head strong {
+  color: var(--navy);
+  font-size: 18px;
+}
+
+.badge-paid {
+  background: rgba(40, 167, 69, 0.12);
+  color: #28a745;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 5px 12px;
+  border-radius: 999px;
+}
+
+.record-lines {
+  padding: 12px 0;
+  font-size: 14px;
+}
+
+.record-lines div {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+}
+
+.record-lines .total {
+  border-top: 1px dashed #c7ccd1;
+  margin-top: 6px;
+  padding-top: 8px;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+.record-payment {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--alt-bg);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.record-payment img {
+  height: 26px;
+}
+
+.record-payment strong {
+  display: block;
+  color: var(--navy);
+  font-size: 14px;
+}
+
+.record-payment small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.record-log {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.record-log li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+}
+
+.record-log time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  width: 40px;
+}
+
+.record-log .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand);
+  flex: none;
+}
+
+.record-log .dot.ok {
+  background: #28a745;
+}
+
+.promises {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-top: 64px;
+}
+
+.promise {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 22px;
+}
+
+.promise i {
+  font-size: 26px;
+  color: #28a745;
+}
+
+.promise h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--navy);
+  margin: 10px 0 6px;
+}
+
+.promise p {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0;
+}
+
+@media (max-width: 991.98px) {
+  .promises {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 575.98px) {
+  .promises {
+    grid-template-columns: 1fr;
+  }
+
+  .record {
+    padding: 18px;
+  }
+}
+
+/* A day at the store */
+.day {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.moment {
+  position: relative;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--brand);
+  border-radius: 14px;
+  padding: 22px;
+}
+
+.moment-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--brand-dark);
+  background: var(--brand-soft);
+  border-radius: 999px;
+  padding: 4px 12px;
+  margin-bottom: 14px;
+}
+
+.moment h3 {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--navy);
+  margin-bottom: 6px;
+}
+
+.moment p {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0;
+}
+
+@media (max-width: 991.98px) {
+  .day {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 575.98px) {
+  .day {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Footer columns */
+.footer-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 32px;
+  padding: 24px 0 32px;
+}
+
+.footer-grid h4 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--navy);
+  margin-bottom: 12px;
+}
+
+.footer-grid > div:not(.footer-brand) a {
+  display: block;
+  padding: 3px 0;
+}
+
+.footer-brand img {
+  height: 36px;
+  margin-bottom: 12px;
+}
+
+.footer-brand p {
+  max-width: 320px;
+  margin-bottom: 10px;
+}
+
+.footer-bottom {
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+}
+
+@media (max-width: 767.98px) {
+  .footer-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .footer-brand {
+    grid-column: 1 / -1;
+  }
 }
 
 /* Respect visitors who turn off motion */
