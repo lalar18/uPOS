@@ -307,9 +307,17 @@ async function handleLogout() {
             :class="{ show: openDropdown === 'mobile' }"
             data-bs-popper="static"
           >
-            <span class="dropdown-item-text fw-medium">{{ currentUser?.fullName }}</span>
-            <RouterLink :to="{ name: 'profile' }" class="dropdown-item">My Profile</RouterLink>
-            <a href="#" class="dropdown-item" @click.prevent="handleLogout">Logout</a>
+            <div class="mobile-profileset d-flex align-items-center">
+              <UserAvatar :user="currentUser" :size="40" class="me-2" />
+              <div class="text-truncate">
+                <h6 class="fw-medium mb-0 text-truncate">{{ currentUser?.fullName }}</h6>
+                <p class="mb-0 fs-12 text-gray-5 text-truncate">{{ currentUser?.role.name }} · {{ currentUser?.store.name }}</p>
+              </div>
+            </div>
+            <RouterLink :to="{ name: 'profile' }" class="dropdown-item">
+              <i class="ti ti-user-circle me-2"></i>My Profile
+            </RouterLink>
+            <a href="#" class="dropdown-item" @click.prevent="handleLogout"><i class="ti ti-logout me-2"></i>Logout</a>
           </div>
         </div>
       </div>
@@ -412,6 +420,18 @@ async function handleLogout() {
     transform: translateY(-50%);
     z-index: 10;
   }
+}
+
+.mobile-user-menu .dropdown-menu {
+  min-width: 220px;
+  max-width: calc(100vw - 32px);
+  text-align: left;
+}
+
+.mobile-profileset {
+  padding: 12px 10px;
+  border-bottom: 1px solid #e6eaed;
+  line-height: 1.4;
 }
 
 .search-results {
