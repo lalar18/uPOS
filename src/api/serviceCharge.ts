@@ -24,6 +24,23 @@ export function chargeCents(charge: ServiceCharge, amountCents: number): number 
 export const payoutChargeCents = (charge: Pick<ServiceCharge, 'kind' | 'value'>, amountCents: number) =>
   Math.min(chargeCents({ ...charge, methods: [] }, amountCents), Math.max(amountCents - 1, 0))
 
+/** PayMongo's gateway fee in basis points (keep in step with GATEWAY_FEE_BP in worker/serviceCharges.ts) */
+export const GATEWAY_FEE_BP = 134
+
+/** The gateway fee's rate, for showing beside it: "1.34%" */
+export const GATEWAY_FEE_LABEL = `${GATEWAY_FEE_BP / 100}%`
+
+/** The gateway fee on `amountCents` (keep in step with gatewayFeeCents in worker/serviceCharges.ts) */
+export const gatewayFeeCents = (amountCents: number) =>
+  amountCents > 0 ? Math.round((amountCents * GATEWAY_FEE_BP) / 10_000) : 0
+
+/**
+ * The gateway fee kept out of a withdrawal beside its service charge
+ * (keep in step with payoutGatewayFeeCents in worker/serviceCharges.ts)
+ */
+export const payoutGatewayFeeCents = (amountCents: number, chargeCents: number) =>
+  Math.min(gatewayFeeCents(amountCents), Math.max(amountCents - chargeCents - 1, 0))
+
 /** The rate as set, for showing beside a charge: "2.5%" or "₱15.00 flat" */
 export const chargeRateLabel = (charge: Pick<ServiceCharge, 'kind' | 'value'>) =>
   charge.kind === 'percent' ? `${charge.value / 100}%` : `${formatMoney(charge.value)} flat`

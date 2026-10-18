@@ -103,13 +103,16 @@ function onSaved(message: string) {
                   <RouterLink :to="{ name: 'us-store', params: { id: s.id } }" class="fw-medium text-gray-9">{{ s.name }}</RouterLink>
                   <div class="fs-12 text-gray-5">{{ storeCode(s.id) }}</div>
                   <span v-if="s.pendingWithdrawal?.sending" class="badge bg-info me-1">
-                    Sending {{ peso(s.pendingWithdrawal.amountCents - s.pendingWithdrawal.serviceChargeCents) }}
+                    Sending {{ peso(s.pendingWithdrawal.amountCents - s.pendingWithdrawal.serviceChargeCents - s.pendingWithdrawal.gatewayFeeCents) }}
                   </span>
                   <span v-else-if="s.pendingWithdrawal" class="badge bg-warning me-1">
                     Withdraw {{ peso(s.pendingWithdrawal.amountCents) }}
                   </span>
-                  <span v-if="s.pendingWithdrawal?.serviceChargeCents" class="badge bg-success-transparent text-success me-1">
-                    {{ peso(s.pendingWithdrawal.serviceChargeCents) }} charge
+                  <span
+                    v-if="s.pendingWithdrawal && s.pendingWithdrawal.serviceChargeCents + s.pendingWithdrawal.gatewayFeeCents"
+                    class="badge bg-success-transparent text-success me-1"
+                  >
+                    {{ peso(s.pendingWithdrawal.serviceChargeCents + s.pendingWithdrawal.gatewayFeeCents) }} fees
                   </span>
                   <span v-if="s.refundsDue" class="badge bg-secondary">{{ s.refundsDue }} to refund</span>
                 </td>

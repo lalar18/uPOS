@@ -90,7 +90,7 @@ const summaryCards = computed(() => {
   return [
     { label: 'Subscriptions', value: t.subscriptionsCents, icon: 'crown', color: 'primary', note: `${t.renewals} renewal${t.renewals === 1 ? '' : 's'} paid` },
     {
-      label: 'Service charges',
+      label: 'Service charges & gateway fees',
       value: t.renewalChargesCents + t.saleChargesCents + t.payoutChargesCents,
       icon: 'receipt-tax',
       color: 'info',

@@ -5,6 +5,8 @@
 import { computed, ref } from 'vue'
 import {
   chargeRateLabel,
+  GATEWAY_FEE_LABEL,
+  gatewayFeeCents,
   getOnlinePaymentCharge,
   recordedChargeCents,
   saleChargeCents,
@@ -66,6 +68,12 @@ const serviceChargeCents = computed(() => {
     : recordedChargeCents(charge.value, method.value, paid)
 })
 
+/** PayMongo's gateway fee, on payments made online only */
+const gatewayCents = computed(() => {
+  const paid = amountCents.value
+  return online.value && paid !== null && !Number.isNaN(paid) ? gatewayFeeCents(paid) : 0
+})
+
 const payOnline = ref(true) // card, GCash, Maya, QR Ph: pay online now, or record a payment already made
 const canPayOnline = computed(() => !!charge.value?.checkout && isCheckoutMethod(method.value))
 const online = computed(() => canPayOnline.value && payOnline.value)
@@ -76,7 +84,7 @@ function validate(): string {
   if (cents === null || Number.isNaN(cents) || cents <= 0) return 'Enter the amount paid, like 150.00.'
   if (cents > props.sale.dueCents) return `The balance due is only ${formatMoney(props.sale.dueCents)}.`
   if (online.value) {
-    if (cents + serviceChargeCents.value < MIN_CHECKOUT_CENTS) {
+    if (cents + serviceChargeCents.value + gatewayCents.value < MIN_CHECKOUT_CENTS) {
       return `Online payments must be at least ${formatMoney(MIN_CHECKOUT_CENTS)}.`
     }
     return ''
@@ -236,14 +244,24 @@ async function save() {
             <label class="form-label" for="payment-date">Date <span class="text-danger">*</span></label>
             <input id="payment-date" v-model="paidDate" type="date" class="form-control" :max="toIsoDate()" />
           </div>
-          <div v-if="serviceChargeCents > 0" class="col-12">
-            <div class="alert alert-light border py-2 mb-0 fs-14 d-flex flex-wrap justify-content-between gap-2">
-              <span>
-                Service charge ({{ paymentMethodLabel(method) }} · {{ chargeRateLabel(charge!) }}): <strong>{{ formatMoney(serviceChargeCents) }}</strong>
-              </span>
-              <span>
-                {{ online ? 'The customer pays' : 'Total to collect' }}: <strong class="text-gray-9">{{ formatMoney(amountCents! + serviceChargeCents) }}</strong>
-              </span>
+          <div v-if="serviceChargeCents > 0 || gatewayCents > 0" class="col-12">
+            <div class="alert alert-light border py-2 mb-0 fs-14">
+              <div class="d-flex justify-content-between gap-2">
+                <span>Amount paid</span>
+                <span>{{ formatMoney(amountCents!) }}</span>
+              </div>
+              <div v-if="gatewayCents > 0" class="d-flex justify-content-between gap-2">
+                <span>Payment gateway fee ({{ GATEWAY_FEE_LABEL }})</span>
+                <span>{{ formatMoney(gatewayCents) }}</span>
+              </div>
+              <div v-if="serviceChargeCents > 0" class="d-flex justify-content-between gap-2">
+                <span>Service charge ({{ paymentMethodLabel(method) }} · {{ chargeRateLabel(charge!) }})</span>
+                <span>{{ formatMoney(serviceChargeCents) }}</span>
+              </div>
+              <div class="d-flex justify-content-between gap-2 fw-bold border-top pt-1 mt-1">
+                <span>{{ online ? 'The customer pays' : 'Total to collect' }}</span>
+                <span class="text-gray-9">{{ formatMoney(amountCents! + gatewayCents + serviceChargeCents) }}</span>
+              </div>
             </div>
           </div>
         </div>

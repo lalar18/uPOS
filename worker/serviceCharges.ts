@@ -37,6 +37,27 @@ export const renewalChargePesos = (charge: ServiceCharge, pesos: number) =>
   Math.round(chargeCents(charge, pesos * 100) / 100)
 
 /**
+ * PayMongo's gateway fee, in basis points (134 = 1.34%), passed on beside the service charge on
+ * everything paid or sent through PayMongo (migration 0035). Keep GATEWAY_FEE_BP in
+ * src/api/serviceCharge.ts in step.
+ */
+export const GATEWAY_FEE_BP = 134
+
+/** The gateway fee on `amountCents` (keep in step with gatewayFeeCents in src/api/serviceCharge.ts) */
+export const gatewayFeeCents = (amountCents: number) =>
+  amountCents > 0 ? Math.round((amountCents * GATEWAY_FEE_BP) / 10_000) : 0
+
+/** The gateway fee on a renewal, in whole pesos */
+export const renewalGatewayFeePesos = (pesos: number) => Math.round(gatewayFeeCents(pesos * 100) / 100)
+
+/**
+ * The gateway fee kept out of a withdrawal of `amountCents` beside its service charge, never all
+ * the rest so something is sent (keep in step with payoutGatewayFeeCents in src/api/serviceCharge.ts)
+ */
+export const payoutGatewayFeeCents = (amountCents: number, chargeCents: number) =>
+  Math.min(gatewayFeeCents(amountCents), Math.max(amountCents - chargeCents - 1, 0))
+
+/**
  * The charge kept out of a withdrawal of `amountCents`, never all of it so something is sent
  * (keep in step with payoutChargeCents in src/api/serviceCharge.ts)
  */

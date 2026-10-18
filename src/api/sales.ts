@@ -109,6 +109,7 @@ export interface SaleCheckout {
   amountCents: number // towards the sale
   serviceChargeCents: number
   serviceChargeRate: { kind: ChargeKind; value: number } | null // the rate set when it was opened (null on older ones)
+  gatewayFeeCents: number // PayMongo's gateway fee, passed on (0 on older ones)
   totalCents: number // what the customer pays
   status: 'pending' | 'paid' | 'cancelled' | 'refund_due'
   checkoutUrl: string | null // while pending

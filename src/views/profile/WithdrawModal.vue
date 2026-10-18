@@ -1,10 +1,10 @@
 <script setup lang="ts">
 // Asks to withdraw from the store's wallet to a GCash number or a bank account. The platform
 // sends the money (through PayMongo, to a bank from its list) and the request shows as sent; until
-// then the amount is held. Any service charge is kept out of the amount, so the dialog shows what
-// the store will receive before it asks.
+// then the amount is held. PayMongo's gateway fee and any service charge are kept out of the amount,
+// so the dialog shows what the store will receive before it asks.
 import { computed, ref } from 'vue'
-import { chargeRateLabel, payoutChargeCents } from '@/api/serviceCharge'
+import { chargeRateLabel, GATEWAY_FEE_LABEL, payoutChargeCents, payoutGatewayFeeCents } from '@/api/serviceCharge'
 import { getWallet, getWithdrawalBanks, requestWithdrawal, type Bank, type Wallet, type WithdrawalDestination } from '@/api/store'
 import AppModal from '@/components/AppModal.vue'
 import { centsToText, formatMoney, parsePeso } from '@/utils/money'
@@ -45,7 +45,8 @@ const amountCents = computed(() => {
   return cents === null || Number.isNaN(cents) || cents <= 0 ? null : cents
 })
 const charge = computed(() => (amountCents.value ? payoutChargeCents(rate.value, amountCents.value) : 0))
-const receive = computed(() => (amountCents.value ?? 0) - charge.value)
+const gatewayFee = computed(() => (amountCents.value ? payoutGatewayFeeCents(amountCents.value, charge.value) : 0))
+const receive = computed(() => (amountCents.value ?? 0) - charge.value - gatewayFee.value)
 
 function pick(value: WithdrawalDestination) {
   if (value === destination.value) return
@@ -113,11 +114,17 @@ async function save() {
           <input id="withdraw-amount" v-model="amount" type="text" inputmode="decimal" class="form-control" />
         </div>
 
-        <!-- What the store gets once the service charge is kept out -->
+        <!-- What the store gets once the gateway fee and service charge are kept out -->
         <div class="breakdown mb-3" aria-live="polite">
           <div class="d-flex justify-content-between gap-2">
             <span class="text-gray-5">Withdrawal amount</span>
             <span>{{ peso(amountCents ?? 0) }}</span>
+          </div>
+          <div class="d-flex justify-content-between gap-2">
+            <span class="text-gray-5">
+              Payment gateway fee <span class="fs-12">({{ GATEWAY_FEE_LABEL }})</span>
+            </span>
+            <span :class="{ 'text-danger': gatewayFee }">{{ gatewayFee ? `−${peso(gatewayFee)}` : peso(0) }}</span>
           </div>
           <div class="d-flex justify-content-between gap-2">
             <span class="text-gray-5">

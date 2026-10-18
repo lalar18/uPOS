@@ -6,7 +6,7 @@
 // (a payment made afterwards is still recorded on the sale).
 import QRCode from 'qrcode'
 import { computed, onBeforeUnmount, ref } from 'vue'
-import { chargeRateLabel } from '@/api/serviceCharge'
+import { chargeRateLabel, GATEWAY_FEE_LABEL } from '@/api/serviceCharge'
 import { cancelSaleCheckout, getSaleCheckout, paymentMethodLabel, type SaleCheckout } from '@/api/sales'
 import AppModal from '@/components/AppModal.vue'
 import PaymentLogos from '@/components/PaymentLogos.vue'
@@ -107,6 +107,10 @@ async function cancel() {
           <div class="d-flex justify-content-between">
             <span>Payment for {{ saleReference }}</span>
             <span>{{ formatMoney(current.amountCents) }}</span>
+          </div>
+          <div v-if="current.gatewayFeeCents > 0" class="d-flex justify-content-between">
+            <span>Payment gateway fee ({{ GATEWAY_FEE_LABEL }})</span>
+            <span>{{ formatMoney(current.gatewayFeeCents) }}</span>
           </div>
           <div class="d-flex justify-content-between">
             <span>

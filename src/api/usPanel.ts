@@ -131,6 +131,7 @@ export interface Renewal {
   months: number
   amount: number | null // whole pesos received
   serviceChargeCents: number // part of amount, added for paying online
+  gatewayFeeCents: number // part of amount: PayMongo's gateway fee, passed on
   processingFeeCents: number | null // kept by PayMongo (null: not paid online)
   paymentMethod: string | null
   reference: string | null
@@ -193,7 +194,8 @@ export interface StoreBalance {
   pendingWithdrawal: {
     id: number
     amountCents: number
-    serviceChargeCents: number // kept out of it; the store receives the rest
+    serviceChargeCents: number // kept out of it with the gateway fee; the store receives the rest
+    gatewayFeeCents: number
     createdAt: string
     sending: boolean
   } | null
@@ -262,10 +264,10 @@ export const updatePlan = (id: string, input: PlanInput) => sendJson<PanelPlan>(
 
 /** Money in centavos */
 export interface IncomeTotals {
-  subscriptionsCents: number // renewals received, less their service charges
+  subscriptionsCents: number // renewals received, less their service charges and gateway fees
   renewalChargesCents: number // service charges on renewals paid online
   saleChargesCents: number // service charges on sale payments made online through PayMongo
-  payoutChargesCents: number // service charges kept out of store withdrawals
+  payoutChargesCents: number // service charges (and gateway fees) kept out of store withdrawals
   processingFeesCents: number // kept by PayMongo
   netCents: number // subscriptions + service charges - PayMongo fees
   renewals: number

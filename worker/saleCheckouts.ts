@@ -1,11 +1,11 @@
 // Online payment of sales through PayMongo (see migrations 0024, 0026). The cashier picks card, GCash,
 // Maya or QR Ph; a checkout session is opened for that one method, with the service charge set in the US
-// Panel (serviceCharges.ts) as a line item of its own, and the customer pays on PayMongo's page
+// Panel and PayMongo's gateway fee (serviceCharges.ts) as line items of their own, and the customer pays on PayMongo's page
 // (scanning its QR code with their phone, or on the store's device). PayMongo's webhook, or the
 // status check the payment dialog keeps making, then records the payment on the sale.
 //
-// The money goes to the platform's PayMongo account: the platform keeps the service charge (less
-// PayMongo's fee) and owes the store the sale amount (see usPanel/payouts.ts).
+// The money goes to the platform's PayMongo account: the platform keeps the service charge and the
+// gateway fee (less PayMongo's own fee) and owes the store the sale amount (see usPanel/payouts.ts).
 //
 //   POST   /api/sales/:id/checkouts       { method, amountCents } -> checkout (201)
 //   GET    /api/sales/:id/checkouts/:cid  -> checkout   (checks PayMongo while it's pending)
@@ -24,7 +24,7 @@ import {
   type PaidCheckout,
   type PaymongoEnv,
 } from './paymongo'
-import { getServiceCharge, saleChargeCents, type ChargeKind } from './serviceCharges'
+import { gatewayFeeCents, getServiceCharge, saleChargeCents, type ChargeKind } from './serviceCharges'
 import type { SessionUser } from './session'
 
 /** Methods a sale can be paid online with, by PayMongo's name for each */
@@ -49,6 +49,7 @@ interface CheckoutRow {
   service_charge_cents: number
   service_charge_kind: ChargeKind | null // the rate set when it was opened (null on older ones)
   service_charge_value: number | null
+  gateway_fee_cents: number
   checkout_session_id: string
   checkout_url: string
   status: 'pending' | 'paid' | 'cancelled' | 'refund_due'
@@ -57,7 +58,7 @@ interface CheckoutRow {
 }
 
 export const CHECKOUT_COLUMNS = `id, sale_id, method, amount_cents, service_charge_cents, service_charge_kind,
-  service_charge_value, checkout_session_id, checkout_url, status, created_at, paid_at`
+  service_charge_value, gateway_fee_cents, checkout_session_id, checkout_url, status, created_at, paid_at`
 
 export function publicCheckout(row: CheckoutRow) {
   return {
@@ -71,7 +72,8 @@ export function publicCheckout(row: CheckoutRow) {
       row.service_charge_kind && row.service_charge_value !== null
         ? { kind: row.service_charge_kind, value: row.service_charge_value }
         : null,
-    totalCents: row.amount_cents + row.service_charge_cents, // what the customer pays
+    gatewayFeeCents: row.gateway_fee_cents, // PayMongo's gateway fee, passed on
+    totalCents: row.amount_cents + row.service_charge_cents + row.gateway_fee_cents, // what the customer pays
     status: row.status,
     checkoutUrl: row.status === 'pending' ? row.checkout_url : null,
     createdAt: row.created_at,
@@ -128,7 +130,8 @@ export async function openSaleCheckout(
 
   const charge = await getServiceCharge(db, 'sale')
   const chargeCents = saleChargeCents(charge, input.method, input.amountCents)
-  if (input.amountCents + chargeCents < MIN_CHECKOUT_CENTS) {
+  const gatewayCents = gatewayFeeCents(input.amountCents)
+  if (input.amountCents + chargeCents + gatewayCents < MIN_CHECKOUT_CENTS) {
     return error(`Online payments must be at least ₱${(MIN_CHECKOUT_CENTS / 100).toFixed(2)}`, 400)
   }
 
@@ -149,6 +152,7 @@ export async function openSaleCheckout(
     session = await createCheckoutSession(env, {
       lineItems: [
         { name: `${reference} · ${cleanText(sale.store_name)}`, cents: input.amountCents },
+        { name: 'Payment gateway fee', cents: gatewayCents },
         { name: 'Service charge', cents: chargeCents },
       ],
       paymentMethodTypes: [CHECKOUT_METHODS[input.method]],
@@ -166,8 +170,9 @@ export async function openSaleCheckout(
   const row = await db
     .prepare(
       `INSERT INTO sale_checkouts (store_id, sale_id, method, amount_cents, service_charge_cents,
-         service_charge_kind, service_charge_value, checkout_session_id, checkout_url, user_id, user_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         service_charge_kind, service_charge_value, gateway_fee_cents, checkout_session_id, checkout_url, user_id,
+         user_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT DO NOTHING RETURNING ${CHECKOUT_COLUMNS}`,
     )
     .bind(
@@ -178,6 +183,7 @@ export async function openSaleCheckout(
       chargeCents,
       chargeCents > 0 ? charge.kind : null,
       chargeCents > 0 ? charge.value : null,
+      gatewayCents,
       session.id,
       session.url,
       user.id,
@@ -207,7 +213,7 @@ export async function recordSaleCheckout(db: D1Database, sessionId: string, paid
     return
   }
   if (row.status === 'paid' || row.status === 'refund_due') return
-  if (paid.cents < row.amount_cents + row.service_charge_cents) {
+  if (paid.cents < row.amount_cents + row.service_charge_cents + row.gateway_fee_cents) {
     console.warn('PayMongo: checkout paid less than expected', sessionId, paid.cents)
   }
 
@@ -217,8 +223,8 @@ export async function recordSaleCheckout(db: D1Database, sessionId: string, paid
       db
         .prepare(
           `INSERT INTO sale_payments (store_id, sale_id, amount_cents, method, reference, note, service_charge_cents,
-             processing_fee_cents, checkout_id, paid_date, user_id, user_name)
-           SELECT store_id, sale_id, amount_cents, method, ?, ?, service_charge_cents, ?, id,
+             gateway_fee_cents, processing_fee_cents, checkout_id, paid_date, user_id, user_name)
+           SELECT store_id, sale_id, amount_cents, method, ?, ?, service_charge_cents, gateway_fee_cents, ?, id,
              date('now', '+8 hours'), user_id, user_name
            FROM sale_checkouts WHERE id = ?
            ON CONFLICT DO NOTHING`,

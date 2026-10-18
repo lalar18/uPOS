@@ -11,11 +11,13 @@
 //
 // Money is in centavos. The platform's income is only:
 //   - subscriptions: renewals paid, online or recorded by a super admin, less their service charge
+//     and gateway fee
 //   - service charges on payments made online through PayMongo: renewals, and sales paid by a
 //     checkout (saleCheckouts.ts), whose money goes to the platform's PayMongo account
 //   - service charges kept out of the payouts of store withdrawals (storePayouts.ts), counted
 //     when the payout is recorded
-// less what PayMongo kept. A charge on a sale payment the store recorded by hand was collected by
+// less what PayMongo kept. PayMongo's gateway fee passed on beside each of those charges (migration
+// 0035) is counted with them, as it's what pays for what PayMongo keeps. A charge on a sale payment the store recorded by hand was collected by
 // the store, not the platform, so it isn't income. The sale amount itself is the store's (its wallet).
 
 import { error } from '../documents'
@@ -32,10 +34,13 @@ const ENTRIES_PAGE = 50
 
 /** A renewal paid online through PayMongo (the webhook records it without a super admin) */
 const RENEWAL_ONLINE = '(sr.processing_fee_cents IS NOT NULL OR (sr.confirmed_by IS NULL AND sr.checkout_session_id IS NOT NULL))'
-/** Its service charge, which only a renewal paid online has */
-const RENEWAL_CHARGE = `CASE WHEN ${RENEWAL_ONLINE} THEN sr.service_charge_cents ELSE 0 END`
+/** Its service charge and gateway fee, which only a renewal paid online has */
+const RENEWAL_CHARGE = `CASE WHEN ${RENEWAL_ONLINE} THEN sr.service_charge_cents + sr.gateway_fee_cents ELSE 0 END`
 /** What a renewal brought in for the subscription itself */
 const RENEWAL_SUBSCRIPTION = `COALESCE(sr.amount, 0) * 100 - ${RENEWAL_CHARGE}`
+
+/** What the platform kept out of a payout: its service charge and gateway fee */
+const PAYOUT_KEPT = '(po.service_charge_cents + po.gateway_fee_cents)'
 
 const between = (column: string) => `${column} >= datetime(?, '-8 hours') AND ${column} < datetime(?, '-8 hours')`
 
@@ -92,14 +97,14 @@ async function getIncome(db: D1Database, url: URL): Promise<Response> {
      FROM subscription_renewals sr WHERE sr.status = 'paid' AND ${between('sr.paid_at')} GROUP BY key`
   // Only payments made through a checkout: their charge was paid to the platform
   const saleSql = (key: string) =>
-    `SELECT ${key} AS key, SUM(sp.service_charge_cents) AS sale_charges,
+    `SELECT ${key} AS key, SUM(sp.service_charge_cents + sp.gateway_fee_cents) AS sale_charges,
        SUM(COALESCE(sp.processing_fee_cents, 0)) AS sale_processing_fees, COUNT(*) AS sale_payments
      FROM sale_payments sp WHERE sp.checkout_id IS NOT NULL AND ${between('sp.created_at')}
      GROUP BY key`
-  // Service charges kept out of withdrawals, when their payout was recorded
+  // Service charges and gateway fees kept out of withdrawals, when their payout was recorded
   const payoutSql = (key: string) =>
-    `SELECT ${key} AS key, SUM(po.service_charge_cents) AS payout_charges, COUNT(*) AS payouts
-     FROM store_payouts po WHERE po.service_charge_cents > 0 AND ${between('po.created_at')}
+    `SELECT ${key} AS key, SUM(${PAYOUT_KEPT}) AS payout_charges, COUNT(*) AS payouts
+     FROM store_payouts po WHERE ${PAYOUT_KEPT} > 0 AND ${between('po.created_at')}
      GROUP BY key`
 
   const [
@@ -126,7 +131,7 @@ async function getIncome(db: D1Database, url: URL): Promise<Response> {
            UNION ALL
            SELECT MIN(strftime('%Y', created_at, ${LOCAL})) FROM sale_payments WHERE checkout_id IS NOT NULL
            UNION ALL
-           SELECT MIN(strftime('%Y', created_at, ${LOCAL})) FROM store_payouts WHERE service_charge_cents > 0)`,
+           SELECT MIN(strftime('%Y', created_at, ${LOCAL})) FROM store_payouts po WHERE ${PAYOUT_KEPT} > 0)`,
       ),
       // Subscriptions by plan, and how many were paid online
       db
@@ -149,7 +154,7 @@ async function getIncome(db: D1Database, url: URL): Promise<Response> {
         .bind(...range),
       db
         .prepare(
-          `SELECT sp.method AS method, COUNT(*) AS count, SUM(sp.service_charge_cents) AS charges,
+          `SELECT sp.method AS method, COUNT(*) AS count, SUM(sp.service_charge_cents + sp.gateway_fee_cents) AS charges,
              SUM(COALESCE(sp.processing_fee_cents, 0)) AS fees, SUM(sp.amount_cents) AS store_cents
            FROM sale_payments sp WHERE sp.checkout_id IS NOT NULL AND ${between('sp.created_at')} GROUP BY method`,
         )
@@ -284,15 +289,15 @@ async function getIncomeEntries(db: D1Database, url: URL): Promise<Response> {
     WHERE sr.status = 'paid' AND ${between('sr.paid_at')}
     UNION ALL
     SELECT 'sale', sp.id, sp.store_id, sp.created_at, sp.method, 1, NULL, NULL, sp.sale_id,
-      COALESCE(c.payment_reference, sp.reference), sp.amount_cents + sp.service_charge_cents, sp.amount_cents,
-      0, sp.service_charge_cents, COALESCE(sp.processing_fee_cents, 0)
+      COALESCE(c.payment_reference, sp.reference), sp.amount_cents + sp.service_charge_cents + sp.gateway_fee_cents,
+      sp.amount_cents, 0, sp.service_charge_cents + sp.gateway_fee_cents, COALESCE(sp.processing_fee_cents, 0)
     FROM sale_payments sp LEFT JOIN sale_checkouts c ON c.id = sp.checkout_id
     WHERE sp.checkout_id IS NOT NULL AND ${between('sp.created_at')}
     UNION ALL
     SELECT 'payout', po.id, po.store_id, po.created_at, po.method, po.transfer_id IS NOT NULL, NULL, NULL, NULL,
-      po.reference, po.amount_cents, po.amount_cents - po.service_charge_cents, 0, po.service_charge_cents, 0
+      po.reference, po.amount_cents, po.amount_cents - ${PAYOUT_KEPT}, 0, ${PAYOUT_KEPT}, 0
     FROM store_payouts po
-    WHERE po.service_charge_cents > 0 AND ${between('po.created_at')}`
+    WHERE ${PAYOUT_KEPT} > 0 AND ${between('po.created_at')}`
 
   const [page, sums] = await db.batch<Record<string, unknown>>([
     db

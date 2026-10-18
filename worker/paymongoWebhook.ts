@@ -76,14 +76,19 @@ async function recordRenewalPayment(db: D1Database, session: CheckoutSession, pa
     return Response.json({ ok: true })
   }
 
-  const serviceCharge = Number(session.attributes.metadata?.service_charge_cents)
+  const metadataCents = (key: string, max: number) => {
+    const cents = Number(session.attributes.metadata?.[key])
+    return Number.isSafeInteger(cents) && cents > 0 ? Math.min(cents, max) : 0
+  }
+  const serviceCharge = metadataCents('service_charge_cents', paid.cents)
   const values = [
     Math.round(paid.cents / 100),
     METHOD_NAMES[paid.method] ?? 'other',
     paid.paymentId,
     `Paid online through PayMongo${METHOD_LABELS[paid.method] ? ` (${METHOD_LABELS[paid.method]})` : ''}`,
     session.id,
-    Number.isSafeInteger(serviceCharge) && serviceCharge > 0 ? Math.min(serviceCharge, paid.cents) : 0,
+    serviceCharge,
+    metadataCents('gateway_fee_cents', paid.cents - serviceCharge),
     paid.processingFeeCents,
   ]
   const markPaid = (id: number) =>
@@ -91,7 +96,7 @@ async function recordRenewalPayment(db: D1Database, session: CheckoutSession, pa
       .prepare(
         `UPDATE subscription_renewals
          SET amount = ?, payment_method = ?, payment_reference = ?, note = ?, checkout_session_id = ?,
-           service_charge_cents = ?, processing_fee_cents = ?, status = 'paid'
+           service_charge_cents = ?, gateway_fee_cents = ?, processing_fee_cents = ?, status = 'paid'
          WHERE id = ? AND status = 'pending'`,
       )
       .bind(...values, id)

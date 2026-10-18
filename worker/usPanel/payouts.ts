@@ -30,6 +30,7 @@ interface StoreBalanceRow {
   pending_id: number | null
   pending_cents: number | null
   pending_charge_cents: number | null
+  pending_gateway_cents: number | null
   pending_at: string | null
   pending_sending: number | null
 }
@@ -42,7 +43,7 @@ async function listBalances(db: D1Database, env: PaymongoEnv): Promise<Response>
          COALESCE(c.collected, 0) AS collected, COALESCE(p.paid_out, 0) AS paid_out,
          (SELECT COUNT(*) FROM sale_checkouts WHERE store_id = st.id AND status = 'refund_due') AS refunds_due,
          p.last_payout, w.id AS pending_id, w.amount_cents AS pending_cents,
-         w.service_charge_cents AS pending_charge_cents, w.created_at AS pending_at,
+         w.service_charge_cents AS pending_charge_cents, w.gateway_fee_cents AS pending_gateway_cents, w.created_at AS pending_at,
          EXISTS (SELECT 1 FROM payout_transfers WHERE withdrawal_id = w.id AND status = 'pending') AS pending_sending
        FROM stores st
        LEFT JOIN (SELECT store_id, SUM(amount_cents) AS collected FROM sale_payments
@@ -70,6 +71,7 @@ async function listBalances(db: D1Database, env: PaymongoEnv): Promise<Response>
           id: r.pending_id,
           amountCents: r.pending_cents!,
           serviceChargeCents: r.pending_charge_cents!,
+          gatewayFeeCents: r.pending_gateway_cents!,
           createdAt: r.pending_at!,
           sending: !!r.pending_sending,
         }
@@ -132,7 +134,7 @@ async function recordPayout(db: D1Database, env: PaymongoEnv, request: Request, 
 
 /**
  * Records the money sent for a pending withdrawal as a payout, and marks the request sent. The
- * super admin sent the withdrawal less its service charge, which the payout records as kept.
+ * super admin sent the withdrawal less its service charge and gateway fee, which the payout records as kept.
  */
 async function sendWithdrawal(db: D1Database, env: PaymongoEnv, request: Request, id: number, admin: SuperAdmin): Promise<Response> {
   const body = await request.json<Record<string, unknown>>().catch(() => null)
@@ -154,9 +156,9 @@ async function sendWithdrawal(db: D1Database, env: PaymongoEnv, request: Request
   const [inserted] = await db.batch([
     db
       .prepare(
-        `INSERT INTO store_payouts (store_id, amount_cents, service_charge_cents, method, reference, note, paid_date,
-           created_by, withdrawal_id)
-         SELECT w.store_id, w.amount_cents, w.service_charge_cents, CASE w.destination WHEN 'gcash' THEN 'gcash' ELSE 'bank_transfer' END,
+        `INSERT INTO store_payouts (store_id, amount_cents, service_charge_cents, gateway_fee_cents, method, reference,
+           note, paid_date, created_by, withdrawal_id)
+         SELECT w.store_id, w.amount_cents, w.service_charge_cents, w.gateway_fee_cents, CASE w.destination WHEN 'gcash' THEN 'gcash' ELSE 'bank_transfer' END,
            ?2, ?3, ?4, ?5, w.id
          FROM wallet_withdrawals w
          WHERE w.id = ?1 AND w.status = 'pending' AND w.amount_cents <= ${WALLET_BALANCE_SQL.replaceAll('?1', 'w.store_id')}

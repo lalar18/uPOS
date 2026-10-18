@@ -47,7 +47,7 @@ function onRequested(value: Wallet) {
   wallet.value = value
   withdrawing.value = false
   const pending = value.pendingWithdrawal
-  const receive = pending?.serviceChargeCents ? ` (you'll receive ${peso(pending.receiveCents)})` : ''
+  const receive = pending && pending.receiveCents !== pending.amountCents ? ` (you'll receive ${peso(pending.receiveCents)})` : ''
   notice.value = `Withdrawal of ${peso(value.pendingWithdrawalCents)}${receive} requested. You'll see it here once it's sent.`
 }
 
@@ -137,9 +137,16 @@ async function cancelPending() {
             {{ peso(wallet.pendingWithdrawal.amountCents) }} to {{ describeDestination(wallet.pendingWithdrawal) }}
             ({{ wallet.pendingWithdrawal.accountName }}), requested {{ formatDate(wallet.pendingWithdrawal.createdAt) }},
             {{ wallet.pendingWithdrawal.sending ? 'is being sent to you now.' : 'is waiting to be sent.' }}
-            <div v-if="wallet.pendingWithdrawal.serviceChargeCents" class="fs-12">
+            <div v-if="wallet.pendingWithdrawal.receiveCents !== wallet.pendingWithdrawal.amountCents" class="fs-12">
               You'll receive {{ peso(wallet.pendingWithdrawal.receiveCents) }} after the
-              {{ peso(wallet.pendingWithdrawal.serviceChargeCents) }} service charge.
+              <template v-if="wallet.pendingWithdrawal.gatewayFeeCents">
+                {{ peso(wallet.pendingWithdrawal.gatewayFeeCents) }} payment gateway fee{{
+                  wallet.pendingWithdrawal.serviceChargeCents ? ' and the' : ''
+                }}
+              </template>
+              <template v-if="wallet.pendingWithdrawal.serviceChargeCents">
+                {{ peso(wallet.pendingWithdrawal.serviceChargeCents) }} service charge</template
+              >.
             </div>
             <div v-if="wallet.pendingWithdrawal.sending && wallet.pendingWithdrawal.transfer" class="fs-12">
               Ref {{ wallet.pendingWithdrawal.transfer.reference }}
@@ -186,8 +193,8 @@ async function cancelPending() {
               </div>
               <div class="text-end text-nowrap">
                 <div class="fw-semibold">{{ peso(w.amountCents) }}</div>
-                <div v-if="w.serviceChargeCents" class="fs-12 text-gray-5">
-                  −{{ peso(w.serviceChargeCents) }} charge · get {{ peso(w.receiveCents) }}
+                <div v-if="w.receiveCents !== w.amountCents" class="fs-12 text-gray-5">
+                  −{{ peso(w.amountCents - w.receiveCents) }} fees · get {{ peso(w.receiveCents) }}
                 </div>
               </div>
             </div>
@@ -207,8 +214,8 @@ async function cancelPending() {
               </div>
               <div class="text-end text-nowrap">
                 <div class="fw-semibold">{{ peso(p.receivedCents) }}</div>
-                <div v-if="p.serviceChargeCents" class="fs-12 text-gray-5">
-                  of {{ peso(p.amountCents) }} · −{{ peso(p.serviceChargeCents) }} charge
+                <div v-if="p.receivedCents !== p.amountCents" class="fs-12 text-gray-5">
+                  of {{ peso(p.amountCents) }} · −{{ peso(p.amountCents - p.receivedCents) }} fees
                 </div>
               </div>
             </div>

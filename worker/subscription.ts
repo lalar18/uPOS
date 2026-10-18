@@ -16,7 +16,8 @@
 //
 //   GET    /api/plans                               -> plans, cheapest first (public: the landing page's pricing)
 //   GET    /api/subscription                        -> { plan, expiresAt, expired, usage, plans, pendingRenewal,
-//                                                       scheduledPlan, renewals, onlinePayment, onlinePaymentFees }
+//                                                       scheduledPlan, renewals, onlinePayment, onlinePaymentFees,
+//                                                       onlineGatewayFees }
 //   POST   /api/subscription/renewals               { planId } -> renewal + { checkoutUrl } (admins; one pending at a time)
 //   POST   /api/subscription/renewals/:id/checkout  -> { checkoutUrl }  (admins; pays a pending renewal online)
 //   DELETE /api/subscription/renewals/:id           -> { ok }           (admins; cancels a pending renewal)
@@ -31,7 +32,7 @@ import {
   onlinePaymentEnabled,
   type PaymongoEnv,
 } from './paymongo'
-import { getServiceCharge, renewalChargePesos } from './serviceCharges'
+import { getServiceCharge, renewalChargePesos, renewalGatewayFeePesos } from './serviceCharges'
 import type { SessionUser } from './session'
 
 /** Offered on a renewal's checkout page (PayMongo's names) */
@@ -300,9 +301,13 @@ async function getSubscription(db: D1Database, env: PaymongoEnv, user: SessionUs
       : null,
     renewals: renewals.results.filter((r) => r.status === 'paid').slice(0, MAX_RENEWALS_SHOWN).map(publicRenewal),
     onlinePayment: onlinePaymentEnabled(env),
-    // Whole pesos added to each plan's price when paid online, by plan id
+    // Whole pesos added to each plan's price when paid online, by plan id: the service charge, and
+    // PayMongo's gateway fee
     onlinePaymentFees: Object.fromEntries(
       plans.results.map((p) => [p.id, onlinePaymentEnabled(env) ? renewalChargePesos(charge, p.monthly_price) : 0]),
+    ),
+    onlineGatewayFees: Object.fromEntries(
+      plans.results.map((p) => [p.id, onlinePaymentEnabled(env) ? renewalGatewayFeePesos(p.monthly_price) : 0]),
     ),
   })
 }
@@ -330,18 +335,25 @@ async function openCheckout(
   if (!renewal || renewal.monthly_price <= 0) return null
 
   const feeCents = renewalChargePesos(await getServiceCharge(db, 'renewal'), renewal.monthly_price) * 100
+  const gatewayCents = renewalGatewayFeePesos(renewal.monthly_price) * 100
   const back = `${origin}/subscription?payment=`
   const session = await createCheckoutSession(env, {
     lineItems: [
       { name: `${renewal.plan_name} plan, 1 month`, cents: renewal.monthly_price * 100 },
-      // The renewal service charge, a line item of its own
+      // PayMongo's gateway fee and the renewal service charge, line items of their own
+      { name: 'Payment gateway fee', cents: gatewayCents },
       { name: 'Service charge', cents: feeCents },
     ],
     paymentMethodTypes: RENEWAL_PAYMENT_METHODS,
     description: `Subscription renewal for ${user.store_name}`,
     referenceNumber: `RNW-${renewalId}`,
-    // The charge is read back from here when paid, as it may change before then
-    metadata: { kind: 'renewal', renewal_id: String(renewalId), service_charge_cents: String(feeCents) },
+    // The charges are read back from here when paid, as they may change before then
+    metadata: {
+      kind: 'renewal',
+      renewal_id: String(renewalId),
+      service_charge_cents: String(feeCents),
+      gateway_fee_cents: String(gatewayCents),
+    },
     successUrl: `${back}success`,
     cancelUrl: `${back}cancelled`,
   })

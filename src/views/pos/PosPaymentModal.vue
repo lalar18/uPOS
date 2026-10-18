@@ -5,7 +5,7 @@
 // QR Ph takes a reference number. A named customer can pay part now or charge it all to their account;
 // a walk-in customer must pay in full. QR Ph may add a service charge, collected on
 // top of the amount paid. QR Ph can also be paid online now (through PayMongo,
-// when the store has it): the parent then saves the sale and waits for the online payment.
+// when the store has it, adding PayMongo's gateway fee on top too): the parent then saves the sale and waits for the online payment.
 // The parent saves the sale and passes back errors.
 import { computed, ref } from 'vue'
 import { formatGcashNumber, type GcashAccount } from '@/api/gcash'
@@ -17,7 +17,14 @@ import {
   type PaymentInput,
   type PaymentMethod,
 } from '@/api/sales'
-import { chargeRateLabel, recordedChargeCents, saleChargeCents, type OnlinePaymentCharge } from '@/api/serviceCharge'
+import {
+  chargeRateLabel,
+  GATEWAY_FEE_LABEL,
+  gatewayFeeCents,
+  recordedChargeCents,
+  saleChargeCents,
+  type OnlinePaymentCharge,
+} from '@/api/serviceCharge'
 import AppModal from '@/components/AppModal.vue'
 import PaymentLogos from '@/components/PaymentLogos.vue'
 import SecuredByPaymongo from '@/components/SecuredByPaymongo.vue'
@@ -83,6 +90,9 @@ const serviceChargeCents = computed(() =>
       : recordedChargeCents(props.charge, method.value, onlineAmountCents.value),
 )
 
+/** PayMongo's gateway fee, on payments made online only */
+const gatewayCents = computed(() => (online.value ? gatewayFeeCents(onlineAmountCents.value) : 0))
+
 function pickMethod(value: PaymentMethod) {
   method.value = value
   localError.value = ''
@@ -122,7 +132,7 @@ function confirm() {
   }
   if (online.value && isCheckoutMethod(method.value)) {
     const charge = saleChargeCents(props.charge, method.value, amount)
-    if (amount + charge < MIN_CHECKOUT_CENTS) {
+    if (amount + charge + gatewayFeeCents(amount) < MIN_CHECKOUT_CENTS) {
       localError.value = `Online payments must be at least ${formatMoney(MIN_CHECKOUT_CENTS)}.`
       return
     }
@@ -267,18 +277,22 @@ function payLater() {
               </div>
             </div>
           </div>
-          <div v-if="serviceChargeCents > 0" class="charge-box mt-3">
+          <div v-if="serviceChargeCents > 0 || gatewayCents > 0" class="charge-box mt-3">
             <div class="d-flex justify-content-between">
               <span>Amount paid</span>
               <span>{{ formatMoney(onlineAmountCents) }}</span>
             </div>
-            <div class="d-flex justify-content-between">
+            <div v-if="gatewayCents > 0" class="d-flex justify-content-between">
+              <span>Payment gateway fee ({{ GATEWAY_FEE_LABEL }})</span>
+              <span>{{ formatMoney(gatewayCents) }}</span>
+            </div>
+            <div v-if="serviceChargeCents > 0" class="d-flex justify-content-between">
               <span>Service charge ({{ paymentMethodLabel(method) }} · {{ chargeRateLabel(charge!) }})</span>
               <span>{{ formatMoney(serviceChargeCents) }}</span>
             </div>
             <div class="d-flex justify-content-between fw-bold border-top pt-1 mt-1">
               <span>{{ online ? 'Total the customer pays' : 'Total to collect' }}</span>
-              <span>{{ formatMoney(onlineAmountCents + serviceChargeCents) }}</span>
+              <span>{{ formatMoney(onlineAmountCents + gatewayCents + serviceChargeCents) }}</span>
             </div>
           </div>
         </template>

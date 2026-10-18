@@ -1,12 +1,13 @@
 <script setup lang="ts">
-// Shows what a renewal will cost (plan price + service charge) before going to PayMongo.
+// Shows what a renewal will cost (plan price + PayMongo's gateway fee + service charge) before going to PayMongo.
+import { GATEWAY_FEE_LABEL } from '@/api/serviceCharge'
 import { formatPrice, type Plan } from '@/api/subscription'
 import AppModal from '@/components/AppModal.vue'
 
-const props = defineProps<{ plan: Plan; fee: number; saving: boolean }>()
+const props = defineProps<{ plan: Plan; fee: number; gatewayFee: number; saving: boolean }>()
 const emit = defineEmits<{ close: []; confirm: [] }>()
 
-const total = () => props.plan.monthlyPrice + props.fee
+const total = () => props.plan.monthlyPrice + props.gatewayFee + props.fee
 </script>
 
 <template>
@@ -15,6 +16,10 @@ const total = () => props.plan.monthlyPrice + props.fee
       <div class="d-flex justify-content-between mb-2">
         <span>{{ plan.name }} plan, 1 month</span>
         <span>{{ formatPrice(plan.monthlyPrice) }}</span>
+      </div>
+      <div v-if="gatewayFee > 0" class="d-flex justify-content-between mb-2">
+        <span>Payment gateway fee ({{ GATEWAY_FEE_LABEL }})</span>
+        <span>{{ formatPrice(gatewayFee) }}</span>
       </div>
       <div v-if="fee > 0" class="d-flex justify-content-between mb-2">
         <span>Service charge</span>

@@ -46,7 +46,8 @@ export interface StorePayout {
   reference: string // "PO-00007"
   amountCents: number // out of the wallet
   serviceChargeCents: number // kept by the platform
-  receivedCents: number // what the store got (amount less the service charge)
+  gatewayFeeCents: number // PayMongo's gateway fee, kept too
+  receivedCents: number // what the store got (amount less the service charge and gateway fee)
   method: string
   paymentReference: string | null
   note: string | null
@@ -98,7 +99,8 @@ export interface WalletWithdrawal {
   amountCents: number // out of the wallet
   serviceChargeCents: number // kept by the platform
   serviceChargeRate: { kind: ChargeKind; value: number } | null // the rate when it was requested (null on older ones)
-  receiveCents: number // what's sent to the store (amount less the service charge)
+  gatewayFeeCents: number // PayMongo's gateway fee, kept too
+  receiveCents: number // what's sent to the store (amount less the service charge and gateway fee)
   destination: WithdrawalDestination
   bankCode: string | null // from PayMongo's list of banks (null if typed in)
   bankName: string | null // bank only

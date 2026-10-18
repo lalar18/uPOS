@@ -76,7 +76,7 @@ function goToCheckout(url: string) {
   window.location.assign(url)
 }
 
-// With online payment, the amount (plus its fee) is shown before going to PayMongo
+// With online payment, the amount (plus its fees) is shown before going to PayMongo
 const confirmPayment = ref<{ plan: Plan; pay: () => Promise<void> } | null>(null)
 
 function renew(plan: Plan) {
@@ -399,6 +399,7 @@ const barClass = (used: number, max: number) => (used >= max ? 'bg-danger' : use
       v-if="confirmPayment"
       :plan="confirmPayment.plan"
       :fee="subscription.onlinePaymentFees[confirmPayment.plan.id] ?? 0"
+      :gateway-fee="subscription.onlineGatewayFees?.[confirmPayment.plan.id] ?? 0"
       :saving="saving"
       @close="confirmPayment = null"
       @confirm="pay"

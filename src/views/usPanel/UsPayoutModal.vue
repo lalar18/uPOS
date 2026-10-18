@@ -5,7 +5,7 @@
 import { computed, ref } from 'vue'
 import { parseDbDate } from '@/api/http'
 import { PAYMENT_METHODS, paymentMethodLabel } from '@/api/sales'
-import { chargeRateLabel } from '@/api/serviceCharge'
+import { chargeRateLabel, GATEWAY_FEE_LABEL } from '@/api/serviceCharge'
 import {
   describeDestination,
   TRANSFER_STATUS,
@@ -242,12 +242,18 @@ async function copy(value: string) {
           <template v-if="pending">
             <h6 class="mb-2">Withdrawal request {{ pending.reference }}</h6>
             <div class="request mb-3">
-              <template v-if="pending.serviceChargeCents">
+              <template v-if="pending.receiveCents !== pending.amountCents">
                 <div class="d-flex justify-content-between gap-2">
                   <span class="text-gray-5">Withdrawal amount</span>
                   <span class="fw-medium">{{ peso(pending.amountCents) }}</span>
                 </div>
-                <div class="d-flex justify-content-between gap-2">
+                <div v-if="pending.gatewayFeeCents" class="d-flex justify-content-between gap-2">
+                  <span class="text-gray-5">
+                    Payment gateway fee <span class="fs-12">({{ GATEWAY_FEE_LABEL }})</span>
+                  </span>
+                  <span class="fw-medium text-success">{{ peso(pending.gatewayFeeCents) }}</span>
+                </div>
+                <div v-if="pending.serviceChargeCents" class="d-flex justify-content-between gap-2">
                   <span class="text-gray-5">
                     Service charge
                     <span v-if="pending.serviceChargeRate" class="fs-12">({{ chargeRateLabel(pending.serviceChargeRate) }})</span>
@@ -256,7 +262,7 @@ async function copy(value: string) {
                 </div>
               </template>
               <div class="d-flex justify-content-between gap-2 mb-2">
-                <span class="text-gray-5">{{ pending.serviceChargeCents ? 'Amount to send' : 'Amount' }}</span>
+                <span class="text-gray-5">{{ pending.receiveCents !== pending.amountCents ? 'Amount to send' : 'Amount' }}</span>
                 <span class="fs-18 fw-bold text-gray-9">{{ peso(pending.receiveCents) }}</span>
               </div>
               <div class="d-flex justify-content-between gap-2">
@@ -353,8 +359,8 @@ async function copy(value: string) {
                 <p class="fs-14 text-gray-5 mb-0">
                   {{ peso(pending.receiveCents) }} goes from the platform's PayMongo Wallet to the account above by
                   {{ pending.receiveCents > INSTAPAY_MAX_CENTS ? 'PESONet (next banking cycle)' : 'InstaPay (usually instant)' }}.
-                  <template v-if="pending.serviceChargeCents">
-                    The {{ peso(pending.serviceChargeCents) }} service charge stays with the platform.
+                  <template v-if="pending.receiveCents !== pending.amountCents">
+                    The {{ peso(pending.amountCents - pending.receiveCents) }} in fees stays with the platform.
                   </template>
                   PayMongo charges the platform its transfer fee. The payout is recorded with its reference numbers once PayMongo
                   confirms it.
@@ -365,9 +371,9 @@ async function copy(value: string) {
                 <textarea id="payout-reject-reason" v-model="rejectReason" rows="2" maxlength="500" class="form-control"></textarea>
               </div>
               <div v-else class="row g-3 mb-3">
-                <p v-if="pending.serviceChargeCents" class="col-12 fs-14 text-gray-5 mb-0">
+                <p v-if="pending.receiveCents !== pending.amountCents" class="col-12 fs-14 text-gray-5 mb-0">
                   Send the store {{ peso(pending.receiveCents) }}: the withdrawal less its
-                  {{ peso(pending.serviceChargeCents) }} service charge.
+                  {{ peso(pending.amountCents - pending.receiveCents) }} in fees (payment gateway fee and service charge).
                 </p>
                 <div class="col-sm-6">
                   <label class="form-label" for="payout-reference">Transfer reference no.</label>
@@ -435,8 +441,8 @@ async function copy(value: string) {
                 </div>
                 <div class="text-end text-nowrap">
                   <div class="fw-semibold">{{ peso(w.amountCents) }}</div>
-                  <div v-if="w.serviceChargeCents" class="fs-12 text-gray-5">
-                    {{ peso(w.serviceChargeCents) }} charge · send {{ peso(w.receiveCents) }}
+                  <div v-if="w.receiveCents !== w.amountCents" class="fs-12 text-gray-5">
+                    {{ peso(w.amountCents - w.receiveCents) }} fees · send {{ peso(w.receiveCents) }}
                   </div>
                 </div>
               </div>
@@ -457,8 +463,8 @@ async function copy(value: string) {
                 </div>
                 <div class="text-end text-nowrap">
                   <div class="fw-semibold">{{ peso(p.amountCents) }}</div>
-                  <div v-if="p.serviceChargeCents" class="fs-12 text-gray-5">
-                    {{ peso(p.serviceChargeCents) }} charge · sent {{ peso(p.receivedCents) }}
+                  <div v-if="p.receivedCents !== p.amountCents" class="fs-12 text-gray-5">
+                    {{ peso(p.amountCents - p.receivedCents) }} fees · sent {{ peso(p.receivedCents) }}
                   </div>
                 </div>
               </div>

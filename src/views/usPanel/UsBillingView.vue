@@ -166,6 +166,9 @@ function onCancelled() {
               <td data-label="Amount">
                 <template v-if="renewal.amount !== null">
                   {{ formatPrice(renewal.amount) }}
+                  <div v-if="renewal.gatewayFeeCents" class="fs-12 text-gray-5">
+                    incl. {{ formatMoney(renewal.gatewayFeeCents, 'PHP') }} gateway fee
+                  </div>
                   <div v-if="renewal.serviceChargeCents" class="fs-12 text-gray-5">
                     incl. {{ formatMoney(renewal.serviceChargeCents, 'PHP') }} charge
                   </div>
