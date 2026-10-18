@@ -1,15 +1,14 @@
 <script setup lang="ts">
-// The POS "Pay" dialog. Cash shows quick amounts and the change; other methods take a
-// reference number. A named customer can pay part now or charge it all to their account;
-// a walk-in customer must pay in full. Online methods may add a service charge, collected on
-// top of the amount paid. Card, GCash, Maya and QR Ph can also be paid online now (through PayMongo,
+// The POS "Pay" dialog, by cash or QR Ph only for now. Cash shows quick amounts and the change;
+// QR Ph takes a reference number. A named customer can pay part now or charge it all to their account;
+// a walk-in customer must pay in full. QR Ph may add a service charge, collected on
+// top of the amount paid. QR Ph can also be paid online now (through PayMongo,
 // when the store has it): the parent then saves the sale and waits for the online payment.
 // The parent saves the sale and passes back errors.
 import { computed, ref } from 'vue'
 import {
   isCheckoutMethod,
   MIN_CHECKOUT_CENTS,
-  PAYMENT_METHODS,
   paymentMethodLabel,
   type OnlinePaymentInput,
   type PaymentInput,
@@ -30,22 +29,14 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ close: []; confirm: [payments: PaymentInput[], online: OnlinePaymentInput | null] }>()
 
-const METHOD_ICONS: Record<PaymentMethod, string> = {
-  cash: 'cash',
-  card: 'credit-card',
-  gcash: 'wallet',
-  maya: 'wallet',
-  qrph: 'qrcode',
-  bank_transfer: 'building-bank',
-  cheque: 'file-dollar',
-  other: 'dots',
-}
+/** Methods the POS takes for now (sales and the US Panel still record the others) */
+const POS_METHODS = ['cash', 'qrph'] as const satisfies readonly PaymentMethod[]
 
 const method = ref<PaymentMethod>('cash')
 const receivedText = ref('') // cash handed over
 const amountText = ref(centsToText(props.totalCents)) // other methods
 const reference = ref('')
-const payOnline = ref(true) // card, GCash, Maya, QR Ph: pay online now, or record a payment already made
+const payOnline = ref(true) // QR Ph: pay online now, or record a payment already made
 const localError = ref('')
 
 const canPayLater = computed(() => props.customerName !== null)
@@ -151,7 +142,7 @@ function payLater() {
 
         <div class="method-grid mb-3" role="radiogroup" aria-label="Payment method">
           <button
-            v-for="m in PAYMENT_METHODS"
+            v-for="m in POS_METHODS"
             :key="m"
             type="button"
             role="radio"
@@ -160,7 +151,7 @@ function payLater() {
             @click="pickMethod(m)"
           >
             <span v-if="isCheckoutMethod(m)" class="logo-chip"><PaymentLogos :method="m" :height="14" /></span>
-            <i v-else class="ti" :class="`ti-${METHOD_ICONS[m]}`"></i>
+            <i v-else class="ti ti-cash"></i>
             <span>{{ paymentMethodLabel(m) }}</span>
           </button>
         </div>
@@ -242,7 +233,7 @@ function payLater() {
                 type="text"
                 class="form-control"
                 maxlength="50"
-                placeholder="e.g. GCash ref. no."
+                placeholder="e.g. QR Ph ref. no."
               />
             </div>
           </div>
@@ -293,7 +284,7 @@ function payLater() {
 
 .method-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
 }
 
@@ -352,11 +343,5 @@ function payLater() {
   background: #f9fafb;
   font-size: 18px;
   font-weight: 700;
-}
-
-@media (max-width: 379.98px) {
-  .method-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
 }
 </style>
