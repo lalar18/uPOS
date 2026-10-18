@@ -26,7 +26,9 @@ interface CheckoutSessionEvent {
 
 /** POST /api/webhooks/paymongo */
 export async function handlePaymongoWebhook(db: D1Database, env: PaymongoEnv, request: Request): Promise<Response> {
-  if (!env.PAYMONGO_WEBHOOK_SECRET) return Response.json({ error: 'Webhook not configured' }, { status: 503 })
+  // The webhook of the stores' keys, and the one of the test stores' (PayMongo's test mode)
+  const secrets = [env.PAYMONGO_WEBHOOK_SECRET, env.PAYMONGO_TEST_WEBHOOK_SECRET].filter((s): s is string => !!s)
+  if (!secrets.length) return Response.json({ error: 'Webhook not configured' }, { status: 503 })
 
   const rawBody = await request.text()
   let event: CheckoutSessionEvent
@@ -36,13 +38,12 @@ export async function handlePaymongoWebhook(db: D1Database, env: PaymongoEnv, re
     return Response.json({ error: 'Invalid body' }, { status: 400 })
   }
   const attributes = event.data?.attributes
-  const valid = await verifySignature(
-    env.PAYMONGO_WEBHOOK_SECRET,
-    request.headers.get('Paymongo-Signature') ?? '',
-    rawBody,
-    attributes?.livemode === true,
-  )
-  if (!valid) return Response.json({ error: 'Invalid signature' }, { status: 401 })
+  let valid = false
+  for (const secret of secrets) {
+    valid = await verifySignature(secret, request.headers.get('Paymongo-Signature') ?? '', rawBody, attributes?.livemode === true)
+    if (valid) break
+  }
+  if (!valid)return Response.json({ error: 'Invalid signature' }, { status: 401 })
 
   // A withdrawal sent through PayMongo finished (transfer.outward.successful / .failed): its
   // status is read back from PayMongo

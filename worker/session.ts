@@ -15,6 +15,7 @@ export interface SessionUser {
   store_id: number
   store_name: string
   store_currency: string // ISO 4217, e.g. 'PHP'
+  store_is_test: boolean // a test store: PayMongo's test mode (paymongoFor), left out of the US Panel's income
   avatar_updated_at: string | null
   role_id: number
   role_name: string
@@ -25,15 +26,16 @@ export interface SessionUser {
 }
 
 /** Columns (and joins, as `FROM ...`) that sessionUserFromRow() reads. Alias the users table `u`. */
-export const SESSION_USER_COLUMNS = `u.id, u.email, u.full_name, u.password_hash != '' AS has_password, u.store_id, st.name AS store_name, st.currency AS store_currency,
+export const SESSION_USER_COLUMNS = `u.id, u.email, u.full_name, u.password_hash != '' AS has_password, u.store_id, st.name AS store_name, st.currency AS store_currency, st.is_test AS store_is_test,
   a.updated_at AS avatar_updated_at, u.role_id, r.name AS role_name, r.is_admin, r.permissions,
   st.plan_expires_at, (st.plan_expires_at IS NULL OR st.plan_expires_at <= datetime('now')) AS subscription_expired`
 export const SESSION_USER_JOINS = `JOIN stores st ON st.id = u.store_id
   JOIN roles r ON r.id = u.role_id
   LEFT JOIN user_avatars a ON a.user_id = u.id`
 
-export interface SessionUserRow extends Omit<SessionUser, 'has_password' | 'is_admin' | 'permissions' | 'subscription_expired'> {
+export interface SessionUserRow extends Omit<SessionUser, 'has_password' | 'store_is_test' | 'is_admin' | 'permissions' | 'subscription_expired'> {
   has_password: number
+  store_is_test: number
   is_admin: number
   permissions: string
   subscription_expired: number
@@ -49,6 +51,7 @@ export function sessionUserFromRow(row: SessionUserRow): SessionUser {
     store_id: row.store_id,
     store_name: row.store_name,
     store_currency: row.store_currency,
+    store_is_test: row.store_is_test === 1,
     avatar_updated_at: row.avatar_updated_at,
     role_id: row.role_id,
     role_name: row.role_name,

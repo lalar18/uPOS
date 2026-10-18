@@ -8,10 +8,31 @@
 // Both are secrets: `npx wrangler secret put PAYMONGO_SECRET_KEY` (and .dev.vars locally).
 // Without them, renewals wait for a super admin to confirm the payment, as before, and sales
 // can only record payments taken some other way.
+//
+// Test stores (stores.is_test, migration 0036) use PAYMONGO_TEST_SECRET_KEY (sk_test_…) and
+// PAYMONGO_TEST_WEBHOOK_SECRET instead, the keys and webhook of PayMongo's test mode. Without them a
+// test store has no online payment: it never falls back to the other keys.
 
 export interface PaymongoEnv {
   PAYMONGO_SECRET_KEY?: string
   PAYMONGO_WEBHOOK_SECRET?: string
+  PAYMONGO_TEST_SECRET_KEY?: string
+  PAYMONGO_TEST_WEBHOOK_SECRET?: string
+}
+
+/**
+ * The keys a store's PayMongo calls use: a test store's go through PayMongo's test mode. Take it
+ * from the Worker's env, not from what this returns (it has the one store's keys only).
+ */
+export const paymongoFor = (env: PaymongoEnv, isTest: boolean): PaymongoEnv =>
+  isTest
+    ? { PAYMONGO_SECRET_KEY: env.PAYMONGO_TEST_SECRET_KEY, PAYMONGO_WEBHOOK_SECRET: env.PAYMONGO_TEST_WEBHOOK_SECRET }
+    : { PAYMONGO_SECRET_KEY: env.PAYMONGO_SECRET_KEY, PAYMONGO_WEBHOOK_SECRET: env.PAYMONGO_WEBHOOK_SECRET }
+
+/** paymongoFor() a store, looked up by id */
+export async function paymongoForStore(db: D1Database, env: PaymongoEnv, storeId: number): Promise<PaymongoEnv> {
+  const store = await db.prepare('SELECT is_test FROM stores WHERE id = ?').bind(storeId).first<{ is_test: number }>()
+  return paymongoFor(env, store?.is_test === 1)
 }
 
 const API_URL = 'https://api.paymongo.com'

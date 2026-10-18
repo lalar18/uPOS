@@ -17,6 +17,9 @@
 // looked up from PayMongo. Pending transfers are also checked every 10 minutes (the Worker's cron)
 // and whenever a wallet is opened.
 //
+// Each transfer goes through its store's PayMongo keys (paymongoForStore: a test store's are
+// PayMongo's test mode), so the functions here take the Worker's env, not one store's keys.
+//
 //   POST /api/webhooks/paymongo/transfers   (PayMongo's transfer callback)
 
 import { cleanText, error } from './documents'
@@ -26,6 +29,8 @@ import {
   GCASH_BIC,
   INSTAPAY_MAX_CENTS,
   onlinePaymentEnabled,
+  paymongoFor,
+  paymongoForStore,
   PaymongoError,
   receivingInstitutions,
   retrieveTransfer,
@@ -94,6 +99,10 @@ export const publicTransfer = (row: TransferRow) => ({
 export type PublicTransfer = ReturnType<typeof publicTransfer>
 
 export const transfersEnabled = (env: PaymongoEnv) => onlinePaymentEnabled(env)
+
+/** Whether any store's transfers can go through PayMongo (the Worker's env) */
+const anyTransfersEnabled = (env: PaymongoEnv) =>
+  transfersEnabled(paymongoFor(env, false)) || transfersEnabled(paymongoFor(env, true))
 
 /** The banks and e-wallets a store can withdraw to, or null when PayMongo isn't set up */
 export async function withdrawalBanks(env: PaymongoEnv) {
@@ -237,9 +246,11 @@ async function submitTransfer(db: D1Database, env: PaymongoEnv, row: TransferRow
   await applyTransfer(db, row, transfer)
 }
 
-/** Asks PayMongo about a pending transfer and records what it says. */
-export async function refreshTransfer(db: D1Database, env: PaymongoEnv, row: TransferRow): Promise<void> {
-  if (row.status !== 'pending' || !transfersEnabled(env)) return
+/** Asks PayMongo about a pending transfer and records what it says (`workerEnv`: the Worker's env). */
+async function refreshTransfer(db: D1Database, workerEnv: PaymongoEnv, row: TransferRow): Promise<void> {
+  if (row.status !== 'pending') return
+  const env = await paymongoForStore(db, workerEnv, row.store_id)
+  if (!transfersEnabled(env)) return
   try {
     if (row.transfer_id) {
       await applyTransfer(db, row, await retrieveTransfer(env, row.transfer_id))
@@ -268,7 +279,7 @@ export async function refreshPendingTransfers(
   storeId: number | null,
   limit = 10,
 ): Promise<void> {
-  if (!transfersEnabled(env)) return
+  if (!anyTransfersEnabled(env)) return
   const { results } = await db
     .prepare(
       `SELECT ${TRANSFER_COLUMNS} FROM payout_transfers
@@ -324,13 +335,12 @@ interface WithdrawalToSend {
  */
 export async function sendWithdrawalTransfer(
   db: D1Database,
-  env: PaymongoEnv,
+  workerEnv: PaymongoEnv,
   id: number,
   admin: { id: number; full_name: string },
   bankCode: unknown,
   origin: string,
 ): Promise<number | Response> {
-  if (!transfersEnabled(env)) return error('PayMongo is not set up, so withdrawals can only be marked as sent', 400)
   const w = await db
     .prepare(
       `SELECT id, store_id, amount_cents, service_charge_cents, gateway_fee_cents, destination, bank_code, status
@@ -340,6 +350,8 @@ export async function sendWithdrawalTransfer(
     .first<WithdrawalToSend>()
   if (!w) return error('Withdrawal not found', 404)
   if (w.status !== 'pending') return error('This withdrawal is no longer pending', 409)
+  const env = await paymongoForStore(db, workerEnv, w.store_id)
+  if (!transfersEnabled(env)) return error('PayMongo is not set up, so withdrawals can only be marked as sent', 400)
 
   // What's sent: the withdrawal less its service charge and gateway fee
   const sendCents = w.amount_cents - w.service_charge_cents - w.gateway_fee_cents

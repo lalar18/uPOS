@@ -26,6 +26,7 @@ const statusFilter = ref<StoreStatusFilter>(
   STATUSES.find((s) => s === route.query.status) ?? '',
 )
 const planFilter = ref(queryText(route.query.planId))
+const testFilter = ref<StoreQuery['test']>('')
 const sort = ref<StoreQuery['sort']>(route.query.sort === 'expiry' ? 'expiry' : 'newest')
 const page = ref(1)
 const pageSize = ref(10)
@@ -41,6 +42,7 @@ async function load() {
       search: search.value.trim(),
       status: statusFilter.value,
       planId: planFilter.value,
+      test: testFilter.value,
       sort: sort.value,
       page: page.value,
       pageSize: pageSize.value,
@@ -65,7 +67,7 @@ watch(search, () => {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(resetToFirstPage, 300)
 })
-watch([statusFilter, planFilter, sort, pageSize], resetToFirstPage)
+watch([statusFilter, planFilter, testFilter, sort, pageSize], resetToFirstPage)
 watch(page, load)
 load()
 
@@ -128,6 +130,11 @@ function onCreated(store: StoreDetail) {
           <option value="">All plans</option>
           <option v-for="plan in plans" :key="plan.id" :value="plan.id">{{ plan.name }}</option>
         </select>
+        <select v-model="testFilter" class="form-select" aria-label="Filter by test stores">
+          <option value="">All stores</option>
+          <option value="0">Real stores</option>
+          <option value="1">Test stores</option>
+        </select>
         <select v-model="sort" class="form-select" aria-label="Sort">
           <option value="newest">Newest first</option>
           <option value="expiry">Expiring first</option>
@@ -157,6 +164,7 @@ function onCreated(store: StoreDetail) {
                 <RouterLink :to="{ name: 'us-store', params: { id: store.id } }" class="fw-medium text-gray-9">
                   {{ store.name }}
                 </RouterLink>
+                <span v-if="store.test" class="badge bg-info-transparent text-info ms-1">Test</span>
                 <div class="fs-12 text-gray-5">
                   {{ storeCode(store.id) }}<template v-if="store.email || store.phone"> · {{ store.email ?? store.phone }}</template>
                 </div>
@@ -193,7 +201,7 @@ function onCreated(store: StoreDetail) {
 
       <div v-if="!loading && !loadError && items.length === 0" class="text-center text-gray-5 py-5">
         <i class="ti ti-building-store fs-24 d-block mb-2"></i>
-        <template v-if="search || statusFilter || planFilter">No stores match your filters.</template>
+        <template v-if="search || statusFilter || planFilter || testFilter">No stores match your filters.</template>
         <template v-else>No stores yet.</template>
       </div>
     </div>

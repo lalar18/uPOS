@@ -3,7 +3,8 @@
 // the platform's income) until the store withdraws it. A store admin asks for a withdrawal to a
 // GCash number or a bank account (one from PayMongo's list, when PayMongo is set up); a super admin
 // sends it through PayMongo (payoutTransfers.ts) or by hand and marks it sent, which records the
-// payout (usPanel/payouts.ts). See migrations 0025 and 0030.
+// payout (usPanel/payouts.ts). See migrations 0025 and 0030. `env` here is the Worker's: a
+// test store's withdrawals go through PayMongo's test mode (paymongoFor).
 //
 // A withdrawal may carry a service charge (set in the US Panel, migration 0031) and carries PayMongo's
 // gateway fee (migration 0035), both fixed when it's requested: the whole amount leaves the wallet,
@@ -17,7 +18,7 @@
 //   DELETE /api/wallet/withdrawals/:id    -> Wallet   (cancels a pending request)
 
 import { cleanNote, cleanText, error, formatReference, isCents } from './documents'
-import { GCASH_BIC, type PaymongoEnv, type ReceivingInstitution } from './paymongo'
+import { GCASH_BIC, paymongoFor, paymongoForStore, type PaymongoEnv, type ReceivingInstitution } from './paymongo'
 import {
   publicTransfer,
   refreshPendingTransfers,
@@ -139,6 +140,7 @@ const publicWithdrawal = (row: WithdrawalRow, transfers: PublicTransfer[]) => {
  */
 export async function getWallet(db: D1Database, env: PaymongoEnv, storeId: number) {
   await refreshPendingTransfers(db, env, storeId)
+  const storePaymongo = await paymongoForStore(db, env, storeId)
   const charge = await getServiceCharge(db, 'payout')
   const [totals, payouts, withdrawals, refunds, transfers] = await db.batch<unknown>([
     db
@@ -194,7 +196,7 @@ export async function getWallet(db: D1Database, env: PaymongoEnv, storeId: numbe
     withdrawals: requests, // newest first
     pendingWithdrawal: requests.find((w) => w.status === 'pending') ?? null,
     transfers: sent, // through PayMongo, newest first, whatever happened to them
-    transfersEnabled: transfersEnabled(env), // withdrawals can be sent through PayMongo
+    transfersEnabled: transfersEnabled(storePaymongo), // withdrawals can be sent through PayMongo
     withdrawalCharge: { kind: charge.kind, value: charge.value }, // the service charge on a new withdrawal
     // Online payments made after the sale was already settled: the customer is owed a refund
     refundsDue: (
@@ -258,7 +260,7 @@ async function requestWithdrawal(db: D1Database, env: PaymongoEnv, request: Requ
   if (!isCents(body.amountCents) || body.amountCents <= 0) return error('Enter the amount to withdraw', 400)
   let banks: ReceivingInstitution[] | null
   try {
-    banks = await withdrawalBanks(env)
+    banks = await withdrawalBanks(paymongoFor(env, user.store_is_test))
   } catch (err) {
     return banksError(err)
   }
@@ -356,7 +358,7 @@ export async function handleWallet(
   }
   if (url.pathname === '/api/wallet/banks') {
     if (request.method !== 'GET') return error('Method not allowed', 405)
-    return withdrawalBanks(env).then((banks) => Response.json({ banks }), banksError)
+    return withdrawalBanks(paymongoFor(env, user.store_is_test)).then((banks) => Response.json({ banks }), banksError)
   }
   if (!match[1]) return request.method === 'POST' ? requestWithdrawal(db, env, request, user) : error('Method not allowed', 405)
   return request.method === 'DELETE' ? cancelWithdrawal(db, env, Number(match[1]), user) : error('Method not allowed', 405)

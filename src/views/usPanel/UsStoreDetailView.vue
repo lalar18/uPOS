@@ -10,6 +10,7 @@ import {
   listStoreRenewals,
   listStoreUsers,
   setStoreActive,
+  setStoreTest,
   setStoreUserActive,
   signOutStoreUsers,
   type Renewal,
@@ -118,6 +119,26 @@ function askToggleStore() {
       }
 }
 
+function askToggleTest() {
+  const s = store.value!
+  confirm.value = s.test
+    ? {
+        title: 'Make Real Store',
+        message: `Make ${s.name} a real store? Its online payments, renewals and withdrawals go through PayMongo live, with real money, and what it pays counts as income again.`,
+        confirmLabel: 'Make Real Store',
+        danger: true,
+        action: () => setStoreTest(s.id, false),
+        done: 'The store is a real store now.',
+      }
+    : {
+        title: 'Tag as Test Store',
+        message: `Tag ${s.name} as a test store? Its online payments, renewals and withdrawals go through PayMongo's test mode (no real money), and what it pays is left out of the dashboard and income.`,
+        confirmLabel: 'Tag as Test',
+        action: () => setStoreTest(s.id, true),
+        done: 'The store is tagged as a test store.',
+      }
+}
+
 function askSignOutAll() {
   const s = store.value!
   confirm.value = {
@@ -178,6 +199,7 @@ function onConfirmed() {
       <h4 class="d-flex flex-wrap align-items-center gap-2">
         {{ store?.name ?? 'Store' }}
         <span v-if="status" class="badge" :class="status.class">{{ status.label }}</span>
+        <span v-if="store?.test" class="badge bg-info-transparent text-info">Test store</span>
       </h4>
       <h6>{{ storeCode(id) }}<template v-if="store"> · added {{ formatDate(store.createdAt) }}</template></h6>
     </div>
@@ -187,6 +209,10 @@ function onConfirmed() {
       </button>
       <button type="button" class="btn btn-white border" @click="editingInfo = true">
         <i class="ti ti-edit me-1"></i>Edit Info
+      </button>
+      <button type="button" class="btn btn-white border" @click="askToggleTest">
+        <i class="ti me-1" :class="store.test ? 'ti-building-store' : 'ti-flask'"></i>
+        {{ store.test ? 'Make Real Store' : 'Tag as Test' }}
       </button>
       <button type="button" class="btn" :class="store.active ? 'btn-outline-danger' : 'btn-success'" @click="askToggleStore">
         <i class="ti me-1" :class="store.active ? 'ti-ban' : 'ti-circle-check'"></i>
@@ -199,6 +225,10 @@ function onConfirmed() {
   <div v-if="notice" class="alert alert-success py-2 d-flex align-items-center justify-content-between gap-2" role="status">
     {{ notice }}
     <button type="button" class="btn btn-sm btn-link text-success p-0" @click="notice = ''">Dismiss</button>
+  </div>
+  <div v-if="store?.test" class="alert alert-info py-2" role="status">
+    <i class="ti ti-flask me-1"></i>This is a test store: it pays and is paid through PayMongo's test mode, and its
+    income isn't counted on the dashboard or the income page.
   </div>
   <div v-if="store && !store.active" class="alert alert-secondary py-2" role="status">
     <i class="ti ti-ban me-1"></i>This store is disabled: none of its users can sign in.

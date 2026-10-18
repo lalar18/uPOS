@@ -1,11 +1,12 @@
 // Stores, for super admins (US Panel). Unlike the store's own pages, these reach every store.
 //
-//   GET    /api/us-panel/stores?search=&status=&planId=&sort=&page=&pageSize=  -> { items, total }
+//   GET    /api/us-panel/stores?search=&status=&planId=&test=&sort=&page=&pageSize=  -> { items, total }
 //   POST   /api/us-panel/stores    { ...store info, planId, admin: { fullName, email, password } } -> store
 //            (new stores start on the standard free trial, TRIAL_PERIOD)
 //   GET    /api/us-panel/stores/:id                                   -> store (with usage and activity)
 //   PUT    /api/us-panel/stores/:id                { ...store info }   -> store
 //   PUT    /api/us-panel/stores/:id/status         { active }          -> store
+//   PUT    /api/us-panel/stores/:id/test           { test }            -> store   (tags a test store, see below)
 //   PUT    /api/us-panel/stores/:id/subscription   { planId, expiresOn } -> store   (override, no payment)
 //   DELETE /api/us-panel/stores/:id/sessions                           -> { ok }    (signs every user out)
 //   GET    /api/us-panel/stores/:id/users                              -> users
@@ -13,9 +14,15 @@
 //   PUT    /api/us-panel/stores/:id/users/:userId/password { password } -> { ok }
 //
 // status: active (open, not expired), expiring (within EXPIRING_DAYS), expired, disabled, pending (renewal waiting)
+// test: 1 for test stores only, 0 for the others
+//
+// A test store (migration 0036) pays and is paid through PayMongo's test mode, and its income is
+// left out of the dashboard and income pages. Only super admins tag one: the store's own pages
+// can't change it.
 
 import { cleanText, error, isDate, likePattern, positiveId, readPaging, referenceId } from '../documents'
 import { hashPassword } from '../password'
+import { WALLET_BALANCE_SQL } from '../storePayouts'
 import { readStoreInput } from '../store'
 import { PLAN_COLUMNS, publicPlan, TRIAL_PERIOD, type PlanRow } from '../subscription'
 import { EMAIL_PATTERN, emailTaken, MAX_FULL_NAME_LENGTH, readPassword } from '../users'
@@ -29,6 +36,7 @@ interface StoreListRow {
   phone: string | null
   city: string | null
   is_active: number
+  is_test: number
   plan_id: string
   plan_name: string
   plan_expires_at: string | null
@@ -50,6 +58,7 @@ interface StoreDetailRow extends PlanRow {
   postal_code: string | null
   tin: string | null
   is_active: number
+  is_test: number
   plan_expires_at: string | null
   expired: number
   users: number
@@ -73,7 +82,7 @@ interface StoreUserRow {
 
 const EXPIRED_SQL = "(st.plan_expires_at IS NULL OR st.plan_expires_at <= datetime('now'))"
 
-const LIST_COLUMNS = `st.id, st.name, st.email, st.phone, st.city, st.is_active, st.plan_id, p.name AS plan_name,
+const LIST_COLUMNS = `st.id, st.name, st.email, st.phone, st.city, st.is_active, st.is_test, st.plan_id, p.name AS plan_name,
   st.plan_expires_at, ${EXPIRED_SQL} AS expired,
   (SELECT COUNT(*) FROM users WHERE store_id = st.id) AS users,
   (SELECT COUNT(*) FROM products WHERE store_id = st.id) AS products,
@@ -88,6 +97,7 @@ function publicListStore(row: StoreListRow) {
     phone: row.phone,
     city: row.city,
     active: row.is_active === 1,
+    test: row.is_test === 1,
     plan: { id: row.plan_id, name: row.plan_name },
     expiresAt: row.plan_expires_at,
     expired: row.expired === 1,
@@ -110,6 +120,7 @@ function publicStoreDetail(row: StoreDetailRow) {
     postalCode: row.postal_code,
     tin: row.tin,
     active: row.is_active === 1,
+    test: row.is_test === 1,
     plan: publicPlan(row),
     expiresAt: row.plan_expires_at,
     expired: row.expired === 1,
@@ -126,7 +137,7 @@ async function getStoreDetail(db: D1Database, id: number): Promise<Response> {
   const row = await db
     .prepare(
       `SELECT ${PLAN_COLUMNS}, st.id AS store_id, st.name AS store_name, st.email, st.phone, st.address, st.city,
-         st.province, st.postal_code, st.tin, st.is_active, st.plan_expires_at, ${EXPIRED_SQL} AS expired,
+         st.province, st.postal_code, st.tin, st.is_active, st.is_test, st.plan_expires_at, ${EXPIRED_SQL} AS expired,
          (SELECT COUNT(*) FROM users WHERE store_id = st.id) AS users,
          (SELECT COUNT(*) FROM users u JOIN roles r ON r.id = u.role_id WHERE u.store_id = st.id AND r.is_admin = 1) AS admins,
          (SELECT COUNT(*) FROM products WHERE store_id = st.id) AS products,
@@ -169,6 +180,8 @@ async function listStores(db: D1Database, url: URL): Promise<Response> {
     where.push('st.plan_id = ?')
     params.push(planId)
   }
+  const test = url.searchParams.get('test')
+  if (test === '1' || test === '0') where.push(`st.is_test = ${test}`)
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
   const orderSql = url.searchParams.get('sort') === 'expiry' ? 'st.plan_expires_at IS NOT NULL, st.plan_expires_at, st.id' : 'st.id DESC'
 
@@ -278,6 +291,37 @@ async function setStoreStatus(db: D1Database, request: Request, id: number): Pro
   return result!.meta.changes ? getStoreDetail(db, id) : storeNotFound()
 }
 
+/**
+ * Tags a store as a test store, or a test store as a real one. Its PayMongo payments move to the
+ * other mode's keys, so not while anything is on its way through PayMongo (it would be checked
+ * with the wrong keys), nor while its wallet holds money (paid in the other mode).
+ */
+async function setTestStore(db: D1Database, request: Request, id: number): Promise<Response> {
+  const body = await request.json<{ test?: unknown }>().catch(() => null)
+  if (typeof body?.test !== 'boolean') return error('test must be true or false', 400)
+  const store = await db
+    .prepare(
+      `SELECT is_test,
+         EXISTS (SELECT 1 FROM sale_checkouts WHERE store_id = ?1 AND status = 'pending') AS checkouts,
+         EXISTS (SELECT 1 FROM subscription_renewals WHERE store_id = ?1 AND status = 'pending'
+                 AND checkout_session_id IS NOT NULL) AS renewals,
+         EXISTS (SELECT 1 FROM wallet_withdrawals WHERE store_id = ?1 AND status = 'pending') AS withdrawals,
+         ${WALLET_BALANCE_SQL} AS balance
+       FROM stores WHERE id = ?1`,
+    )
+    .bind(id)
+    .first<{ is_test: number; checkouts: number; renewals: number; withdrawals: number; balance: number }>()
+  if (!store) return storeNotFound()
+  if (store.is_test === (body.test ? 1 : 0)) return getStoreDetail(db, id)
+  if (store.checkouts) return error('The store has a sale waiting for an online payment. Wait for it or cancel it first.', 409)
+  if (store.renewals) return error('The store has a renewal waiting for an online payment. Settle or cancel it first.', 409)
+  if (store.withdrawals) return error('The store has a withdrawal waiting. Send or reject it first.', 409)
+  if (store.balance) return error("The store's wallet still holds money. Pay it out first.", 409)
+
+  await db.prepare("UPDATE stores SET is_test = ?, updated_at = datetime('now') WHERE id = ?").bind(body.test ? 1 : 0, id).run()
+  return getStoreDetail(db, id)
+}
+
 /** Moves a store to a plan and sets when it expires, without a payment (e.g. a goodwill extension). */
 async function setSubscription(db: D1Database, request: Request, id: number): Promise<Response> {
   const body = await request.json<{ planId?: unknown; expiresOn?: unknown }>().catch(() => null)
@@ -369,6 +413,7 @@ export async function handleStores(db: D1Database, request: Request, url: URL): 
     if (method === 'PUT') return updateStore(db, request, storeId)
   }
   if (rest === '/status' && method === 'PUT') return setStoreStatus(db, request, storeId)
+  if (rest === '/test' && method === 'PUT') return setTestStore(db, request, storeId)
   if (rest === '/subscription' && method === 'PUT') return setSubscription(db, request, storeId)
   if (rest === '/sessions' && method === 'DELETE') {
     await signOutStoreUsers(db, storeId).run()

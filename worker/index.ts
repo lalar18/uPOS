@@ -5,7 +5,7 @@ import { handleDashboard, handleUserDashboard, userDashboardId } from './dashboa
 import { handleGoogle, type GoogleEnv } from './google'
 import { clearLoginFailures, loginKey, loginRetryAfter, recordLoginFailure, tooManyAttempts } from './loginThrottle'
 import { verifyPassword } from './password'
-import type { PaymongoEnv } from './paymongo'
+import { paymongoFor, type PaymongoEnv } from './paymongo'
 import { handlePaymongoWebhook } from './paymongoWebhook'
 import { handleTransferCallback, refreshPendingTransfers, TRANSFER_CALLBACK_PATH } from './payoutTransfers'
 import { handleProducts } from './products'
@@ -177,6 +177,9 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   // Everything below requires a logged-in user
   const user = await getSessionUser(env.DB, request)
+  // The PayMongo keys of the user's store (a test store's are PayMongo's test mode). The wallet
+  // takes the Worker's env instead: it looks up each transfer's store (payoutTransfers.ts).
+  const paymongo = paymongoFor(env, user?.store_is_test === true)
 
   // An expired store is read-only: only your own profile and renewing the plan can still be changed
   if (user?.subscription_expired && !READ_METHODS.has(request.method) && !ALLOWED_WHILE_EXPIRED.test(url.pathname)) {
@@ -279,7 +282,7 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (url.pathname.startsWith('/api/sales')) {
     if (!user) return notLoggedIn()
-    const response = await handleSales(env.DB, env, request, url, user)
+    const response = await handleSales(env.DB, paymongo, request, url, user)
     if (response) return response
   }
 
@@ -291,7 +294,7 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (url.pathname === '/api/online-payment-charge') {
     if (!user) return notLoggedIn()
-    return handleOnlinePaymentCharge(env.DB, request, checkoutAvailable(env, user))
+    return handleOnlinePaymentCharge(env.DB, request, checkoutAvailable(paymongo, user))
   }
 
   if (url.pathname.startsWith('/api/wallet')) {
@@ -337,7 +340,7 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (url.pathname.startsWith('/api/subscription')) {
     if (!user) return notLoggedIn()
-    const response = await handleSubscription(env.DB, env, request, url, user)
+    const response = await handleSubscription(env.DB, paymongo, request, url, user)
     if (response) return response
   }
 

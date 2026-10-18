@@ -1,9 +1,11 @@
 // The US Panel dashboard: how many stores are in each state, what's been collected, and
-// what needs attention (renewals waiting for payment, stores about to run out).
+// what needs attention (renewals waiting for payment, stores about to run out). Test stores
+// (migration 0036) are counted as stores, but what they pay isn't revenue.
 //
 //   GET /api/us-panel/overview -> { stores, plans, revenue, pendingRenewals, expiringStores }
 
 import { publicRenewal, RENEWAL_SELECT } from './billing'
+import { notTestStore } from './income'
 import { EXPIRING_DAYS } from './stores'
 
 const LIST_LIMIT = 10
@@ -31,16 +33,16 @@ export async function getOverview(db: D1Database): Promise<Response> {
       `SELECT p.id, p.name, p.monthly_price,
          COUNT(st.id) AS stores,
          COALESCE(SUM(st.is_active = 1 AND NOT ${expired}), 0) AS active
-       FROM plans p LEFT JOIN stores st ON st.plan_id = p.id
+       FROM plans p LEFT JOIN stores st ON st.plan_id = p.id AND st.is_test = 0
        GROUP BY p.id ORDER BY p.sort_order`,
     ),
     db.prepare(
       `SELECT
-         COALESCE(SUM(CASE WHEN paid_at >= ${MONTH_START} THEN amount END), 0) AS this_month,
-         COALESCE(SUM(CASE WHEN paid_at >= ${LAST_MONTH_START} AND paid_at < ${MONTH_START} THEN amount END), 0) AS last_month,
-         COALESCE(SUM(CASE WHEN status = 'paid' THEN amount END), 0) AS all_time,
+         COALESCE(SUM(CASE WHEN paid_at >= ${MONTH_START} THEN amount END) FILTER (WHERE real), 0) AS this_month,
+         COALESCE(SUM(CASE WHEN paid_at >= ${LAST_MONTH_START} AND paid_at < ${MONTH_START} THEN amount END) FILTER (WHERE real), 0) AS last_month,
+         COALESCE(SUM(CASE WHEN status = 'paid' THEN amount END) FILTER (WHERE real), 0) AS all_time,
          COALESCE(SUM(status = 'pending'), 0) AS pending
-       FROM subscription_renewals`,
+       FROM (SELECT *, ${notTestStore('store_id')} AS real FROM subscription_renewals)`,
     ),
     db.prepare(`${RENEWAL_SELECT} WHERE sr.status = 'pending' ORDER BY sr.id LIMIT ?`).bind(LIST_LIMIT),
     db

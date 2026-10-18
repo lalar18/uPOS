@@ -35,6 +35,7 @@ export interface StoreSummary {
   phone: string | null
   city: string | null
   active: boolean
+  test: boolean // a test store: PayMongo's test mode, left out of income
   plan: { id: string; name: string }
   expiresAt: string | null
   expired: boolean
@@ -55,6 +56,7 @@ export interface StoreDetail {
   postalCode: string | null
   tin: string | null
   active: boolean
+  test: boolean // a test store: PayMongo's test mode, left out of income
   plan: Plan
   expiresAt: string | null
   expired: boolean
@@ -68,6 +70,7 @@ export interface StoreQuery {
   search: string
   status: StoreStatusFilter
   planId: string
+  test: '' | '1' | '0' // test stores only, or the others
   sort: 'newest' | 'expiry'
   page: number
   pageSize: number
@@ -92,6 +95,7 @@ export async function listStores(query: StoreQuery): Promise<{ items: StoreSumma
   if (query.search) params.set('search', query.search)
   if (query.status) params.set('status', query.status)
   if (query.planId) params.set('planId', query.planId)
+  if (query.test) params.set('test', query.test)
   return readJson(await fetch(`${BASE}/stores?${params}`))
 }
 
@@ -103,6 +107,10 @@ export const updateStore = (id: number, input: StoreInput) => sendJson<StoreDeta
 
 export const setStoreActive = (id: number, active: boolean) =>
   sendJson<StoreDetail>('PUT', `${BASE}/stores/${id}/status`, { active })
+
+/** Tags the store as a test store (PayMongo's test mode, left out of income), or as a real one. */
+export const setStoreTest = (id: number, test: boolean) =>
+  sendJson<StoreDetail>('PUT', `${BASE}/stores/${id}/test`, { test })
 
 /** Moves the store to a plan and sets its expiry (YYYY-MM-DD, end of that day), without a payment. */
 export const setStoreSubscription = (id: number, planId: string, expiresOn: string) =>
