@@ -44,7 +44,7 @@ async function handleSubmit() {
         <div class="login-content login-card">
           <form @submit.prevent="handleSubmit">
             <div class="login-userset">
-              <RouterLink :to="{ name: 'landing' }" class="login-logo logo-normal" title="Back to home">
+              <RouterLink to="/" class="login-logo logo-normal" title="Back to home">
                 <img src="/assets/img/usystems-pos-logo.svg" alt="USystems POS" />
               </RouterLink>
 

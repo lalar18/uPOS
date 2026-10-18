@@ -20,10 +20,10 @@ watch(
   <div class="legal">
     <header class="legal-header">
       <div class="container d-flex align-items-center justify-content-between gap-3">
-        <RouterLink :to="{ name: 'landing' }" class="brand">
+        <RouterLink to="/" class="brand">
           <img src="/assets/img/usystems-pos-logo.svg" alt="USystems POS" />
         </RouterLink>
-        <RouterLink :to="{ name: 'landing' }" class="btn btn-white border">
+        <RouterLink to="/" class="btn btn-white border">
           <i class="ti ti-arrow-left me-1"></i>Back to home
         </RouterLink>
       </div>
