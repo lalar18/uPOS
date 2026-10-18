@@ -1,11 +1,14 @@
 <script setup lang="ts">
-// The POS "Pay" dialog, by cash or QR Ph only for now. Cash shows quick amounts and the change;
+// The POS "Pay" dialog, by cash, GCash (once the admin set up the store's GCash account) or QR Ph.
+// Cash shows quick amounts and the change. GCash shows the store's own QR code: the customer pays
+// straight to that account, and the cashier must type in the reference no. (no service charge).
 // QR Ph takes a reference number. A named customer can pay part now or charge it all to their account;
 // a walk-in customer must pay in full. QR Ph may add a service charge, collected on
 // top of the amount paid. QR Ph can also be paid online now (through PayMongo,
 // when the store has it): the parent then saves the sale and waits for the online payment.
 // The parent saves the sale and passes back errors.
 import { computed, ref } from 'vue'
+import { formatGcashNumber, type GcashAccount } from '@/api/gcash'
 import {
   isCheckoutMethod,
   MIN_CHECKOUT_CENTS,
@@ -14,7 +17,7 @@ import {
   type PaymentInput,
   type PaymentMethod,
 } from '@/api/sales'
-import { chargeRateLabel, saleChargeCents, type OnlinePaymentCharge } from '@/api/serviceCharge'
+import { chargeRateLabel, recordedChargeCents, saleChargeCents, type OnlinePaymentCharge } from '@/api/serviceCharge'
 import AppModal from '@/components/AppModal.vue'
 import PaymentLogos from '@/components/PaymentLogos.vue'
 import SecuredByPaymongo from '@/components/SecuredByPaymongo.vue'
@@ -24,13 +27,14 @@ const props = defineProps<{
   totalCents: number
   customerName: string | null // null for a walk-in customer
   charge: OnlinePaymentCharge | null // on payments by online methods, and whether they can be paid online
+  gcash: GcashAccount | null // the store's own GCash account; null hides GCash
   saving: boolean
   error: string
 }>()
 const emit = defineEmits<{ close: []; confirm: [payments: PaymentInput[], online: OnlinePaymentInput | null] }>()
 
 /** Methods the POS takes for now (sales and the US Panel still record the others) */
-const POS_METHODS = ['cash', 'qrph'] as const satisfies readonly PaymentMethod[]
+const posMethods = computed<PaymentMethod[]>(() => (props.gcash ? ['cash', 'gcash', 'qrph'] : ['cash', 'qrph']))
 
 const method = ref<PaymentMethod>('cash')
 const receivedText = ref('') // cash handed over
@@ -42,7 +46,9 @@ const localError = ref('')
 const canPayLater = computed(() => props.customerName !== null)
 
 /** The method can be paid online now (through PayMongo) */
-const canPayOnline = computed(() => !!props.charge?.checkout && isCheckoutMethod(method.value))
+const canPayOnline = computed(
+  () => !!props.charge?.checkout && isCheckoutMethod(method.value) && method.value !== 'gcash',
+)
 const online = computed(() => canPayOnline.value && payOnline.value)
 
 /** Bills a customer is likely to hand over: the exact amount, then the next round amounts above it */
@@ -70,7 +76,11 @@ const onlineAmountCents = computed(() => {
 })
 
 const serviceChargeCents = computed(() =>
-  method.value === 'cash' ? 0 : saleChargeCents(props.charge, method.value, onlineAmountCents.value),
+  method.value === 'cash'
+    ? 0
+    : online.value
+      ? saleChargeCents(props.charge, method.value, onlineAmountCents.value)
+      : recordedChargeCents(props.charge, method.value, onlineAmountCents.value),
 )
 
 function pickMethod(value: PaymentMethod) {
@@ -119,6 +129,10 @@ function confirm() {
     emit('confirm', [], { method: method.value, amountCents: amount })
     return
   }
+  if (method.value === 'gcash' && !reference.value.trim()) {
+    localError.value = 'Enter the reference no. from the customer\x27s GCash receipt.'
+    return
+  }
   emit('confirm', [{ amountCents: amount, method: method.value, reference: reference.value.trim() || null }], null)
 }
 
@@ -142,7 +156,7 @@ function payLater() {
 
         <div class="method-grid mb-3" role="radiogroup" aria-label="Payment method">
           <button
-            v-for="m in POS_METHODS"
+            v-for="m in posMethods"
             :key="m"
             type="button"
             role="radio"
@@ -226,15 +240,31 @@ function payLater() {
               <SecuredByPaymongo />
             </div>
             <div v-else :class="canPayLater ? 'col-sm-6' : 'col-12'">
-              <label class="form-label" for="pos-reference">Reference no. <span class="text-gray-5 fw-normal">(optional)</span></label>
+              <label class="form-label" for="pos-reference">
+                Reference no.
+                <span v-if="method === 'gcash'" class="text-danger">*</span>
+                <span v-else class="text-gray-5 fw-normal">(optional)</span>
+              </label>
               <input
                 id="pos-reference"
                 v-model="reference"
                 type="text"
                 class="form-control"
                 maxlength="50"
-                placeholder="e.g. QR Ph ref. no."
+                :placeholder="method === 'gcash' ? 'From the customer\'s GCash receipt' : 'e.g. QR Ph ref. no.'"
               />
+            </div>
+          </div>
+          <div v-if="method === 'gcash' && gcash" class="gcash-box mt-3">
+            <img :src="gcash.qrUrl" alt="Store GCash QR code" class="gcash-qr" />
+            <div class="fs-13">
+              <div class="fw-bold text-gray-9">Scan with GCash to pay</div>
+              <div>{{ gcash.accountName }}</div>
+              <div v-if="gcash.accountNumber">{{ formatGcashNumber(gcash.accountNumber) }}</div>
+              <div class="fw-bold text-gray-9 mt-1">{{ formatMoney(onlineAmountCents) }}</div>
+              <div class="text-gray-5 mt-1">
+                Check the payment came in on your GCash, then type in the reference no. from the customer's receipt.
+              </div>
             </div>
           </div>
           <div v-if="serviceChargeCents > 0" class="charge-box mt-3">
@@ -284,7 +314,7 @@ function payLater() {
 
 .method-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
   gap: 8px;
 }
 
@@ -333,6 +363,37 @@ function payLater() {
   border-radius: 8px;
   background: #f9fafb;
   font-size: 14px;
+}
+
+.gcash-box {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid #c6dafe;
+  border-radius: 8px;
+  background: #f2f7ff;
+}
+
+.gcash-qr {
+  flex-shrink: 0;
+  width: 160px;
+  height: 160px;
+  border-radius: 6px;
+  background: #ffffff;
+  object-fit: contain;
+}
+
+@media (max-width: 379.98px) {
+  .gcash-box {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .gcash-qr {
+    width: 200px;
+    height: 200px;
+  }
 }
 
 .change-row {

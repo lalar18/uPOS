@@ -47,6 +47,14 @@ export const payoutChargeCents = (charge: ServiceCharge, amountCents: number) =>
 export const saleChargeCents = (charge: ServiceCharge, method: string, amountCents: number) =>
   charge.methods.includes(method) ? chargeCents(charge, amountCents) : 0
 
+/**
+ * The charge on a sale payment recorded by hand. A GCash payment recorded by hand went straight to
+ * the store's own GCash account (see worker/gcash.ts), not through the platform, so it has none.
+ * (keep in step with recordedChargeCents in src/api/serviceCharge.ts)
+ */
+export const recordedChargeCents = (charge: ServiceCharge, method: string, amountCents: number) =>
+  method === 'gcash' ? 0 : saleChargeCents(charge, method, amountCents)
+
 interface ChargeRow {
   id: keyof ServiceCharges
   kind: ChargeKind

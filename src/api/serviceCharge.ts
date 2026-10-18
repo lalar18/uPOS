@@ -41,3 +41,10 @@ export const getOnlinePaymentCharge = (): Promise<OnlinePaymentCharge | null> =>
   fetch('/api/online-payment-charge')
     .then((res) => readJson<OnlinePaymentCharge>(res))
     .catch(() => null)
+
+/**
+ * The charge on a sale payment recorded by hand: none on GCash, which went straight to the store's
+ * own GCash account (keep in step with recordedChargeCents in worker/serviceCharges.ts)
+ */
+export const recordedChargeCents = (charge: ServiceCharge | null, method: string, amountCents: number) =>
+  method === 'gcash' ? 0 : saleChargeCents(charge, method, amountCents)

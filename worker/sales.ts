@@ -29,7 +29,8 @@
 // would take stock below zero fails as a whole, even when two tills sell the last item at once.
 //
 // A payment by an online method also records the service charge collected on top of it (see
-// serviceCharges.ts). It isn't part of the sale, and isn't sent back to the store.
+// serviceCharges.ts). It isn't part of the sale, and isn't sent back to the store. GCash recorded by
+// hand went to the store's own GCash account (worker/gcash.ts), so it has no charge but needs its reference no.
 
 import {
   computeTotals,
@@ -70,7 +71,7 @@ import {
   pendingCheckout,
   readOnlinePayment,
 } from './saleCheckouts'
-import { getServiceCharge, saleChargeCents } from './serviceCharges'
+import { getServiceCharge, recordedChargeCents, saleChargeCents } from './serviceCharges'
 import type { SessionUser } from './session'
 
 const MAX_PAYMENTS = 5
@@ -370,6 +371,7 @@ function readPayment(value: unknown): PaymentInput | string {
   if (reference && reference.length > MAX_REFERENCE_LENGTH) {
     return `Payment reference must be ${MAX_REFERENCE_LENGTH} characters or less`
   }
+  if (method === 'gcash' && !reference) return 'Enter the GCash reference no.'
   const note = cleanNote(body.note)
   if (note === undefined) return 'Payment note is too long'
 
@@ -547,7 +549,7 @@ async function createSale(db: D1Database, env: PaymongoEnv, request: Request, us
   ]
   if (payments.length > 0) {
     const charge = await getServiceCharge(db, 'sale')
-    const charged = payments.map((p) => ({ ...p, serviceChargeCents: saleChargeCents(charge, p.method, p.amountCents) }))
+    const charged = payments.map((p) => ({ ...p, serviceChargeCents: recordedChargeCents(charge, p.method, p.amountCents) }))
     statements.push(
       db
         .prepare(
@@ -655,7 +657,7 @@ async function addPayment(
           payment.method,
           payment.reference,
           payment.note,
-          saleChargeCents(charge, payment.method, payment.amountCents),
+          recordedChargeCents(charge, payment.method, payment.amountCents),
           paidDate,
           user.id,
           user.full_name,

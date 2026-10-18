@@ -30,6 +30,7 @@ import {
 } from './session'
 import { handleOnlinePaymentCharge } from './serviceCharges'
 import { handleSubcategories } from './subcategories'
+import { handleGcash } from './gcash'
 import { handleSettings } from './settings'
 import { handleWallet } from './storePayouts'
 import { applyDuePlanChanges, handleSubscription, listPlans, subscriptionExpired } from './subscription'
@@ -303,6 +304,11 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (!user) return notLoggedIn()
     const response = await handleReports(env.DB, request, url, user)
     if (response) return response
+  }
+
+  if (url.pathname === '/api/settings/gcash' || url.pathname === '/api/settings/gcash/qr') {
+    if (!user) return notLoggedIn()
+    return handleGcash(env.DB, request, url, user)
   }
 
   if (url.pathname === '/api/settings') {

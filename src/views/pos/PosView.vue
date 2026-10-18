@@ -5,6 +5,7 @@
 // a sale left unpaid online can be cancelled so it puts its stock back instead of staying unpaid.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { PickedCustomer } from '@/api/customers'
+import { getGcashAccount, type GcashAccount } from '@/api/gcash'
 import {
   findProductByCode,
   formatQuantity,
@@ -295,6 +296,13 @@ const cartError = ref('')
 
 // The service charge on online payments (refreshed on each payment, in case it changed)
 const onlineCharge = ref<OnlinePaymentCharge | null>(null)
+// The store's own GCash account, if the admin set one up (refreshed on each payment too)
+const gcashAccount = ref<GcashAccount | null>(null)
+const loadGcashAccount = () =>
+  getGcashAccount()
+    .then((account) => (gcashAccount.value = account))
+    .catch(() => {})
+loadGcashAccount()
 
 function openPayment() {
   cartError.value = cartProblem()
@@ -302,6 +310,7 @@ function openPayment() {
   payError.value = ''
   paying.value = true
   getOnlinePaymentCharge().then((charge) => (onlineCharge.value = charge ?? onlineCharge.value))
+  loadGcashAccount()
 }
 
 const lastSale = ref<Sale | null>(null)
@@ -702,6 +711,7 @@ onBeforeUnmount(() => {
     :total-cents="totals.totalCents"
     :customer-name="customer?.name ?? null"
     :charge="onlineCharge"
+    :gcash="gcashAccount"
     :saving="saving"
     :error="payError"
     @close="paying = false"

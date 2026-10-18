@@ -3,7 +3,13 @@
 // charge, collected on top of the amount. Card, GCash, Maya and QR Ph can also be paid online now
 // (through PayMongo, when the store has it): the dialog then waits for the customer to pay.
 import { computed, ref } from 'vue'
-import { chargeRateLabel, getOnlinePaymentCharge, saleChargeCents, type OnlinePaymentCharge } from '@/api/serviceCharge'
+import {
+  chargeRateLabel,
+  getOnlinePaymentCharge,
+  recordedChargeCents,
+  saleChargeCents,
+  type OnlinePaymentCharge,
+} from '@/api/serviceCharge'
 import {
   addSalePayment,
   getSale,
@@ -54,7 +60,10 @@ getOnlinePaymentCharge().then((result) => (charge.value = result))
 const serviceChargeCents = computed(() => {
   const paid = amountCents.value
   if (method.value === 'cash' || paid === null || Number.isNaN(paid)) return 0
-  return saleChargeCents(charge.value, method.value, paid)
+  // GCash recorded by hand went to the store's own GCash account, so it has no charge
+  return online.value
+    ? saleChargeCents(charge.value, method.value, paid)
+    : recordedChargeCents(charge.value, method.value, paid)
 })
 
 const payOnline = ref(true) // card, GCash, Maya, QR Ph: pay online now, or record a payment already made
@@ -76,6 +85,7 @@ function validate(): string {
     if (Number.isNaN(receivedCents.value)) return 'Cash received must be an amount like 200.00.'
     if (receivedCents.value < cents) return 'Cash received is less than the amount paid.'
   }
+  if (method.value === 'gcash' && !reference.value.trim()) return 'Enter the GCash reference no.'
   if (!paidDate.value) return 'Choose the payment date.'
   if (paidDate.value > toIsoDate()) return 'The payment date cannot be in the future.'
   return ''

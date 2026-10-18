@@ -4,6 +4,7 @@ import { computed, ref } from 'vue'
 import { getSettings, taxRateText, updateSettings, type Settings } from '@/api/settings'
 import { currentUser } from '@/auth'
 import { CURRENCIES, currencySymbol, formatMoney, parsePercentBp } from '@/utils/money'
+import GcashSettingsCard from './GcashSettingsCard.vue'
 
 const MAX_QUOTATION_VALID_DAYS = 365
 const MAX_RECEIPT_FOOTER_LENGTH = 200
@@ -98,7 +99,7 @@ function reset() {
   <div class="page-header">
     <div class="page-title">
       <h4>General Settings</h4>
-      <h6>Defaults for sales, quotations, receipts and currency</h6>
+      <h6>Defaults for sales, quotations, receipts, currency and GCash payments</h6>
     </div>
   </div>
 
@@ -195,6 +196,8 @@ function reset() {
       </div>
     </fieldset>
   </form>
+
+  <GcashSettingsCard v-if="!loadError" />
 </template>
 
 <style scoped>
