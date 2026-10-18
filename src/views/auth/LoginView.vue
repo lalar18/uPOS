@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { googleSignInUrl, login } from '@/auth'
+import { TRIAL_LABEL } from '@/api/subscription'
 
 const router = useRouter()
 const route = useRoute()
@@ -131,7 +132,7 @@ async function handleSubmit() {
               </div>
 
               <p class="text-center fs-14 text-gray-6 mb-0">
-                New to USystems POS? Continue with Google to create your store, free for 14 days.
+                New to USystems POS? Continue with Google to create your store, free for {{ TRIAL_LABEL }}.
               </p>
 
               <div class="my-4 d-flex justify-content-center align-items-center copyright-text">
